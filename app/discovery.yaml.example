@@ -1,0 +1,52 @@
+# discovery.yaml — Brownfield Discovery CLI configuration
+# Copy to your project directory and customize
+
+provider: bedrock              # bedrock | ollama | mlx-gemma | mlx-qwen
+budget_limit_usd: 50.0        # Max estimated USD spend per scan
+max_concurrent: 10             # Max concurrent Tier 1 summarization threads
+
+bedrock:
+  region: us-west-2
+  tier1: us.anthropic.claude-haiku-4-5-20251001-v1:0        # Cheap: chunk summaries
+  tier2: us.anthropic.claude-sonnet-4-6                     # Mid: flow analysis
+  tier3d: us.anthropic.claude-haiku-4-5-20251001-v1:0       # Dev: fast/cheap doc generation
+  tier3p: us.anthropic.claude-sonnet-4-6                    # Prod: high-quality doc generation (--prod)
+
+ollama:
+  base_url: http://localhost:11434
+  tier1: gemma4:e2b             # Small model for bulk chunk summaries (swap to e4b for harder code)
+  tier1_num_ctx: 4096            # Cap tier1 KV cache (model default is 32K → ~11GB VRAM)
+  tier2: gemma4:26b
+  tier3d: gemma4:26b             # Dev: faster model for doc generation
+  tier3p: gemma4:31b             # Prod: higher quality for doc generation (--prod)
+
+mlx_gemma:
+  # ai-mlx-server (https://github.com/andychoi/ai-mlx-server) on port 11435,
+  # gemma4 variant. Speaks the Ollama protocol so the same dispatcher works.
+  # Selected via `provider: mlx-gemma` (or LLM_PROVIDER=mlx-gemma env var).
+  base_url: http://localhost:11435
+  api_key: ""
+  tier1: mlx-community/gemma-4-e2b-it-4bit
+  tier1_num_ctx: 4096
+  tier2: mlx-community/gemma-4-26b-a4b-it-4bit
+  tier3d: mlx-community/gemma-4-26b-a4b-it-4bit
+  tier3p: mlx-community/gemma-4-31b-it-4bit
+
+mlx_qwen:
+  # Same ai-mlx-server instance as `mlx`, but with Qwen3.5 model tags.
+  # Selected via `provider: mlx-qwen` (or LLM_PROVIDER=mlx-qwen env var).
+  base_url: http://localhost:11435
+  api_key: ""
+  tier1: mlx-community/Qwen3.5-2B-4bit
+  tier1_num_ctx: 4096
+  tier2: mlx-community/Qwen3.5-4B-MLX-4bit
+  tier3d: mlx-community/Qwen3.5-9B-MLX-4bit
+  tier3p: mlx-community/Qwen3.5-27B-4bit
+
+rag:
+  embedding_provider: bedrock   # bedrock | ollama
+  bedrock_model: amazon.titan-embed-text-v2:0
+  ollama_model: nomic-embed-text
+  chunk_size: 1500
+  chunk_overlap: 200
+  top_k: 5
