@@ -1,8 +1,8 @@
 # Advisor Tool Integration — Design Specification
 
 **Date**: 2026-04-17  
-**Status**: Implemented  
-**Commit**: 9165029
+**Status**: ✅ Implemented  
+**Commits**: 9165029 (initial), 91880bb (intelligent escalation)
 
 ---
 
@@ -172,6 +172,112 @@ Executor becomes Sonnet, advisor stays Opus → ~15% cost reduction with compara
 
 ---
 
+## Intelligent Escalation (Approach 1 + 4)
+
+Rather than unconditionally calling the advisor, the implementation uses **heuristic signal scoring** combined with **cost-aware escalation** to decide when advisor guidance is actually valuable.
+
+### AdvisorContext
+
+Each call site can provide escalation hints via `AdvisorContext`:
+
+```python
+@dataclass
+class AdvisorContext:
+    complexity: str = "auto"          # auto | low | medium | high
+    domain: str = ""                  # "flow_analysis", "claim_extraction", etc.
+    max_advisor_cost_pct: float = 0.2 # don't let advisor cost >N% of tier cost
+```
+
+Usage:
+```python
+response = llm_client.invoke_with_advisor(
+    "tier2", prompt,
+    context=AdvisorContext(
+        complexity="auto",
+        domain="flow_analysis",
+        max_advisor_cost_pct=0.3  # willing to spend 30%
+    )
+)
+```
+
+### Heuristic Signal Scoring
+
+**`_should_escalate_to_advisor(prompt, domain)`** analyzes the prompt for complexity signals:
+
+#### Mandatory Signals (auto-escalate)
+Keywords that **always** trigger advisor: `architecture`, `trade-off`, `refactor`, `reconcile`, `conflicting`
+
+#### Heuristic Scoring
+
+| Signal | Score | Condition |
+|--------|-------|-----------|
+| Length | +2 | > 3000 chars |
+| Length | +1 | > 2000 chars |
+| Multi-step | +2 | 3+ of: multiple, different, various, approach, option, strategy |
+| Multi-step | +1 | 1-2 of same terms |
+| Ambiguity | +2 | Any of: unclear, ambiguous, decide, tradeoff, uncertain, competing |
+| Analysis | +1 | 2+ of: analyze, compare, correlate, infer, reconcile, optimize |
+| Domain boost | +1 | flow_analysis, doc_generation |
+
+**Threshold**: Escalate if score ≥ domain-specific threshold
+
+#### Domain-Specific Thresholds
+
+Lower threshold = more readily escalate.
+
+| Domain | Threshold | Rationale |
+|--------|-----------|-----------|
+| `flow_analysis` | 1 | Domain-level analysis is inherently complex |
+| `scenario_steps` | 1 | Multi-step scenario inference is complex |
+| `scenario_ipo` | 2 | Structured extraction, moderate |
+| `scenario_interfaces` | 2 | Interface detection, moderate |
+| `doc_generation` | 0 | **Always escalate** for doc quality |
+| `claim_extraction` | 3 | Structured JSON, only escalate if truly complex |
+| `claim_verification` | 99 | Binary verdict, almost never escalate |
+| `section_regeneration` | 2 | Targeted rewrites, moderate |
+
+### Cost-Aware Gating
+
+Even if escalation score passes, advisor is skipped if its cost exceeds the tolerance:
+
+```python
+advisor_cost_estimate = 256 tokens / 1M * $75
+tier_cost_estimate = estimated_executor_tokens / 1M * tier_rate
+
+allowed_advisor_cost = tier_cost_estimate * max_advisor_cost_pct
+escalate = advisor_cost_estimate <= allowed_advisor_cost
+```
+
+**Example**: Tier1 (Haiku, $4/1M), estimated 512 tokens, max_advisor_cost_pct=0.1:
+- Executor cost: 512 / 1M * 4 = $0.00204
+- Advisor cost: 256 / 1M * 75 = $0.0192
+- Allowed: $0.00204 * 0.1 = $0.000204
+- Result: Advisor cost ($0.0192) > allowed ($0.000204) → **skip advisor**
+
+### Per-Domain Defaults
+
+| Domain | Complexity | Cost Tolerance | Rationale |
+|--------|-----------|-----------------|-----------|
+| flow_analysis | auto | 0.3 | Complex reasoning, moderate spend |
+| scenario_steps | auto | 0.3 | Multi-step inference, moderate spend |
+| scenario_ipo | auto | 0.15 | Structured extraction, conservative |
+| scenario_interfaces | auto | 0.2 | Interface detection, modest spend |
+| **doc_generation** | **high** | **0.5** | Quality-critical, willing to spend |
+| claim_extraction | medium | 0.1 | Extraction logic, conservative |
+| claim_verification | low | 0.05 | Binary verdict, almost never use |
+| section_regeneration | medium | 0.15 | Targeted rewrites, modest spend |
+
+### Error Recovery
+
+If advisor call fails (network, rate limit, etc.):
+1. Log warning and fall back to plain invoke
+2. Retry once (with fresh `AdvisorContext._retry_count`)
+3. If retry also fails, use plain executor result
+
+Ensures advisor unavailability never halts the pipeline.
+
+---
+
 ## Cost Tracking
 
 ### New Virtual Tier: `"advisor"`
@@ -261,13 +367,15 @@ pip install anthropic>=0.50.0
 
 ## Future Enhancements
 
-1. **Prompt caching for advisor** — If 3+ advisor calls per conversation, add `"caching": {"type": "ephemeral"}` to tool definition.
+1. **Prompt caching for advisor** — If 3+ advisor calls per conversation, add `"caching": {"type": "ephemeral"}` to tool definition (only beneficial on native path).
 
-2. **Per-domain advisor configuration** — Allow different advisor models or max_uses by domain for ultra-fine-grained tuning.
+2. **Dynamic threshold tuning** — Monitor actual quality/cost ratios per domain and auto-adjust thresholds based on production data.
 
-3. **Advisor latency metrics** — Log server-side advisor latency from `response.usage` to monitor performance impact.
+3. **Advisor latency metrics** — Log server-side advisor latency from `response.usage.iterations[].latency_ms` to detect performance regressions.
 
-4. **Cost-benefit analysis** — Collect before/after confidence scores to quantify quality gain per dollar spent on advisor.
+4. **Cost-benefit analysis** — Collect confidence delta (with advisor - without advisor) and compute ROI per domain, per tier.
+
+5. **Multi-turn advisor conversations** — Extend to maintain advisor context across multiple executor calls within a domain (requires manual history management).
 
 ---
 
@@ -276,4 +384,6 @@ pip install anthropic>=0.50.0
 - Anthropic Blog: [The Advisor Strategy](https://claude.com/blog/the-advisor-strategy)
 - Anthropic API Docs: [Advisor Tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool)
 - ai-discovery CLAUDE.md: Project architecture and principles
-- Commit: 9165029
+- **Commits**:
+  - `9165029` — Initial advisor tool integration (native + simulated paths)
+  - `91880bb` — Intelligent escalation with heuristic + cost-aware logic
