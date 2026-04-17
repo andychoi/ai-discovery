@@ -10,7 +10,7 @@ from concurrent.futures import TimeoutError as _FuturesTimeout
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..ai.llm_client import LLMClient
+from ..ai.llm_client import LLMClient, AdvisorContext
 from ..db import get_conn, now_iso
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,14 @@ def extract_claims(content_md: str, llm_client: LLMClient) -> list[str]:
         "JSON array of claims:"
     )
 
-    response = llm_client.invoke_with_advisor("tier1", prompt, max_tokens=2048)
+    response = llm_client.invoke_with_advisor(
+        "tier1", prompt, max_tokens=2048,
+        context=AdvisorContext(
+            complexity="medium",
+            domain="claim_extraction",
+            max_advisor_cost_pct=0.1  # strict: keep advisor cost <10%
+        )
+    )
     text = response.text.strip()
 
     # Strip markdown code fences (```json ... ``` or ``` ... ```)
@@ -140,7 +147,14 @@ def verify_claim(
         "- unverified: the code is ambiguous or unrelated to the claim"
     )
 
-    response = llm_client.invoke_with_advisor("tier1", prompt, max_tokens=64)
+    response = llm_client.invoke_with_advisor(
+        "tier1", prompt, max_tokens=64,
+        context=AdvisorContext(
+            complexity="low",
+            domain="claim_verification",
+            max_advisor_cost_pct=0.05  # almost never escalate for binary verdict
+        )
+    )
     answer = response.text.strip().lower()
 
     if "verified" in answer and "unverified" not in answer:
@@ -422,7 +436,14 @@ def regenerate_sections(
                 "Only include statements supported by the code context above."
             )
 
-            response = llm_client.invoke_with_advisor("tier1", prompt, max_tokens=1024)
+            response = llm_client.invoke_with_advisor(
+                "tier1", prompt, max_tokens=1024,
+                context=AdvisorContext(
+                    complexity="medium",
+                    domain="section_regeneration",
+                    max_advisor_cost_pct=0.15
+                )
+            )
             result_parts.append(response.text.strip() + "\n\n")
         else:
             result_parts.append(part)

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..ai.llm_client import LLMClient
+from ..ai.llm_client import LLMClient, AdvisorContext
 from ..db import get_conn, now_iso
 from ..graph.models import Domain, CallEdge, ExecutionNode, Scenario, StateTransition
 
@@ -68,17 +68,26 @@ class ScenarioFlowInference:
 
     def _infer_steps(self, scenario: Scenario, summaries: dict[str, dict]) -> list[dict]:
         prompt = self._build_steps_prompt(scenario, summaries)
-        response = self.llm_client.invoke_with_advisor("tier2", prompt)
+        response = self.llm_client.invoke_with_advisor(
+            "tier2", prompt,
+            context=AdvisorContext(domain="scenario_steps", max_advisor_cost_pct=0.3)
+        )
         return self._parse_json_response(response.text, "flow")
 
     def _infer_ipo(self, scenario: Scenario, flow_steps: list[dict]) -> dict:
         prompt = self._build_ipo_prompt(scenario, flow_steps)
-        response = self.llm_client.invoke_with_advisor("tier2", prompt)
+        response = self.llm_client.invoke_with_advisor(
+            "tier2", prompt,
+            context=AdvisorContext(domain="scenario_ipo", max_advisor_cost_pct=0.15)
+        )
         return self._parse_json_response(response.text)
 
     def _infer_interfaces(self, scenario: Scenario, flow_steps: list[dict]) -> list[dict]:
         prompt = self._build_interfaces_prompt(scenario, flow_steps)
-        response = self.llm_client.invoke_with_advisor("tier2", prompt)
+        response = self.llm_client.invoke_with_advisor(
+            "tier2", prompt,
+            context=AdvisorContext(domain="scenario_interfaces", max_advisor_cost_pct=0.2)
+        )
         return self._parse_json_response(response.text, "interfaces")
 
     def _build_steps_prompt(self, scenario: Scenario, summaries: dict[str, dict]) -> str:
@@ -264,7 +273,10 @@ def analyze_domain(
     Returns list of BusinessFlow objects.
     """
     prompt = _build_flow_prompt(domain, summaries)
-    response = llm_client.invoke_with_advisor("tier2", prompt)
+    response = llm_client.invoke_with_advisor(
+        "tier2", prompt,
+        context=AdvisorContext(domain="flow_analysis", max_advisor_cost_pct=0.3)
+    )
     flows = _parse_flows(response.text)
     logger.info(
         "Domain '%s': identified %d business flows (model=%s)",

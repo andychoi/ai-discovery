@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import DiscoveryConfig
@@ -42,6 +42,33 @@ class LLMResponse:
     tokens_out: int
     model: str
     tier: str
+
+
+@dataclass
+class AdvisorContext:
+    """Context for advisor escalation decisions.
+
+    Enables intelligent escalation based on task complexity, domain, and cost tolerance.
+    """
+    complexity: str = "auto"          # auto | low | medium | high
+    domain: str = ""                  # e.g., "flow_analysis", "claim_extraction"
+    max_advisor_cost_pct: float = 0.2 # don't let advisor cost >N% of tier cost
+    _retry_count: int = field(default=0, init=False)  # internal: track escalation retries
+
+
+# Per-domain heuristic thresholds for escalation
+# Lower = more readily escalate to advisor
+# Higher = only escalate for clearly complex cases
+_DOMAIN_THRESHOLDS = {
+    "flow_analysis": 1,           # domain-level analysis is inherently complex
+    "scenario_steps": 1,          # multi-step scenario inference is complex
+    "scenario_ipo": 2,            # structured extraction, moderate complexity
+    "scenario_interfaces": 2,     # interface detection, moderate complexity
+    "doc_generation": 0,          # always escalate for doc quality
+    "claim_extraction": 3,        # structured JSON extraction, only escalate if truly complex
+    "claim_verification": 99,     # binary verdict, almost never escalate
+    "section_regeneration": 2,    # rewrite only what's needed, moderate
+}
 
 
 class LLMClient:
@@ -88,22 +115,144 @@ class LLMClient:
         self._track_cost(tier, model, tok_in, tok_out)
         return LLMResponse(text=text, tokens_in=tok_in, tokens_out=tok_out, model=model, tier=tier)
 
-    def invoke_with_advisor(self, tier: str, prompt: str, max_tokens: int = 4096) -> LLMResponse:
-        """Invoke with advisor if enabled for this tier, else plain invoke().
+    def invoke_with_advisor(
+        self,
+        tier: str,
+        prompt: str,
+        max_tokens: int = 4096,
+        context: AdvisorContext | None = None,
+    ) -> LLMResponse:
+        """Invoke with intelligent advisor escalation if enabled.
 
         Routes to native Anthropic SDK (if ANTHROPIC_API_KEY present) or simulated
         advisor (Bedrock/Ollama two-step). Falls back to plain invoke on any error.
+
+        Args:
+            tier: tier1, tier2, or tier3
+            prompt: the prompt to send to the executor
+            max_tokens: max tokens for executor (advisor uses fixed budget)
+            context: optional AdvisorContext for complexity/cost control
         """
+        context = context or AdvisorContext()
         path = self._get_advisor_provider()
         if path == "disabled" or tier not in self._config.advisor.tiers:
             return self.invoke(tier, prompt, max_tokens)
+
+        # Determine whether to escalate to advisor
+        should_advise = self._determine_escalation(tier, prompt, context)
+
+        if not should_advise:
+            return self.invoke(tier, prompt, max_tokens)
+
+        # Escalate with retry logic (max 1 retry on error)
         try:
             if path == "anthropic":
                 return self._invoke_native_advisor(tier, prompt, max_tokens)
             return self._invoke_simulated_advisor(tier, prompt, max_tokens)
         except Exception as e:
-            log.warning("Advisor call failed (%s), falling back to plain invoke: %s", path, e)
+            if context._retry_count < 1:
+                log.warning("Advisor failed (retrying): %s", e)
+                context._retry_count += 1
+                return self.invoke_with_advisor(tier, prompt, max_tokens, context)
+            log.warning("Advisor call failed (max retries), falling back: %s", e)
             return self.invoke(tier, prompt, max_tokens)
+
+    def _determine_escalation(self, tier: str, prompt: str, context: AdvisorContext) -> bool:
+        """Determine whether to escalate to advisor based on complexity and cost."""
+        # Hard complexity signals
+        if context.complexity == "high":
+            return True
+        if context.complexity == "low":
+            return False
+
+        # Heuristic escalation (auto or medium)
+        if not self._should_escalate_to_advisor(prompt, context.domain):
+            return False
+
+        # Cost gate: if advisor cost would exceed threshold, skip it
+        if self._config.provider == "bedrock":
+            if not self._is_advisor_cost_justified(tier, context.max_advisor_cost_pct):
+                log.debug(
+                    "Advisor cost exceeds {:.0f}% of tier cost for %s, skipping",
+                    context.max_advisor_cost_pct * 100,
+                    tier,
+                )
+                return False
+
+        return True
+
+    def _should_escalate_to_advisor(self, prompt: str, domain: str = "") -> bool:
+        """Detect complexity signals in prompt indicating advisor guidance is needed."""
+        # Mandatory escalation signals (always advise)
+        mandatory_terms = ["architecture", "trade-off", "trade off", "refactor", "reconcile", "conflicting"]
+        if any(term in prompt.lower() for term in mandatory_terms):
+            return True
+
+        # Get domain-specific threshold
+        threshold = _DOMAIN_THRESHOLDS.get(domain, 2)
+
+        # Heuristic scoring
+        score = 0
+
+        # Length signal: longer prompts often need planning
+        if len(prompt) > 3000:
+            score += 2
+        elif len(prompt) > 2000:
+            score += 1
+
+        # Multi-step signal: branching paths, conditions, alternatives
+        multi_step_terms = ["multiple", "different", "various", "approach", "option", "strategy", "alternative"]
+        multi_step_count = sum(prompt.lower().count(term) for term in multi_step_terms)
+        if multi_step_count >= 3:
+            score += 2
+        elif multi_step_count >= 1:
+            score += 1
+
+        # Ambiguity signal: uncertainty or decision-making
+        ambiguity_terms = ["unclear", "ambiguous", "decide", "tradeoff", "trade-off", "uncertain", "competing", "conflicting"]
+        if any(term in prompt.lower() for term in ambiguity_terms):
+            score += 2
+
+        # Analysis complexity: deep reasoning verbs
+        analysis_terms = ["analyze", "compare", "correlate", "infer", "reconcile", "optimize", "identify"]
+        analysis_count = sum(prompt.lower().count(term) for term in analysis_terms)
+        if analysis_count >= 2:
+            score += 1
+        elif analysis_count >= 1:
+            score += 0  # no boost for single analysis term
+
+        # Domain boost: some domains benefit more from advisor
+        if domain in ("flow_analysis", "doc_generation"):
+            score += 1
+
+        log.debug(
+            "Escalation score for %s: %d (threshold=%d, %s)",
+            domain or "unknown", score, threshold, "escalate" if score >= threshold else "skip",
+        )
+        return score >= threshold
+
+    def _is_advisor_cost_justified(self, tier: str, max_advisor_cost_pct: float) -> bool:
+        """Check if advisor cost is justified relative to executor cost."""
+        tier_rates = {"tier1": 4.0, "tier2": 15.0, "tier3": 75.0}
+        tier_rate = tier_rates.get(tier, 15.0)
+        advisor_rate = 75.0
+
+        # Advisor prompt is ~256 tokens, executor output varies by tier
+        estimated_advisor_tokens = 256
+        estimated_executor_tokens = {"tier1": 512, "tier2": 1024, "tier3": 2048}.get(tier, 1024)
+
+        advisor_cost_estimate = estimated_advisor_tokens / 1_000_000 * advisor_rate
+        tier_cost_estimate = estimated_executor_tokens / 1_000_000 * tier_rate
+
+        is_justified = advisor_cost_estimate <= tier_cost_estimate * max_advisor_cost_pct
+        log.debug(
+            "Cost check %s: advisor ${:.4f} vs {:.0f}%% of tier ${:.4f}",
+            "OK" if is_justified else "FAIL",
+            advisor_cost_estimate,
+            max_advisor_cost_pct * 100,
+            tier_cost_estimate,
+        )
+        return is_justified
 
     def _get_advisor_provider(self) -> str:
         """Returns 'anthropic', 'simulated', or 'disabled'."""
