@@ -58,6 +58,32 @@ Design decisions recorded per session:
 
 ---
 
+## Integrations & Features
+
+Advanced integrations and optional features:
+
+- **`integrations/PM4PY_INDEX.md`** — Process mining integration overview
+- **`integrations/PM4PY_IMPLEMENTATION_COMPLETE.md`** — Full implementation details
+- **`integrations/PM4PY_INTEGRATION_WIRED.md`** — Integration architecture
+
+---
+
+## Deployment & Operations
+
+Production deployment and operational guides:
+
+- **`deployment/INTEGRATION_CHECKLIST.md`** — Pre-deployment checklist, configuration, verification steps
+
+---
+
+## Demos & Examples
+
+Demo applications and example usage:
+
+- **`demos/README.md`** — Running demos, test setup, example outputs
+
+---
+
 ## Quick Reference
 
 ### By Use Case
@@ -104,22 +130,37 @@ docs/
 │
 ├── guides/ ──────── How-to & reference (for developers)
 │   ├── call-graph/ ─ Call resolution (Area A)
-│   │   ├── resolution-heuristics.md ── 7-level scoring examples
-│   │   ├── debugging-workflow.md ──── Trace → analyze → validate
-│   │   └── test-strategy.md ──────── Unit + corpus validation
-│   │
+│   │   ├── resolution-heuristics.md
+│   │   ├── debugging-workflow.md
+│   │   └── test-strategy.md
 │   ├── parsers/ ──── Language support (Area D)
-│   │   ├── architecture.md ───────── How parsers work
-│   │   ├── extension-checklist.md ─ Step-by-step guide
-│   │   └── language-patterns.md ──── Python vs Java vs C# vs Go
-│   │
-│   └── pipeline/ ──── Performance & cost (all areas)
-│       ├── phase-breakdown.md ────── All 13 phases explained
-│       ├── cost-tracking.md ────────Budget management
-│       └── profiling.md ────────── Bottleneck identification
+│   │   ├── architecture.md
+│   │   ├── extension-checklist.md
+│   │   └── language-patterns.md
+│   └── pipeline/ ──── Performance & cost
+│       ├── phase-breakdown.md
+│       ├── cost-tracking.md
+│       └── profiling.md
 │
-└── specs/ ────── Design records per session
-    └── 2026-04-17-dev-infrastructure-design.md ── Current design
+├── specs/ ──────── Design records per session
+│   └── 2026-04-17-dev-infrastructure-design.md
+│
+├── integrations/ ─── Advanced features & integrations
+│   ├── PM4PY_INDEX.md
+│   ├── PM4PY_IMPLEMENTATION_COMPLETE.md
+│   └── PM4PY_INTEGRATION_WIRED.md
+│
+├── deployment/ ───── Production deployment guides
+│   └── INTEGRATION_CHECKLIST.md
+│
+├── demos/ ───────── Example usage & demos
+│   └── README.md
+│
+└── archived/ ────── Legacy documentation
+    ├── architecture.md (migrated → architecture/)
+    ├── flow.md (migrated → guides/pipeline/)
+    ├── IMPLEMENTATION_SUMMARY.md
+    └── PM4PY_*.md (migrated → integrations/)
 ```
 
 ---
@@ -179,13 +220,16 @@ Contains:
 
 ---
 
-## Archived & Reference Docs
+## Archived Docs
 
-These are kept for reference during transition but content is migrated:
+Legacy documentation kept for historical reference:
 
-- `../docs/architecture.md` → `architecture/overview.md` + `architecture/components.md`
-- `../docs/flow.md` → `guides/pipeline/phase-breakdown.md`
-- `../docs/IMPLEMENTATION_SUMMARY.md` → `specs/` (implementation records)
+- `archived/architecture.md` — Old architecture overview (migrated to `architecture/overview.md` + `architecture/components.md`)
+- `archived/flow.md` — Old flow documentation (migrated to `guides/pipeline/phase-breakdown.md`)
+- `archived/IMPLEMENTATION_SUMMARY.md` — Old implementation summary
+- `archived/PM4PY_INTEGRATION.md` — Old PM4Py docs (migrated to `integrations/`)
+- `archived/PM4PY_MODULES_SUMMARY.md` — Old PM4Py modules reference
+- `archived/todo-production.md` — Old production TODO list
 
 ---
 
@@ -227,4 +271,5 @@ When you learn something new:
 
 - `../CLAUDE.md` — Project overview and quick reference
 - `../README.md` — Installation, CLI usage, examples
-- Code comments in `../app/` — Implementation details
+- `../examples/` — Practical usage examples (local, GitHub, Docker)
+- Code comments in `../src/ai_discovery/` — Implementation details
