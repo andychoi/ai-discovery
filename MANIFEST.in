@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+include app/requirements.txt
+include app/discovery.yaml.example
+recursive-include app *.yaml
+recursive-include app *.j2
+recursive-include docs *

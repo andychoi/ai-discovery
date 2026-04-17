@@ -24,6 +24,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 
 from .config import DiscoveryConfig
 from .db import init_db, get_conn, now_iso
+from .ai.process_miner import mine_scenarios
+from .ai.mining_reporter import MiningReporter
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -592,6 +594,25 @@ def run_pipeline(
     persist_scenario_flows(scenario_flows, scenario_artifacts, scan_id, db_path)
     console.print(f"  Visual artifacts: [green]{len(scenario_artifacts)}[/] scenarios persisted")
 
+    # ------------------------------------------------------------------
+    # 13.6 OPTIONAL: Stage 10.5 — Process Mining & Conformance
+    # ------------------------------------------------------------------
+    mining_results: dict = {}
+    mining_enabled = getattr(config, 'process_mining', None)
+    if mining_enabled and getattr(mining_enabled, 'enabled', False):
+        console.print("[bold cyan]Stage 10.5: Process mining & conformance analysis...[/]")
+        with _timed("process mining"), console.status("[bold cyan]Mining scenarios..."):
+            try:
+                mining_results = _mine_processes(scenario_flows, output_dir)
+                console.print(
+                    f"  Process mining: [green]{len(mining_results)}[/] scenarios analysed"
+                )
+            except Exception as e:
+                logger.error(f"Process mining failed (continuing): {e}")
+                console.print(f"  [yellow]Process mining skipped:[/] {e}")
+    else:
+        console.print("[dim]Stage 10.5: Process mining disabled (set process_mining.enabled=true to enable)[/]")
+
     # Free tier3 (~20 GB) so self-review (tier1) has headroom.
     if config.provider == "ollama":
         console.print(f"[dim]Unloading tier3 ({tier3_model})...[/]")
@@ -771,6 +792,7 @@ def run_pipeline(
             project_slug,
             repo_url=resolved.url or str(resolved.repo_path),
             repo_commit=resolved.commit_sha,
+            mining_results=mining_results,
         )
         written.extend(scenario_written)
     console.print(f"  Written: [green]{len(written)}[/] markdown files to {docs_dir}")
@@ -850,6 +872,50 @@ def _compute_domain_adjacency(
     for row in rows:
         adjacency.setdefault(row["caller_domain"], []).append(row["callee_domain"])
     return adjacency
+
+
+def _mine_processes(
+    scenario_flows: list,
+    output_dir: Path,
+) -> dict:
+    """Stage 10.5: Process mining and conformance analysis (optional).
+
+    Args:
+        scenario_flows: List of ScenarioFlow objects with pseudo_event_log
+        output_dir: Directory for mining reports
+
+    Returns:
+        dict[scenario_id] → MiningResult
+    """
+    logger.info("Stage 10.5: Process mining and conformance analysis")
+
+    # Extract pseudo event logs from scenario flows
+    pseudo_logs = []
+    scenario_id_map = {}
+    for flow in scenario_flows:
+        if hasattr(flow, 'pseudo_event_log') and flow.pseudo_event_log:
+            pseudo_logs.append(flow.pseudo_event_log)
+            scenario_id_map[flow.pseudo_event_log['case_id']] = flow.scenario_id
+
+    if not pseudo_logs:
+        logger.warning("No pseudo event logs available for mining")
+        return {}
+
+    # Mine all scenarios
+    mining_results = mine_scenarios(pseudo_logs)
+
+    # Save mining reports to disk
+    mining_reports_dir = output_dir / "mining_reports"
+    mining_reports_dir.mkdir(parents=True, exist_ok=True)
+
+    for scenario_id, result in mining_results.items():
+        try:
+            MiningReporter.save_reports(result, mining_reports_dir)
+        except Exception as e:
+            logger.error(f"Failed to save mining reports for {scenario_id}: {e}")
+
+    logger.info(f"Stage 10.5 complete: {len(mining_results)} scenarios mined")
+    return mining_results
 
 
 def _finalise_scan(

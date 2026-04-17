@@ -1,0 +1,13 @@
+# AI-Discovery Requirements
+#
+# For development with editable install:
+#   pip install -e .
+#
+# For production with specific version:
+#   pip install ai-discovery==0.1.0
+#
+# For development with extras:
+#   pip install -e ".[dev]"
+
+# Core dependencies (managed by setup.py/pyproject.toml)
+-e .

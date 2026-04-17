@@ -128,8 +128,11 @@ class PythonParser(LanguageParser):
                 # New: Extract behavioral signals
                 transitions = self._extract_state_transitions(m_node)
                 boundaries = self._detect_boundaries(m_node)
-                
+                is_async = self._is_async_function(m_node)
+
                 f_hints = {"transitions": transitions, "boundaries": boundaries}
+                if is_async:
+                    f_hints["async_boundary"] = True
 
                 nodes.append(CodeNode(
                     file_path=fp,
@@ -169,11 +172,14 @@ class PythonParser(LanguageParser):
             # New: Extract behavioral signals
             transitions = self._extract_state_transitions(f_node)
             boundaries = self._detect_boundaries(f_node)
-            
+            is_async = self._is_async_function(f_node)
+
             framework_hints: dict = {
-                "transitions": transitions, 
+                "transitions": transitions,
                 "boundaries": boundaries
             }
+            if is_async:
+                framework_hints["async_boundary"] = True
             if endpoint_info:
                 framework_hints["method"] = endpoint_info["method"]
                 framework_hints["route"] = endpoint_info["route"]
@@ -238,26 +244,35 @@ class PythonParser(LanguageParser):
             call_node = match.get("call.name", [None])[0]
             if not call_node:
                 continue
-                
+
             call_text = call_node.text.decode()
-            
+
             # Check for DB operations
             if call_text.lower() in _DB_OPERATIONS:
                 boundaries.append({"type": "DB", "operation": call_text})
                 continue
-                
+
             # Check for external client usage
             parent = call_node.parent
             if parent and parent.type == "attribute":
                 obj_node = parent.child_by_field_name("object")
                 if obj_node and obj_node.text.decode().lower() in _EXTERNAL_CLIENTS:
                     boundaries.append({
-                        "type": "EXTERNAL_API", 
+                        "type": "EXTERNAL_API",
                         "client": obj_node.text.decode(),
                         "method": call_text
                     })
-                    
+
         return boundaries
+
+    @staticmethod
+    def _is_async_function(func_node) -> bool:
+        """Check if a function is declared as async (async def)."""
+        # In tree-sitter, async functions have parent type "decorated_definition"
+        # with an async keyword, or the function_definition itself may have async.
+        # Check node text for "async" prefix
+        text = func_node.text.decode()
+        return text.strip().startswith("async def")
 
     @staticmethod
     def _inside_class(node, class_ranges: set[tuple[int, int]]) -> bool:

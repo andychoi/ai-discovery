@@ -228,7 +228,13 @@ class ExecutionSliceBuilder:
         return scenarios
 
     def build_scenario(self, entry: CodeNode, max_depth: int = 5) -> Scenario:
-        """Perform bounded BFS to extract a scenario-specific slice."""
+        """Perform bounded BFS to extract a scenario-specific slice.
+
+        Returns Scenario with:
+        - nodes: all discovered nodes in BFS order
+        - primary_path: top-confidence nodes capped at 15, in execution order
+        - alternate_paths: conditional branches with conditions
+        """
         scenario_id = f"scenario_{entry.name}_{entry.line_start}"
         scenario = Scenario(
             scenario_id=scenario_id,
@@ -245,6 +251,8 @@ class ExecutionSliceBuilder:
         ]
         # Track state writes for read-after-write scoring: field -> value
         state_writes: dict[str, str] = {}
+        # Track BFS traversal order for primary_path
+        bfs_order: list[str] = []
 
         while queue:
             node_name, depth, prev_exec = queue.pop(0)
@@ -265,22 +273,32 @@ class ExecutionSliceBuilder:
                     state_writes[t.field] = t.to_state
 
             scenario.nodes.append(exec_node)
+            bfs_order.append(exec_node.id)
 
             if not node:
                 continue
 
-            for edge in self.edges_by_caller.get(node_name, []):
+            # Collect callees for branching detection
+            callees = self.edges_by_caller.get(node_name, [])
+            for edge in callees:
+                # Determine edge type: CALL (default), ASYNC, or CONDITIONAL
+                edge_type = self._infer_edge_type(node, edge, callees)
                 scenario.edges.append(ExecutionEdge(
                     from_node=node_name,
                     to_node=edge.callee,
-                    edge_type="CALL",
+                    edge_type=edge_type,
                     confidence=edge.confidence,
                 ))
                 queue.append((edge.callee, depth + 1, exec_node))
 
-        # Primary path: top-scored nodes, capped at 15 for readable BPMN output
-        sorted_nodes = sorted(scenario.nodes, key=lambda n: n.confidence, reverse=True)
-        scenario.primary_path = [n.id for n in sorted_nodes[:15]]
+            # Detect conditional branches (multiple callees = gateway)
+            if len(callees) > 1:
+                self._detect_alternate_paths(exec_node, callees, scenario)
+
+        # Primary path: preserve BFS order, filter to top-confidence nodes, cap at 15
+        top_by_conf = sorted(scenario.nodes, key=lambda n: n.confidence, reverse=True)[:15]
+        top_ids = set(n.id for n in top_by_conf)
+        scenario.primary_path = [nid for nid in bfs_order if nid in top_ids]
 
         scenario.external_interfaces = list(set(
             n.name for n in scenario.nodes if n.type in ("DB", "EXTERNAL_API", "QUEUE")
@@ -371,6 +389,92 @@ class ExecutionSliceBuilder:
             domain=node.domain,
             state_transition=transition
         )
+
+    def _detect_alternate_paths(
+        self,
+        gateway_node: ExecutionNode,
+        callees: list[CallEdge],
+        scenario: Scenario,
+    ) -> None:
+        """Detect and record alternate execution paths from conditional branches.
+
+        When a node has multiple callees, treat it as a gateway and populate
+        alternate_paths with inferred conditions based on callee names/types.
+        """
+        if len(callees) <= 1:
+            return
+
+        # Heuristic: infer condition names from callee names
+        conditions = []
+        for edge in callees:
+            callee_name = edge.callee.split(".")[-1].lower()
+            # Detect common condition patterns
+            if any(x in callee_name for x in ("success", "ok", "valid", "pass")):
+                condition = "success"
+            elif any(x in callee_name for x in ("error", "fail", "reject", "invalid")):
+                condition = "failure"
+            elif any(x in callee_name for x in ("retry", "fallback")):
+                condition = "retry"
+            else:
+                condition = f"branch_{len(conditions) + 1}"
+            conditions.append((condition, edge.callee))
+
+        # Record alternate paths
+        for condition, path_start in conditions:
+            # Build BFS path from this branch start
+            branch_visited: set[str] = set()
+            branch_queue: list[str] = [path_start]
+            branch_path: list[str] = []
+
+            while branch_queue and len(branch_path) < 10:  # Limit depth
+                node_name = branch_queue.pop(0)
+                if node_name in branch_visited:
+                    continue
+                branch_visited.add(node_name)
+                branch_path.append(node_name)
+
+                for edge in self.edges_by_caller.get(node_name, []):
+                    branch_queue.append(edge.callee)
+
+            if branch_path:
+                scenario.alternate_paths.append({
+                    "condition": condition,
+                    "path": branch_path,
+                })
+
+    def _infer_edge_type(
+        self,
+        caller: CodeNode | None,
+        edge: CallEdge,
+        all_callees: list[CallEdge],
+    ) -> str:
+        """Determine edge type: CALL (sync), ASYNC (fire-and-forget), or CONDITIONAL (branch).
+
+        Heuristics:
+        - ASYNC: callee name contains async patterns, or caller has async_boundary hint
+        - CONDITIONAL: multiple callees from same caller (gateway); inferred by branch detection
+        - CALL: default synchronous call
+        """
+        if not caller:
+            return "CALL"
+
+        callee_name = edge.callee.split(".")[-1].lower()
+
+        # Check for async patterns in callee name
+        async_patterns = ("async", "schedule", "submit", "dispatch", "enqueue", "publish", "fire", "task")
+        if any(pattern in callee_name for pattern in async_patterns):
+            return "ASYNC"
+
+        # Check for async patterns in caller's framework hints
+        hints = caller.framework_hints or {}
+        if hints.get("async_boundary"):
+            return "ASYNC"
+
+        # If multiple callees (gateway), edges become conditional (first one is explicit, rest are branches)
+        if len(all_callees) > 1:
+            return "CONDITIONAL"
+
+        return "CALL"
 
     def _get_trigger_type(self, node: CodeNode) -> str:
         if node.node_type == "endpoint":

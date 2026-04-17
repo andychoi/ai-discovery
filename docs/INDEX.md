@@ -1,0 +1,230 @@
+# AI-Discovery Documentation Index
+
+Navigation guide for the AI-Discovery reverse-engineering engine documentation.
+
+---
+
+## Start Here
+
+**First time?** Read these in order:
+1. `../CLAUDE.md` — Project overview, principles, skills
+2. `architecture/overview.md` — High-level system design
+3. `architecture/components.md` — Module breakdown and responsibilities
+
+---
+
+## Architecture (System Design)
+
+Learn how the system is built:
+
+- **`architecture/overview.md`** — Purpose, data flow, L1–L7 framework, LLM tiers, storage layout
+- **`architecture/components.md`** — Module map, data models, hard problem areas (A & D)
+- **`architecture/decisions.md`** — Design rationale: why 7-level confidence? Why 3 LLM tiers? Trade-offs explained.
+
+---
+
+## Guides (How-To Reference)
+
+Practical guides for working on specific areas:
+
+### Call Graph Resolution (Area A)
+*"I'm debugging call resolution. Why did function X resolve to function Y?"*
+
+- **`guides/call-graph/resolution-heuristics.md`** — 7-level confidence scoring with detailed examples
+- **`guides/call-graph/debugging-workflow.md`** — Step-by-step: trace call → analyze signals → validate → decide
+- **`guides/call-graph/test-strategy.md`** — Unit tests, integration tests, corpus validation, metrics
+
+### Language Parsers (Area D)
+*"I want to add Go (or another language) support."*
+
+- **`guides/parsers/architecture.md`** — How parsers work, tree-sitter, AST traversal, framework detection
+- **`guides/parsers/extension-checklist.md`** — Step-by-step checklist: pre-flight → AST mapping → integration → validation
+- **`guides/parsers/language-patterns.md`** — Python vs Java vs C# vs JavaScript vs Go: AST differences, naming conventions, framework patterns
+
+### Pipeline & Performance
+*"The pipeline is slow. Where's the bottleneck? How do I optimize?"*
+
+- **`guides/pipeline/phase-breakdown.md`** — Details of all 13 phases, cost per phase, typical timing
+- **`guides/pipeline/cost-tracking.md`** — Budget configuration, cost monitoring, optimization strategies (reduce tier 2/3, skip phases, batch chunks)
+- **`guides/pipeline/profiling.md`** — Identifying bottlenecks, experiments, benchmarks for small/medium/large codebases
+
+---
+
+## Specifications (Design Records)
+
+Design decisions recorded per session:
+
+- **`specs/2026-04-17-dev-infrastructure-design.md`** — This session's design: documentation reorganization, three custom skills, modular approach
+
+---
+
+## Quick Reference
+
+### By Use Case
+
+| I want to... | Start here |
+|---|---|
+| Understand the system | `architecture/overview.md` |
+| Add language support (Go, Rust, etc.) | `guides/parsers/extension-checklist.md` |
+| Debug call resolution | `guides/call-graph/debugging-workflow.md` |
+| Optimize pipeline speed/cost | `guides/pipeline/profiling.md` + `cost-tracking.md` |
+| Understand design decisions | `architecture/decisions.md` |
+| Set up testing | `guides/call-graph/test-strategy.md` |
+
+### By Problem Area
+
+| Area | Guides | Key Documents |
+|---|---|---|
+| **A: Call Graph Resolution** | `guides/call-graph/*` | `architecture/decisions.md` (7-level scoring) |
+| **D: Language Parsers** | `guides/parsers/*` | `architecture/components.md` (hard problems) |
+| **Pipeline Performance** | `guides/pipeline/*` | `architecture/overview.md` (phases 1–19) |
+
+### By Development Phase
+
+| Phase | Documentation |
+|---|---|
+| **Plan** (design-forward) | `architecture/` + `specs/` |
+| **Implement** | `guides/` (step-by-step checklists) |
+| **Debug** | `guides/call-graph/debugging-workflow.md` + `guides/pipeline/profiling.md` |
+| **Test** | `guides/call-graph/test-strategy.md` |
+| **Understand Trade-offs** | `architecture/decisions.md` |
+
+---
+
+## File Structure
+
+```
+docs/
+├── INDEX.md ← You are here
+│
+├── architecture/ ── System design & rationale
+│   ├── overview.md ─── High-level design, L1–L7, LLM tiers
+│   ├── components.md ─ Module breakdown, responsibilities
+│   └── decisions.md ─── Design rationale, heuristics, trade-offs
+│
+├── guides/ ──────── How-to & reference (for developers)
+│   ├── call-graph/ ─ Call resolution (Area A)
+│   │   ├── resolution-heuristics.md ── 7-level scoring examples
+│   │   ├── debugging-workflow.md ──── Trace → analyze → validate
+│   │   └── test-strategy.md ──────── Unit + corpus validation
+│   │
+│   ├── parsers/ ──── Language support (Area D)
+│   │   ├── architecture.md ───────── How parsers work
+│   │   ├── extension-checklist.md ─ Step-by-step guide
+│   │   └── language-patterns.md ──── Python vs Java vs C# vs Go
+│   │
+│   └── pipeline/ ──── Performance & cost (all areas)
+│       ├── phase-breakdown.md ────── All 13 phases explained
+│       ├── cost-tracking.md ────────Budget management
+│       └── profiling.md ────────── Bottleneck identification
+│
+└── specs/ ────── Design records per session
+    └── 2026-04-17-dev-infrastructure-design.md ── Current design
+```
+
+---
+
+## Key Concepts
+
+### Confidence Scoring
+The system uses **7-level heuristic scoring** (0.5–1.0) instead of binary match/no-match. This allows nuanced decisions: a call might be good for BPMN (confidence >= 0.9) but needs review in tech specs (confidence >= 0.85).
+
+**Reference**: `guides/call-graph/resolution-heuristics.md`
+
+---
+
+### Multi-Signal Scoring
+Confidence combines multiple signals: depth (how far from entry point?), state transitions (does it change state?), data boundaries (DB/queue?), external calls, read-after-write patterns.
+
+**Reference**: `architecture/decisions.md` (Confidence Scoring section)
+
+---
+
+### 13-Phase Pipeline
+From code to docs: resolve repo → parse → classify domains → build call graph → execution slices → chunk & embed → Tier 1/2/3 LLM → render markdown.
+
+**Reference**: `guides/pipeline/phase-breakdown.md`
+
+---
+
+### L1–L7 Decomposition
+Code is documented at 7 levels of abstraction: business domain → process → flow → scenario → service → function → statement.
+
+**Reference**: `architecture/overview.md` (L1–L7 Framework section)
+
+---
+
+## Development Skills
+
+Three custom skills guide development:
+
+| Skill | Use When | Reference |
+|---|---|---|
+| `/parser-extension` | Adding language support | `guides/parsers/extension-checklist.md` |
+| `/call-graph-debug` | Debugging call resolution | `guides/call-graph/debugging-workflow.md` |
+| `/pipeline-analyze` | Optimizing performance/cost | `guides/pipeline/profiling.md` |
+
+---
+
+## Project CLAUDE.md
+
+For quick reference while coding: `../CLAUDE.md`
+
+Contains:
+- Development principles
+- Common tasks (with references)
+- Hard problem areas
+- Skills overview
+- Key metrics & targets
+
+---
+
+## Archived & Reference Docs
+
+These are kept for reference during transition but content is migrated:
+
+- `../docs/architecture.md` → `architecture/overview.md` + `architecture/components.md`
+- `../docs/flow.md` → `guides/pipeline/phase-breakdown.md`
+- `../docs/IMPLEMENTATION_SUMMARY.md` → `specs/` (implementation records)
+
+---
+
+## How to Use This Documentation
+
+### Scenario 1: "I want to add Go support"
+1. Read `../CLAUDE.md` (overview, principles)
+2. Skim `guides/parsers/architecture.md` (background)
+3. Follow `guides/parsers/extension-checklist.md` (step-by-step)
+4. Reference `guides/parsers/language-patterns.md` (Go-specific patterns)
+
+### Scenario 2: "Call resolution is wrong for this function"
+1. Read `guides/call-graph/resolution-heuristics.md` (theory)
+2. Use `/call-graph-debug` skill (guided debugging)
+3. Reference `guides/call-graph/test-strategy.md` (validation)
+4. Check `architecture/decisions.md` (why this heuristic?)
+
+### Scenario 3: "Pipeline is slow"
+1. Read `guides/pipeline/phase-breakdown.md` (phase overview)
+2. Use `/pipeline-analyze` skill (profile & identify bottleneck)
+3. Reference `guides/pipeline/profiling.md` (optimization strategies)
+4. Check `guides/pipeline/cost-tracking.md` (cost/benefit trade-offs)
+
+---
+
+## Updating Documentation
+
+When you learn something new:
+
+1. **Design decision?** Add to `architecture/decisions.md`
+2. **New heuristic?** Update relevant guide (e.g., `guides/call-graph/resolution-heuristics.md`)
+3. **New pattern?** Add to `guides/parsers/language-patterns.md`
+4. **Implementation complete?** Record in `specs/YYYY-MM-DD-topic-design.md`
+5. **Update this INDEX** if structure changes
+
+---
+
+## See Also
+
+- `../CLAUDE.md` — Project overview and quick reference
+- `../README.md` — Installation, CLI usage, examples
+- Code comments in `../app/` — Implementation details

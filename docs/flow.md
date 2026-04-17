@@ -103,7 +103,8 @@ Entry point detection (identify_scenarios):
 
 Per entry point (bounded BFS, max_depth=5):
   ├── Create ExecutionNode for each reachable node
-  │     ├── type = ENTRY | FUNCTION | DB | QUEUE | EXTERNAL_API | UNRESOLVED
+  │     ├── type = ENTRY | FUNCTION | DB | QUEUE | EXTERNAL_API | MANUAL | UNRESOLVED
+  │     │   (MANUAL: synthetic nodes for inferred manual approval/review steps)
   │     └── state_transition = StateTransition if framework_hints.transitions present
   ├── Score each node:
   │     ├── +5 – depth penalty (entry=5, each level -1)
@@ -111,11 +112,18 @@ Per entry point (bounded BFS, max_depth=5):
   │     ├── +3 – DB or QUEUE boundary
   │     ├── +2 – EXTERNAL_API boundary
   │     └── +3 – read-after-write (node name mentions upstream state field)
-  └── primary_path = top-15 scored nodes (for BPMN readability)
+  ├── primary_path = top-15 scored nodes (for BPMN readability), in BFS execution order
+  └── alternate_paths = branches detected from conditional callees (confidence > 1)
+
+Branch detection (for alternate_paths):
+  ├── When a node has multiple outgoing calls, treat as gateway
+  ├── Infer condition from callee names: success/ok/valid/pass → "success",
+  │   error/fail/reject/invalid → "failure", retry/fallback → "retry"
+  └── Record each branch as { condition: str, path: [node_ids] }
 
 Scenario output:
   ├── scenario_id, name, entry_point, trigger_type (HTTP/SCHEDULED/EVENT/CLI)
-  ├── nodes[], edges[], primary_path[], external_interfaces[]
+  ├── nodes[], edges[], primary_path[], alternate_paths[], external_interfaces[]
   └── domain (from entry CodeNode)
 ```
 
@@ -218,11 +226,19 @@ Persistence:
 Input:   scenario_flows, ScenarioFlow artifacts, rollups
 Output:  .md files under data/{slug}/{PREFIX}/
 
-BPMN Generator (per scenario_flow):
-  ├── Mermaid sequence: participants + sequenceNumber flows
-  ├── PlantUML activity: start → steps → decision points → stop
-  ├── BPMN 2.0 XML: startEvent → serviceTask/userTask/gateway → endEvent
-  └── IPO markdown table: inputs | process | outputs | data flow
+BPMN Generator (per scenario_flow) — 7 artifact types:
+  ① Mermaid sequence: participants + sequenceNumber flows
+  ② PlantUML activity: start → steps → decision points → stop
+  ③ BPMN 2.0 XML: startEvent → serviceTask/userTask/gateway → endEvent
+      ├── Swimlanes: User (left) | System (middle) | External (right)
+      ├── Step type mapping: USER_TASK → userTask, GATEWAY → exclusiveGateway, else → serviceTask
+      └── SubProcess: if >15 steps, group into <bpmn:subProcess>
+  ④ IPO markdown table: inputs | process | outputs | data state transitions
+  ⑤ Pseudo event log (JSON): case_id + ordered events[] (for PM4Py/process mining)
+      └── Format: { "case_id": scenario_id, "events": [{timestamp?, event_name}] }
+  ⑥ State machine (FSM) diagram (Mermaid): per entity, all state transitions
+      └── Format: state1 → transition_trigger → state2
+  ⑦ Scenario intent clustering (metadata): group scenarios by use-case (Create, Update, Cancel, etc.)
 
 Markdown render (Jinja2 templates):
   ├── Frontmatter: doc_id, title, status, scan_date, confidence, links_to

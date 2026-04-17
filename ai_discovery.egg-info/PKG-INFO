@@ -1,0 +1,42 @@
+Metadata-Version: 2.4
+Name: ai-discovery
+Version: 0.1.0
+Summary: Brownfield codebase analysis and SDLC document generation
+Home-page: https://github.com/yourusername/ai-discovery
+Author: Claude
+Author-email: 
+Keywords: code-analysis,documentation,reverse-engineering,codebase
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Documentation
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: tree-sitter>=0.24
+Requires-Dist: tree-sitter-c-sharp
+Requires-Dist: tree-sitter-java
+Requires-Dist: tree-sitter-python
+Requires-Dist: tree-sitter-javascript
+Requires-Dist: tree-sitter-typescript
+Requires-Dist: typer[all]>=0.12
+Requires-Dist: jinja2>=3.1
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: rich>=13.0
+Requires-Dist: boto3>=1.35
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: httpx>=0.27
+Requires-Dist: pysqlite3
+Requires-Dist: sqlite-vec>=0.1
+Requires-Dist: scikit-learn>=1.4
+Requires-Dist: pm4py>=2.7.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
+Dynamic: home-page
+Dynamic: requires-python
+
+# ai-discovery

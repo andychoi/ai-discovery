@@ -25,6 +25,17 @@ _BPMN_ELEMENT: dict[str, str] = {
 }
 _DEFAULT_BPMN_ELEMENT = "serviceTask"
 
+# Map step types to swimlane assignment
+_STEP_LANE: dict[str, str] = {
+    "USER_TASK": "User",
+    "ENTRY": "User",
+    "DB": "External",
+    "EXTERNAL_API": "External",
+    "QUEUE": "External",
+    "GATEWAY": "System",
+}
+_DEFAULT_LANE = "System"
+
 
 class BPMNGenerator:
     """Converts ScenarioFlow objects into visual/structured process models."""
@@ -73,14 +84,54 @@ class BPMNGenerator:
     # ------------------------------------------------------------------
 
     def generate_bpmn_xml(self, flow: ScenarioFlow) -> str:
-        """Generate a minimal valid BPMN 2.0 XML with proper escaping and element types."""
+        """Generate BPMN 2.0 XML with swimlanes and proper element types.
+
+        Structure:
+          - collaboration (if lanes present)
+            - participant (per lane)
+          - process
+            - lanes (User, System, External)
+            - startEvent, activities, endEvent
+            - sequenceFlow
+        """
+        # Detect which lanes are actually used
+        lanes_used: set[str] = {"System"}
+        for step in flow.steps:
+            step_type = step.get("type", "PROCESS")
+            lane = _STEP_LANE.get(step_type, _DEFAULT_LANE)
+            lanes_used.add(lane)
+
+        lanes_list = sorted(lanes_used)
+        use_lanes = len(lanes_list) > 1
+
         xml: list[str] = [
             '<?xml version="1.0" encoding="UTF-8"?>',
             '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"'
             ' targetNamespace="http://bpmn.io/schema/bpmn">',
-            f'  <bpmn:process id="{html.escape(flow.scenario_id, quote=True)}" isExecutable="false">',
-            '    <bpmn:startEvent id="StartEvent_1"/>',
         ]
+
+        if use_lanes:
+            # Collaboration with participants (one per lane)
+            xml.append('  <bpmn:collaboration id="Collaboration_1">')
+            for lane in lanes_list:
+                lane_id = lane.replace(" ", "")
+                xml.append(f'    <bpmn:participant id="Participant_{lane_id}" name="{lane}" processRef="{html.escape(flow.scenario_id, quote=True)}"/>')
+            xml.append("  </bpmn:collaboration>")
+
+        xml.append(f'  <bpmn:process id="{html.escape(flow.scenario_id, quote=True)}" isExecutable="false">')
+
+        # Add lanes (containers for activities)
+        if use_lanes:
+            xml.append('    <bpmn:laneSet id="LaneSet_1">')
+            for lane in lanes_list:
+                lane_id = lane.replace(" ", "")
+                xml.append(f'      <bpmn:lane id="Lane_{lane_id}" name="{lane}">')
+                # Placeholder for flowNodeRef assignments (per spec, optional for this minimal gen)
+                xml.append(f'      </bpmn:lane>')
+            xml.append("    </bpmn:laneSet>")
+
+        # Generate process elements
+        xml.append('    <bpmn:startEvent id="StartEvent_1" name="Start"/>')
 
         prev_id = "StartEvent_1"
         for i, step in enumerate(flow.steps):
@@ -92,7 +143,7 @@ class BPMNGenerator:
             xml.append(f'    <bpmn:sequenceFlow id="Flow_{i}" sourceRef="{prev_id}" targetRef="{step_id}"/>')
             prev_id = step_id
 
-        xml.append('    <bpmn:endEvent id="EndEvent_1"/>')
+        xml.append('    <bpmn:endEvent id="EndEvent_1" name="End"/>')
         xml.append(f'    <bpmn:sequenceFlow id="Flow_End" sourceRef="{prev_id}" targetRef="EndEvent_1"/>')
         xml.append("  </bpmn:process>")
         xml.append("</bpmn:definitions>")
@@ -138,3 +189,68 @@ class BPMNGenerator:
             lines.append("#### Data State Transitions")
             lines.extend(f"- {df}" for df in flow.data_flow)
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # State Machine (FSM) diagram
+    # ------------------------------------------------------------------
+
+    def generate_fsm_diagram(self, state_transitions: list[dict]) -> str:
+        """Generate a Mermaid state machine diagram from state transitions.
+
+        Args:
+            state_transitions: List of { entity, field, from_state, to_state, trigger_function }
+
+        Returns:
+            Mermaid stateDiagram syntax
+        """
+        if not state_transitions:
+            return "stateDiagram-v2\n    [*] --> NoTransitions"
+
+        lines = ["stateDiagram-v2"]
+        seen_transitions: set[tuple[str, str, str]] = set()
+
+        for trans in state_transitions:
+            from_state = trans.get("from_state", "UNKNOWN")
+            to_state = trans.get("to_state", "UNKNOWN")
+            trigger = trans.get("trigger_function", "transition")
+
+            # Avoid duplicate transitions
+            key = (from_state, to_state, trigger)
+            if key in seen_transitions:
+                continue
+            seen_transitions.add(key)
+
+            # Mermaid format: State1 --> State2: trigger
+            lines.append(f'    {from_state} --> {to_state}: {trigger}')
+
+        # Ensure there's always a start state
+        first_trans = state_transitions[0]
+        start_state = first_trans.get("from_state", "START")
+        lines.insert(1, f'    [*] --> {start_state}')
+
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Pseudo Event Log (for PM4Py / process mining)
+    # ------------------------------------------------------------------
+
+    def generate_pseudo_event_log(self, flow: ScenarioFlow) -> dict:
+        """Generate a pseudo event log for process mining tools (PM4Py).
+
+        Returns:
+            { "case_id": scenario_id, "events": [{event_name, order}, ...] }
+        """
+        events = []
+        for i, step in enumerate(flow.steps, 1):
+            events.append({
+                "order": i,
+                "event_name": step.get("name", f"Step_{i}"),
+                "event_type": step.get("type", "PROCESS"),
+            })
+
+        return {
+            "case_id": flow.scenario_id,
+            "process_name": flow.scenario_id,
+            "variant": "main",
+            "events": events,
+        }

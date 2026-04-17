@@ -1,0 +1,42 @@
+# AI-Discovery Configuration
+# Customize discovery behavior, model selection, and optional features
+
+# Provider: bedrock | ollama | mlx-gemma | mlx-qwen
+provider: ollama
+
+# LLM cost limit (USD) — stops pipeline if exceeded
+budget_limit_usd: 50.0
+
+# Max concurrent workers for parallel processing
+max_concurrent: 10
+
+# Production mode: use tier3p (deep) instead of tier3d (standard) for doc generation
+prod: false
+
+# Ollama configuration
+ollama:
+  base_url: http://localhost:11434
+  tier1: gemma4:e2b           # Fast summarization
+  tier2: gemma4:26b           # Flow analysis
+  tier3d: gemma4:26b          # Dev doc generation
+  tier3p: gemma4:31b          # Prod doc generation
+  tier1_num_ctx: 4096
+
+# RAG configuration
+rag:
+  embedding_provider: ollama
+  ollama_model: nomic-embed-text
+  chunk_size: 1500
+  chunk_overlap: 200
+  top_k: 5
+
+# Process Mining Configuration (Stage 10.5) — OPTIONAL
+# Set enabled: true to enable process mining and conformance analysis
+process_mining:
+  enabled: false              # Set to true to enable
+  miner_variant: inductive    # inductive (recommended), dfg, alpha, heuristics
+  fitness_threshold: 0.90     # Quality gate: min acceptable fitness (0-1)
+  precision_threshold: 0.85   # Quality gate: min acceptable precision (0-1)
+  generalization_threshold: 0.80  # Quality gate: min acceptable generalization (0-1)
+  max_traces: 10000           # Max traces per scenario (safety limit)
+  output_reports: true        # Save markdown and JSON reports to disk

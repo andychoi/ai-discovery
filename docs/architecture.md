@@ -185,6 +185,129 @@ Budget guard: each tier checks `total_cost_usd < budget_limit_usd` before runnin
 
 ---
 
+## L1–L7 Decomposition Framework
+
+AI-Discovery reconstructs and documents business processes at multiple abstraction levels:
+
+| Level | Name | Scope | Artifacts | Source |
+|-------|------|-------|-----------|--------|
+| L1 | Business Domain | Business capability (Order, Payment, Fulfillment) | Domain metadata, tech stack, entry points | Domain classifier |
+| L2 | Business Process | High-level workflow (Create Order → Pay → Ship) | As-Is, Process Flow BPMN, pseudo event logs | Tier 2 Flow Analysis |
+| L3 | Business Flow | Coherent user/system action sequence | Business flows (user_flow, batch_flow, integration_flow, cross_cutting) | Tier 2 Flow Analysis |
+| L4 | Scenario / Use Case | Single entry point + bounded execution | Scenario Flow, IPO tables, alternate paths | Execution Slice Builder + Tier 2 ScenarioFlowInference |
+| L5 | Service / Component | Core business logic handler (Service, Repository, Manager) | As-Is-Detail, function summaries, public APIs | Tier 1 + Code structure |
+| L6 | Function / Method | Individual operation (process, validate, save) | Docstring, summaries (purpose, business_rules), io_summary | Tier 1 Summarization |
+| L7 | Code Statement | Individual lines of logic | Source code, comments, state transitions | AST parsing, framework_hints |
+
+**Bridging**: Each level links to lower levels:
+- L2 processes embed L3 flows
+- L3 flows reference L4 scenarios
+- L4 scenarios contain L5 service references
+- L5 services list L6 function calls
+- L6 functions map to L7 code
+
+**Documents reflect this hierarchy**:
+- `as-is.md` → L1–L3 (business domains, processes, flows)
+- `as-is-detail.md` → L4–L5 (scenarios, service contracts)
+- `as-is-schema.md` → L6–L7 (entity models, field descriptions)
+- `process-flow.md` → L2–L4 (BPMN, IPO, pseudo event logs)
+
+---
+
+## BPMN Model: Lanes, SubProcesses, and Execution Types
+
+### Swimlane Lanes (Horizontal Partitions)
+
+Each BPMN diagram is divided into three swimlanes (left to right):
+
+| Lane | Actors | Typical Elements |
+|------|--------|------------------|
+| **User** | End users, administrators | User Task, Start/End events |
+| **System** | Application code, services | Service Task, Gateways, Data stores |
+| **External** | Third-party systems, databases, APIs | Service Task (external), Message events |
+
+Lane assignment heuristic:
+- `USER_TASK` / `ENTRY` (HTTP from UI) → **User lane**
+- `PROCESS` / `FUNCTION` / `TRANSITION` → **System lane**
+- `DB` / `EXTERNAL_API` / `QUEUE` → **External lane**
+
+### SubProcess Grouping
+
+When scenario flow has >15 steps:
+1. Group related steps into clusters (validation, processing, integration)
+2. Wrap each cluster in `<bpmn:subProcess>` element
+3. Preserve parent process flow linking to subprocess boundary
+
+### Execution Node Type → BPMN Element Mapping
+
+| ExecutionNode Type | BPMN Element | Icon |
+|-------------------|------|------|
+| ENTRY | startEvent | ⭕ |
+| USER_TASK | userTask | 👤 |
+| DB | dataStore + dataAssociation | 🗄 |
+| QUEUE | intermediateThrowEvent (messageFlow) | 📨 |
+| EXTERNAL_API | serviceTask (external) | 🔗 |
+| GATEWAY | exclusiveGateway | ◇ |
+| MANUAL (synthetic) | userTask (low confidence: 0.3–0.6) | ⚠️ |
+| FUNCTION | serviceTask | ⚙️ |
+| (end of flow) | endEvent | ⭕ |
+
+---
+
+## ExecutionNode Types
+
+When building execution slices (Stage 5), each discovered node is classified into one of these types:
+
+| Type | Meaning | Confidence | Example |
+|------|---------|------------|---------|
+| `ENTRY` | Entry point (HTTP endpoint, batch job, event consumer, CLI) | 1.0 (by definition) | `POST /api/orders` |
+| `FUNCTION` | Internal function or method | 0.6–1.0 (from call resolution) | `validateOrder()`, `calculatePrice()` |
+| `DB` | Database boundary (detected from framework hints) | 0.8–1.0 | Repository call, ORM persist |
+| `QUEUE` | Message queue (Kafka, SQS, Redis) | 0.8–1.0 | Event publish, queue consume |
+| `EXTERNAL_API` | External HTTP/gRPC call | 0.7–1.0 | Payment gateway, third-party API |
+| `MANUAL` | Synthetic manual step (inferred, not in code) | 0.3–0.6 | Manager Approval, Compliance Review |
+| `UNRESOLVED` | Unknown target from parsing | 0.5 | Unmatched call reference |
+
+**MANUAL nodes** are injected via heuristics:
+- Function names containing `approve`, `review`, `validate_manually` → synthetic user task
+- State transitions with large gaps (DRAFT → APPROVED without intermediate) → suggest approval step
+- Integration points with no direct code (business rule gates) → synthetic decision point
+
+---
+
+## Confidence Scoring & Human Feedback
+
+### Node Confidence Signals (Stage 5)
+
+Multi-signal scoring in ExecutionSliceBuilder combines:
+
+```
+score = 0
+score += max(0, 5 - depth)                    // +5 entry, -1 per level
+score += 4 if state_transition                // +4 state changes
+score += 3 if node_type in (DB, QUEUE)        // +3 data boundary
+score += 2 if node_type == EXTERNAL_API       // +2 external call
+score += 3 if read_after_write_detected       // +3 state dependency
+```
+
+Nodes with confidence < 0.6 (ambient external calls, ambiguous resolves) are marked for human review.
+
+### Human-in-the-Loop Correction
+
+For scenarios with high unverified claim rates (>20%) or low scenario confidence (<0.7):
+
+1. **AI suggests** low-confidence nodes and alternate paths
+2. **Human validates** against domain knowledge or runtime logs
+3. **System learns**: feedback updates confidence thresholds and heuristics
+4. **Iterative refinement**: re-run analysis with feedback
+
+This is especially valuable for:
+- Synthetic MANUAL nodes (need business confirmation)
+- Conditional branches with unclear semantics
+- Multi-tenant or highly polymorphic code
+
+---
+
 ## Call Resolution Strategy
 
 When a parsed `calls` reference cannot be matched exactly:

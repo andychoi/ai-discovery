@@ -1,0 +1,219 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                AI-Discovery Demo: TodoApp QuickStart                        ║
+║                (davidfowl/TodoApp with Qwen3.5 on mlc-server)              ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+STEP 1: Start MLX Server
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Terminal 1:
+  $ ollama serve mlx-community/Qwen3.5-2B-4bit
+
+  (Runs Qwen3.5 2B on http://localhost:11435)
+
+STEP 2: Run Discovery
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Terminal 2:
+  $ cd /path/to/ai-discovery
+  $ ./demo.sh
+
+  (Full discovery: 2-3 hours)
+
+STEP 3: Review Output
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  $ ls data/todoapp/docs/
+  ASIS/         Domain overview docs
+  ASD/          Detailed specs
+  SPEC/         Technical specs
+  DM/           Data models
+  IF/           Interfaces
+  PF/           Process flows (BPMN, Mermaid, PlantUML)
+
+  $ cat data/todoapp/docs/ASIS/*.md
+  $ cat data/todoapp/docs/PF/*.md
+
+════════════════════════════════════════════════════════════════════════════
+
+USAGE OPTIONS
+
+Full Discovery (default)
+  $ ./demo.sh
+  Time: 2-3 hours
+  Output: All docs + mining + self-review
+
+Skip Mining (faster)
+  $ ./demo.sh --no-mining
+  Time: 1.5-2 hours
+  Output: All docs except mining_reports/
+
+Skip Self-Review (quick)
+  $ ./demo.sh --quick
+  Time: 30-45 minutes
+  Output: Docs without claim verification
+
+Force Rescan
+  $ ./demo.sh --rescan
+  Time: 2-3 hours
+  Output: Re-analyzes (ignores cache)
+
+Show Help
+  $ ./demo.sh --help
+
+════════════════════════════════════════════════════════════════════════════
+
+PIPELINE BREAKDOWN
+
+Parsing & Graph         (10-15m)  Parse code, build call graph
+  ↓
+Tier 1 Summarization    (10-20m)  Summarize code chunks (2B model)
+  ↓
+Tier 2 Flow Analysis    (15-30m)  Infer business flows (4B model)
+  ↓
+Scenario Inference      (5-10m)   Extract process flows
+  ↓
+BPMN Generation         (5-10m)   Create diagrams, PlantUML, Mermaid
+  ↓
+Process Mining [OPT]    (10-20m)  Conformance analysis, bottlenecks
+  ↓
+Markdown Rendering      (5m)      Write documentation
+  ↓
+Self-Review [OPT]       (30-60m)  Verify claims against source code
+  ↓
+Complete: 2-3 hours total
+
+════════════════════════════════════════════════════════════════════════════
+
+CONFIGURATION
+
+Models:
+  Tier 1 (fast):     Qwen3.5-2B-4bit      (summarization)
+  Tier 2 (standard): Qwen3.5-4B-MLX-4bit (flow analysis)
+  Tier 3 (dev):      Qwen3.5-9B-MLX-4bit (doc generation)
+
+Server:
+  http://localhost:11435 (mlc-server/ollama)
+
+Config File:
+  data/todoapp/discovery.yaml
+
+To Enable Process Mining:
+  Edit discovery.yaml:
+    process_mining:
+      enabled: true  # ← Change from false
+
+  Then rerun: ./demo.sh --rescan
+
+════════════════════════════════════════════════════════════════════════════
+
+WHAT GETS DISCOVERED
+
+TodoApp (C#/.NET):
+  ✓ HTTP API endpoints (ASP.NET Core)
+  ✓ Business services (order processing, validation)
+  ✓ Data models (Entity Framework)
+  ✓ Database operations (SQL)
+  ✓ External dependencies (APIs, queues)
+  ✓ Process flows (create, approve, cancel)
+  ✓ Error handling paths
+  ✓ State transitions
+
+Output:
+  ✓ Domain documentation (what each service does)
+  ✓ Detailed specifications (class diagrams, APIs)
+  ✓ Data models (fields, types, relationships)
+  ✓ Process flows (BPMN, UML, Mermaid)
+  ✓ Mining analysis (fitness, bottlenecks, frequencies)
+  ✓ Cross-domain dependencies
+
+════════════════════════════════════════════════════════════════════════════
+
+MONITORING
+
+Watch Progress (in separate terminal):
+  $ tail -f data/todoapp/discovery.log
+
+Count Generated Docs:
+  $ find data/todoapp/docs -name "*.md" | wc -l
+
+Monitor GPU:
+  $ watch -n 2 'nvidia-smi'
+
+════════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING
+
+"MLC Server is not responding"
+  → Start: ollama serve mlx-community/Qwen3.5-2B-4bit
+  → Check: curl http://localhost:11435/v1/models
+
+"CUDA out of memory"
+  → Reduce model sizes in discovery.yaml
+  → Or reduce max_concurrent from 4 to 2
+
+"Discovery takes too long"
+  → Run: ./demo.sh --no-mining
+  → Or:  ./demo.sh --quick
+  → Or both: ./demo.sh --no-mining --quick
+
+"Want to resume"
+  → Run: ./demo.sh (auto-resumes from checkpoint)
+  → Or: ./demo.sh --rescan (force full rescan)
+
+════════════════════════════════════════════════════════════════════════════
+
+FILES CREATED
+
+discovery.yaml        Configuration (auto-generated)
+discovery.log         Execution log
+discovery-todoapp.db  SQLite cache (allows resume)
+
+docs/ASIS/            Domain overview documents
+docs/ASD/             Detailed specifications
+docs/PF/              Process flows (BPMN, Mermaid, PlantUML)
+mining_reports/       Conformance analysis (if enabled)
+
+════════════════════════════════════════════════════════════════════════════
+
+NEXT STEPS
+
+1. Review documentation
+   $ cat data/todoapp/docs/ASIS/*.md
+   $ cat data/todoapp/docs/PF/*.md
+
+2. Enable process mining for conformance analysis
+   Edit data/todoapp/discovery.yaml:
+     process_mining.enabled: true
+
+   Rerun: ./demo.sh --rescan
+
+3. Integrate into documentation system
+   $ discover ingest -p todoapp --target dochub
+
+4. Use in CI/CD pipeline
+   Add to your GitHub Actions or Jenkins:
+     discover scan . -p myapp -c discovery.yaml
+
+════════════════════════════════════════════════════════════════════════════
+
+REQUIREMENTS
+
+  • mlc-server running with Qwen models
+  • Python 3.10+
+  • 8GB+ GPU memory (for 9B model)
+  • 16GB+ RAM
+  • 10GB disk space (repo + output)
+  • 2-3 hours runtime (full discovery)
+
+════════════════════════════════════════════════════════════════════════════
+
+READY? RUN:
+
+  Terminal 1:  ollama serve mlx-community/Qwen3.5-2B-4bit
+  Terminal 2:  ./demo.sh
+
+════════════════════════════════════════════════════════════════════════════
+
+For detailed information: cat DEMO_README.md
+For help: ./demo.sh --help

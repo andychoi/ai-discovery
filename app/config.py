@@ -101,6 +101,21 @@ class RagConfig:
     top_k: int = 5
 
 
+# ── Process Mining config ────────────────────────────────────────────────────
+
+
+@dataclass
+class ProcessMiningConfig:
+    """Configuration for optional Stage 10.5 process mining and conformance analysis."""
+    enabled: bool = False  # Default: disabled (opt-in via config or CLI flag)
+    miner_variant: str = "inductive"  # inductive, dfg, alpha, heuristics
+    fitness_threshold: float = 0.90  # Quality gate: min acceptable fitness
+    precision_threshold: float = 0.85  # Quality gate: min acceptable precision
+    generalization_threshold: float = 0.80  # Quality gate: min acceptable generalization
+    max_traces: int = 10000  # Max traces to process per scenario
+    output_reports: bool = True  # Save markdown and JSON reports
+
+
 # ── Top-level config ─────────────────────────────────────────────────────────
 
 
@@ -116,6 +131,7 @@ class DiscoveryConfig:
     mlx_gemma: MLXGemmaConfig = field(default_factory=MLXGemmaConfig)
     mlx_qwen: MLXQwenConfig = field(default_factory=MLXQwenConfig)
     rag: RagConfig = field(default_factory=RagConfig)
+    process_mining: ProcessMiningConfig = field(default_factory=ProcessMiningConfig)
 
     # ── helpers ───────────────────────────────────────────────────────────
 
@@ -190,6 +206,8 @@ class DiscoveryConfig:
                 cfg.mlx_qwen = MLXQwenConfig(**_only_known(MLXQwenConfig, raw["mlx_qwen"]))
             if "rag" in raw and isinstance(raw["rag"], dict):
                 cfg.rag = RagConfig(**_only_known(RagConfig, raw["rag"]))
+            if "process_mining" in raw and isinstance(raw["process_mining"], dict):
+                cfg.process_mining = ProcessMiningConfig(**_only_known(ProcessMiningConfig, raw["process_mining"]))
 
         # Env-var overrides
         env_provider = os.environ.get("DISCOVERY_LLM_PROVIDER")

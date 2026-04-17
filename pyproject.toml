@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-discovery"
+version = "0.1.0"
+description = "Brownfield codebase analysis and SDLC document generation"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Claude"},
+]
+keywords = ["code-analysis", "documentation", "reverse-engineering", "codebase"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Documentation",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "tree-sitter>=0.24",
+    "tree-sitter-c-sharp",
+    "tree-sitter-java",
+    "tree-sitter-python",
+    "tree-sitter-javascript",
+    "tree-sitter-typescript",
+    "typer[all]>=0.12",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "boto3>=1.35",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+    "pysqlite3",
+    "sqlite-vec>=0.1",
+    "scikit-learn>=1.4",
+    "pm4py>=2.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+discover = "app.cli:app"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.setuptools.package-data]
+app = ["**/*.yaml", "**/*.j2"]

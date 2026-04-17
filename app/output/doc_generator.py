@@ -182,14 +182,26 @@ def write_scenario_docs(
     project_slug: str,
     repo_url: str = "",
     repo_commit: str = "",
+    mining_results: dict | None = None,
 ) -> list[dict]:
     """Render and write process-flow docs from ScenarioFlow objects.
 
-    Returns list of dicts with: doc_id, doc_type, domain, file_path, confidence.
+    Args:
+        scenario_flows: List of ScenarioFlow objects
+        artifacts: dict[scenario_id] → {mermaid, plantuml, ipo, bpmn}
+        output_dir: Output directory
+        project_slug: Project slug for doc ID
+        repo_url: Repository URL
+        repo_commit: Commit SHA
+        mining_results: dict[scenario_id] → MiningResult (optional)
+
+    Returns:
+        list of dicts with: doc_id, doc_type, domain, file_path, confidence.
     """
     if not scenario_flows:
         return []
 
+    mining_results = mining_results or {}
     env = _get_template_env()
     template = env.get_template("process-flow.md.j2")
     prefix_dir = output_dir / _doc_type_prefix("process-flow")
@@ -222,6 +234,13 @@ def write_scenario_docs(
             content_parts.append(
                 f"## Activity Diagram\n\n```plantuml\n{art['plantuml']}\n```"
             )
+
+        # Include process mining analysis if available
+        mining_result = mining_results.get(flow.scenario_id)
+        if mining_result:
+            from ..ai.mining_reporter import MiningReporter
+            mining_md = MiningReporter.generate_markdown_report(mining_result)
+            content_parts.append(mining_md)
 
         content = "\n\n".join(content_parts)
         scenario_slug = _slugify(flow.scenario_id) or f"flow-{i:03d}"
