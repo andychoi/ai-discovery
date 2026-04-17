@@ -6,10 +6,14 @@ invoke layer.  Config comes from DiscoveryConfig (YAML > env > defaults).
 
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import DiscoveryConfig
+
+log = logging.getLogger(__name__)
 
 try:
     from ai_discovery.shared.model_defaults import MODELS
@@ -84,6 +88,117 @@ class LLMClient:
         self._track_cost(tier, model, tok_in, tok_out)
         return LLMResponse(text=text, tokens_in=tok_in, tokens_out=tok_out, model=model, tier=tier)
 
+    def invoke_with_advisor(self, tier: str, prompt: str, max_tokens: int = 4096) -> LLMResponse:
+        """Invoke with advisor if enabled for this tier, else plain invoke().
+
+        Routes to native Anthropic SDK (if ANTHROPIC_API_KEY present) or simulated
+        advisor (Bedrock/Ollama two-step). Falls back to plain invoke on any error.
+        """
+        path = self._get_advisor_provider()
+        if path == "disabled" or tier not in self._config.advisor.tiers:
+            return self.invoke(tier, prompt, max_tokens)
+        try:
+            if path == "anthropic":
+                return self._invoke_native_advisor(tier, prompt, max_tokens)
+            return self._invoke_simulated_advisor(tier, prompt, max_tokens)
+        except Exception as e:
+            log.warning("Advisor call failed (%s), falling back to plain invoke: %s", path, e)
+            return self.invoke(tier, prompt, max_tokens)
+
+    def _get_advisor_provider(self) -> str:
+        """Returns 'anthropic', 'simulated', or 'disabled'."""
+        cfg = self._config.advisor
+        if not cfg.enabled:
+            return "disabled"
+        if cfg.provider == "disabled":
+            return "disabled"
+        if cfg.provider == "anthropic":
+            return "anthropic"
+        if cfg.provider == "simulated":
+            return "simulated"
+        # auto: native if API key present, else simulated
+        return "anthropic" if os.environ.get("ANTHROPIC_API_KEY") else "simulated"
+
+    def _invoke_native_advisor(self, tier: str, prompt: str, max_tokens: int) -> LLMResponse:
+        """Invoke with native Anthropic SDK advisor tool (beta)."""
+        try:
+            import anthropic as _anthropic
+        except ImportError:
+            raise RuntimeError(
+                "Native advisor requires 'anthropic' package: pip install anthropic"
+            )
+
+        cfg = self._config.advisor
+        model = (
+            cfg.tier3_executor_override if (tier == "tier3" and cfg.tier3_executor_override)
+            else self._config.get_model(tier)
+        )
+
+        client = _anthropic.Anthropic()
+        response = client.beta.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            betas=["advisor-tool-2026-03-01"],
+            tools=[{
+                "type": "advisor_20260301",
+                "name": "advisor",
+                "model": cfg.model,
+                "max_uses": cfg.max_uses_per_call,
+            }],
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        # Extract text from response content blocks
+        text = "".join(
+            block.text for block in response.content
+            if hasattr(block, "text") and block.type == "text"
+        )
+
+        tok_in = response.usage.input_tokens
+        tok_out = response.usage.output_tokens
+
+        # Track advisor tokens from iterations breakdown
+        for iteration in getattr(response.usage, "iterations", []):
+            adv_in = getattr(iteration, "advisor_input_tokens", 0) or 0
+            adv_out = getattr(iteration, "advisor_output_tokens", 0) or 0
+            if adv_in or adv_out:
+                self._track_cost("advisor", cfg.model, adv_in, adv_out)
+
+        self._track_cost(tier, model, tok_in, tok_out)
+        return LLMResponse(text=text, tokens_in=tok_in, tokens_out=tok_out, model=model, tier=tier)
+
+    def _invoke_simulated_advisor(self, tier: str, prompt: str, max_tokens: int) -> LLMResponse:
+        """Pre-call Opus for strategic plan, inject into executor prompt."""
+        advisor_prompt = (
+            "You are an expert technical advisor. The following is a task for an AI executor. "
+            "Provide a concise numbered plan (under 100 words) describing the best approach. "
+            "Focus on structure and strategy only — not execution.\n\n"
+            f"<task>\n{prompt[:2000]}\n</task>"  # truncate to avoid bloat
+        )
+
+        if self._config.provider == "bedrock":
+            adv_model = (
+                self._config.bedrock.tier3p if self._config.prod
+                else self._config.bedrock.tier3d
+            )
+            adv_text, adv_in, adv_out = invoke_bedrock(
+                adv_model, advisor_prompt, 256, self._config.bedrock.region,
+            )
+        elif self._config.provider in self._OLLAMA_LIKE:
+            base_url, api_key = self._config.get_endpoint()
+            adv_model = self._config.get_model("tier3")
+            adv_text, adv_in, adv_out = invoke_ollama(
+                adv_model, advisor_prompt, 256, base_url, api_key=api_key,
+            )
+        else:
+            return self.invoke(tier, prompt, max_tokens)
+
+        self._track_cost("advisor", adv_model, adv_in, adv_out)
+
+        # Inject advisor plan into main prompt
+        augmented = f"<advisor_plan>\n{adv_text}\n</advisor_plan>\n\n{prompt}"
+        return self.invoke(tier, augmented, max_tokens)
+
     def get_embedding(self, text: str) -> list[float]:
         """Get embedding vector."""
         if self._config.rag.embedding_provider == "bedrock":
@@ -148,6 +263,7 @@ class LLMClient:
         entry["tokens_out"] += tokens_out
         cost_per_1m = {
             "tier1": (0.80, 4.0), "tier2": (3.0, 15.0), "tier3": (15.0, 75.0),
+            "advisor": (15.0, 75.0),  # Opus 4.7 rates
         }
         in_rate, out_rate = cost_per_1m.get(tier, (3.0, 15.0))
         entry["est_usd"] = (

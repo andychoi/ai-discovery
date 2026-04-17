@@ -323,7 +323,7 @@ def _generate_single_doc(
             domain.name, doc_type, db_path, llm_client, top_k=5
         )
     prompt = _build_rollup_prompt(domain, doc_type, summaries, flows, rag_context=rag_context)
-    response = llm_client.invoke("tier3", prompt, max_tokens=4096)
+    response = llm_client.invoke_with_advisor("tier3", prompt, max_tokens=4096)
     content_md, confidence = _parse_rollup(response.text, domain.name, doc_type)
     label = _DOC_TYPE_LABELS.get(doc_type, doc_type)
     title = f"{domain.name} \u2014 {label}"

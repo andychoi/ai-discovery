@@ -48,7 +48,7 @@ def extract_claims(content_md: str, llm_client: LLMClient) -> list[str]:
         "JSON array of claims:"
     )
 
-    response = llm_client.invoke("tier1", prompt, max_tokens=2048)
+    response = llm_client.invoke_with_advisor("tier1", prompt, max_tokens=2048)
     text = response.text.strip()
 
     # Strip markdown code fences (```json ... ``` or ``` ... ```)
@@ -140,7 +140,7 @@ def verify_claim(
         "- unverified: the code is ambiguous or unrelated to the claim"
     )
 
-    response = llm_client.invoke("tier1", prompt, max_tokens=64)
+    response = llm_client.invoke_with_advisor("tier1", prompt, max_tokens=64)
     answer = response.text.strip().lower()
 
     if "verified" in answer and "unverified" not in answer:
@@ -422,7 +422,7 @@ def regenerate_sections(
                 "Only include statements supported by the code context above."
             )
 
-            response = llm_client.invoke("tier1", prompt, max_tokens=1024)
+            response = llm_client.invoke_with_advisor("tier1", prompt, max_tokens=1024)
             result_parts.append(response.text.strip() + "\n\n")
         else:
             result_parts.append(part)

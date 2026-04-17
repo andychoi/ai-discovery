@@ -116,6 +116,25 @@ class ProcessMiningConfig:
     output_reports: bool = True  # Save markdown and JSON reports
 
 
+# ── Advisor config ───────────────────────────────────────────────────────────
+
+
+@dataclass
+class AdvisorConfig:
+    """Configuration for optional advisor tool integration (beta).
+
+    The advisor tool allows a faster executor model to consult a higher-intelligence
+    advisor model for strategic guidance. Native path uses the Anthropic SDK beta
+    (requires ANTHROPIC_API_KEY); simulated path uses Bedrock Opus pre-call.
+    """
+    enabled: bool = False
+    provider: str = "auto"          # auto | anthropic | simulated | disabled
+    model: str = "claude-opus-4-7"  # advisor model (native path only)
+    tiers: list = field(default_factory=lambda: ["tier2", "tier3"])
+    max_uses_per_call: int = 1
+    tier3_executor_override: str = ""  # e.g. "claude-sonnet-4-6" to reduce tier3 cost on native path
+
+
 # ── Top-level config ─────────────────────────────────────────────────────────
 
 
@@ -132,6 +151,7 @@ class DiscoveryConfig:
     mlx_qwen: MLXQwenConfig = field(default_factory=MLXQwenConfig)
     rag: RagConfig = field(default_factory=RagConfig)
     process_mining: ProcessMiningConfig = field(default_factory=ProcessMiningConfig)
+    advisor: AdvisorConfig = field(default_factory=AdvisorConfig)
 
     # ── helpers ───────────────────────────────────────────────────────────
 
@@ -208,6 +228,8 @@ class DiscoveryConfig:
                 cfg.rag = RagConfig(**_only_known(RagConfig, raw["rag"]))
             if "process_mining" in raw and isinstance(raw["process_mining"], dict):
                 cfg.process_mining = ProcessMiningConfig(**_only_known(ProcessMiningConfig, raw["process_mining"]))
+            if "advisor" in raw and isinstance(raw["advisor"], dict):
+                cfg.advisor = AdvisorConfig(**_only_known(AdvisorConfig, raw["advisor"]))
 
         # Env-var overrides
         env_provider = os.environ.get("DISCOVERY_LLM_PROVIDER")
