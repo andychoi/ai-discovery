@@ -212,6 +212,25 @@ pytest
 discover scan /path/to/repo -p myproject
 ```
 
+### Local Development (Without pip install)
+
+If you prefer to test without installing, use the `run-local.sh` helper script:
+
+```bash
+# Run CLI without pip install
+./run-local.sh discover scan /path/to/repo -p myproject
+./run-local.sh discover --help
+
+# Run tests
+./run-local.sh pytest tests/
+./run-local.sh pytest tests/test_call_graph.py -v
+
+# Run Python directly
+./run-local.sh python -c "from ai_discovery.cli import app; print('OK')"
+```
+
+The script automatically sets `PYTHONPATH=./src` so imports work correctly.
+
 ### PyPI (Coming Soon)
 
 ```bash
