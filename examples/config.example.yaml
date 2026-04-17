@@ -1,0 +1,54 @@
+# Example configuration for ai-discovery
+#
+# Usage:
+#   discover scan <repo> -p <project> -c examples/config.example.yaml
+#
+# All settings can also be configured via environment variables (.env)
+# See .env.sample for available variables.
+
+# LLM Provider: bedrock or ollama
+provider: bedrock
+
+# AWS Bedrock configuration (if provider: bedrock)
+bedrock:
+  region: us-east-1
+  # Model IDs for each tier (uses defaults if not specified)
+  tier1: us.anthropic.claude-haiku-4-5-20251001-v1:0
+  tier2: us.anthropic.claude-sonnet-4-6-v1:0
+  tier3: us.anthropic.claude-opus-4-6-v1:0
+
+# Ollama configuration (if provider: ollama)
+# Uncomment this section if using local Ollama instead of AWS Bedrock
+# ollama:
+#   base_url: http://localhost:11434
+#   tier1: llama3.1:8b
+#   tier2: llama3.1:70b
+#   tier3: llama3.1:70b
+
+# Budget limit in USD
+budget_limit_usd: 50.0
+
+# Output directory for generated docs and database
+output_directory: ./data/discovery-output
+
+# Which languages to parse
+# Set to false to skip a language
+languages:
+  python: true
+  csharp: true
+  java: true
+  javascript: true
+
+# Which phases to run (optional)
+# If not specified, all phases are run
+# Available phases: parse, call_graph, chunk, tier1, tier2, tier3
+# phases_to_run:
+#   - parse
+#   - call_graph
+#   - chunk
+#   - tier1
+#   - tier2
+#   - tier3
+
+# Logging level: DEBUG, INFO, WARNING, ERROR
+log_level: INFO

@@ -1,2 +1,2 @@
 [console_scripts]
-discover = app.cli:app
+discover = ai_discovery.cli:app

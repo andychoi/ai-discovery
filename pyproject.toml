@@ -50,10 +50,13 @@ dev = [
 ]
 
 [project.scripts]
-discover = "app.cli:app"
+discover = "ai_discovery.cli:app"
 
 [tool.setuptools]
-packages = ["app"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages]
+find = {where = ["src"]}
 
 [tool.setuptools.package-data]
-app = ["**/*.yaml", "**/*.j2"]
+ai_discovery = ["**/*.yaml", "**/*.j2"]

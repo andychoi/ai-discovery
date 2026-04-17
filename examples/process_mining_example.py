@@ -20,8 +20,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.ai.process_miner import ProcessMiner, PseudoLogConverter, mine_scenarios
-from app.ai.mining_reporter import MiningReporter
+from ai_discovery.ai.process_miner import ProcessMiner, PseudoLogConverter, mine_scenarios
+from ai_discovery.ai.mining_reporter import MiningReporter
 
 
 def example_1_single_scenario():
