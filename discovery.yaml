@@ -24,7 +24,7 @@ ollama:
 
 # RAG configuration
 rag:
-  embedding_provider: ollama
+  embedding_provider: bedrock
   ollama_model: nomic-embed-text
   chunk_size: 1500
   chunk_overlap: 200

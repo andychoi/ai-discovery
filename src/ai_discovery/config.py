@@ -276,4 +276,12 @@ class DiscoveryConfig:
         if env_tier3p:
             cfg.bedrock.tier3p = env_tier3p
 
+        # RAG embedding overrides
+        env_embed_provider = os.environ.get("DISCOVERY_EMBEDDING_PROVIDER")
+        if env_embed_provider:
+            cfg.rag.embedding_provider = env_embed_provider
+        env_embed_model = os.environ.get("DISCOVERY_EMBEDDING_MODEL")
+        if env_embed_model:
+            cfg.rag.bedrock_model = env_embed_model
+
         return cfg
