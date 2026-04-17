@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from .lang_detector import _SKIP_DIRS
 
 
 @dataclass
@@ -51,11 +54,47 @@ def _get_commit_sha(repo_path: Path) -> str:
     return result.stdout.strip()
 
 
+def _fingerprint_dir(root: Path) -> str:
+    """Return a stable content fingerprint for a non-git directory scan.
+
+    Uses relative path + file size + mtime_ns to avoid reading every file body
+    while still changing when files are added, removed, or updated.
+    """
+    digest = hashlib.sha1()
+
+    def _walk(path: Path) -> None:
+        try:
+            entries = sorted(path.iterdir(), key=lambda p: p.name)
+        except PermissionError:
+            return
+
+        for entry in entries:
+            if entry.is_dir():
+                if entry.name in _SKIP_DIRS:
+                    continue
+                _walk(entry)
+                continue
+
+            try:
+                stat = entry.stat()
+            except OSError:
+                continue
+
+            rel = entry.relative_to(root).as_posix()
+            digest.update(rel.encode("utf-8"))
+            digest.update(str(stat.st_size).encode("ascii"))
+            digest.update(str(stat.st_mtime_ns).encode("ascii"))
+
+    _walk(root)
+    return digest.hexdigest()
+
+
 def resolve_repo(repo: str, branch: str, work_dir: Path) -> ResolvedRepo:
     """Resolve a git repo string to a ResolvedRepo.
 
     For URLs: clone to work_dir/repo-name/, or pull if already cloned.
-    For local paths: validate .git exists.
+    For local paths: use git metadata when available, otherwise treat the
+    directory as a plain folder scan and compute a content fingerprint.
     Returns ResolvedRepo with commit SHA.
     """
     if _is_url(repo):
@@ -157,14 +196,20 @@ def resolve_repo(repo: str, branch: str, work_dir: Path) -> ResolvedRepo:
 
     # Local path
     local_path = Path(repo).resolve()
-    if not (local_path / ".git").exists():
-        raise ValueError(f"{local_path} is not a git repository")
+    if not local_path.exists() or not local_path.is_dir():
+        raise ValueError(f"{local_path} is not a readable directory")
 
-    commit_sha = _get_commit_sha(local_path)
+    if (local_path / ".git").exists():
+        commit_sha = _get_commit_sha(local_path)
+        resolved_branch = branch
+    else:
+        commit_sha = _fingerprint_dir(local_path)
+        resolved_branch = "folder"
+
     return ResolvedRepo(
         repo_path=local_path,
         is_local=True,
         url=None,
-        branch=branch,
+        branch=resolved_branch,
         commit_sha=commit_sha,
     )

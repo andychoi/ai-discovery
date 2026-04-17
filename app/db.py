@@ -16,7 +16,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -138,6 +138,27 @@ CREATE TABLE IF NOT EXISTS review_claims (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_claims_doc ON review_claims(doc_id);
+
+CREATE TABLE IF NOT EXISTS scenario_flows (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id         INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
+    scenario_id     TEXT NOT NULL,
+    domain          TEXT,
+    steps_json      TEXT,
+    input_json      TEXT,
+    process_json    TEXT,
+    output_json     TEXT,
+    data_flow_json  TEXT,
+    interfaces_json TEXT,
+    mermaid         TEXT,
+    plantuml        TEXT,
+    bpmn_xml        TEXT,
+    ipo_md          TEXT,
+    confidence      REAL DEFAULT 1.0,
+    created_at      TEXT NOT NULL,
+    UNIQUE(scan_id, scenario_id)
+);
+CREATE INDEX IF NOT EXISTS idx_scenario_flows_scan ON scenario_flows(scan_id);
 
 CREATE TABLE IF NOT EXISTS llm_costs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

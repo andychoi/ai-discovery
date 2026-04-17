@@ -3,12 +3,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from discovery.ai.self_review import ReviewClaim
+from app.ai.self_review import ReviewClaim
 
 
 def test_regenerate_section_replaces_unverified_content():
     """Focused re-gen replaces a section that had unverified claims."""
-    from discovery.ai.self_review import regenerate_sections
+    from app.ai.self_review import regenerate_sections
 
     original_md = (
         "## Authentication\n"
@@ -41,7 +41,7 @@ def test_regenerate_section_replaces_unverified_content():
 
 def test_regenerate_sections_no_unverified_claims():
     """When all claims are verified, returns original unchanged."""
-    from discovery.ai.self_review import regenerate_sections
+    from app.ai.self_review import regenerate_sections
 
     original_md = "## Auth\nEverything is fine.\n"
     claims = [

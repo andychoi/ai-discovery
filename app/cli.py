@@ -17,36 +17,35 @@ load_dotenv()
 console = Console()
 app = typer.Typer(name="discover", help="Brownfield codebase discovery & doc generation.")
 
-_VALID_PUSH_MODES = {"api", "gitea"}
+_VALID_INGEST_TARGETS = {"dochub", "gitea"}
 
 
 @app.command()
 def scan(
-    repo: str = typer.Argument(..., help="Path or URL of the repository to scan."),
+    repo: str = typer.Argument(..., help="Path to a folder/git repo, or URL of a git repository to scan."),
     project_slug: str = typer.Option(..., "--project-slug", "-p", help="Target project slug."),
-    branch: str = typer.Option("main", "--branch", "-b", help="Git branch to analyse."),
+    branch: str = typer.Option("main", "--branch", "-b", help="Git branch to analyse (git scans only)."),
     output: Path = typer.Option(
-        Path("./data/discovery-output"), "--output", "-o", help="Output directory."
+        Path("./data/discovery-output"), "--output", "-o",
+        help="Intermediate output dir (DB, repo clone, cache).",
+    ),
+    docs_root: Path = typer.Option(
+        Path("./data"), "--docs-root",
+        help="Root under which generated docs land at {docs_root}/{project_slug}/{PREFIX}/.",
     ),
     provider: Optional[str] = typer.Option(None, "--provider", help="LLM provider (bedrock|ollama)."),
     config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to YAML config file."),
-    push: Optional[str] = typer.Option(None, "--push", help="Push mode: api | gitea."),
-    api_url: Optional[str] = typer.Option(None, "--api-url", help="DocHub API base URL."),
-    gitea_url: Optional[str] = typer.Option(None, "--gitea-url", help="Gitea base URL."),
-    api_key: Optional[str] = typer.Option(None, "--api-key", envvar="DISCOVERY_API_KEY", help="Shared API key for DocHub ingest (preferred over --api-token)."),
-    api_token: Optional[str] = typer.Option(None, "--api-token", envvar="DISCOVERY_API_TOKEN", help="Bearer JWT token for DocHub API push (legacy; use --api-key instead)."),
-    gitea_token: Optional[str] = typer.Option(None, "--gitea-token", envvar="DISCOVERY_GITEA_TOKEN", help="Gitea API token for Gitea push."),
     resume: bool = typer.Option(False, "--resume", help="Resume a previous interrupted run."),
     rescan: bool = typer.Option(False, "--rescan", help="Force full rescan (ignore cache)."),
     budget: Optional[float] = typer.Option(None, "--budget", help="Budget limit in USD."),
     prod: bool = typer.Option(False, "--prod", help="Use production model (tier3p) for doc generation instead of dev model (tier3d)."),
 ) -> None:
-    """Scan a repository, analyse its codebase, and generate SDLC documents."""
-    from app.pipeline import run_pipeline
+    """Scan a repository, analyse its codebase, and generate SDLC documents offline.
 
-    if push and push not in _VALID_PUSH_MODES:
-        console.print(f"[red]Invalid --push value '{push}'. Must be: api | gitea[/]")
-        raise typer.Exit(code=1)
+    Writes markdown to {docs_root}/{project_slug}/{PREFIX}/{doc_id}.md — no push.
+    Run `discover ingest` afterwards to batch-upsert to DocHub or Gitea.
+    """
+    from app.pipeline import run_pipeline
 
     # Load config (file → defaults), then apply CLI overrides
     cfg = DiscoveryConfig.load(str(config) if config else None)
@@ -71,13 +70,8 @@ def scan(
         branch=branch,
         project_slug=project_slug,
         output_dir=output,
+        docs_root=docs_root,
         config=cfg,
-        push_mode=push,
-        api_url=api_url,
-        api_key=api_key,
-        gitea_url=gitea_url,
-        api_token=api_token,
-        gitea_token=gitea_token,
         resume=resume,
         rescan=rescan,
     )
@@ -118,29 +112,36 @@ def chat(
 
 
 @app.command()
-def push(
+def ingest(
     project_slug: str = typer.Option(..., "--project-slug", "-p", help="Target project slug."),
+    target: str = typer.Option("dochub", "--target", help="Ingest target: dochub | gitea."),
     output: Path = typer.Option(
-        Path("./data/discovery-output"), "--output", "-o", help="Output directory (same as scan)."
+        Path("./data/discovery-output"), "--output", "-o",
+        help="Intermediate output dir (same as scan). Used to locate the DB.",
     ),
-    push_mode: str = typer.Option("api", "--push", help="Push mode: api | gitea (default: api)."),
+    docs_root: Path = typer.Option(
+        Path("./data"), "--docs-root",
+        help="Root of generated docs tree ({docs_root}/{project_slug}/{PREFIX}/).",
+    ),
     api_url: Optional[str] = typer.Option(None, "--api-url", help="DocHub API base URL."),
     api_key: Optional[str] = typer.Option(None, "--api-key", envvar="DISCOVERY_API_KEY", help="Shared API key for DocHub ingest."),
     api_token: Optional[str] = typer.Option(None, "--api-token", envvar="DISCOVERY_API_TOKEN", help="Bearer JWT token for DocHub API (legacy)."),
     gitea_url: Optional[str] = typer.Option(None, "--gitea-url", help="Gitea base URL."),
     gitea_token: Optional[str] = typer.Option(None, "--gitea-token", envvar="DISCOVERY_GITEA_TOKEN", help="Gitea API token."),
+    only_failed: bool = typer.Option(False, "--only-failed", help="Retry only docs with push_status failed/local."),
 ) -> None:
-    """Push already-generated docs to DocHub without re-scanning."""
+    """Batch-ingest already-generated docs from the offline tree to DocHub or Gitea."""
     from app.db import get_conn
+    from app.output.doc_generator import _doc_type_prefix
     from app.output.push import push_docs
 
-    if push_mode not in _VALID_PUSH_MODES:
-        console.print(f"[red]Invalid --push value '{push_mode}'. Must be: api | gitea[/]")
+    if target not in _VALID_INGEST_TARGETS:
+        console.print(f"[red]Invalid --target '{target}'. Must be: dochub | gitea[/]")
         raise typer.Exit(code=1)
 
-    output_dir = Path(output) / project_slug
-    db_path = output_dir / f"discovery-{project_slug}.db"
-    docs_dir = output_dir / "docs"
+    intermediate = Path(output) / project_slug
+    db_path = intermediate / f"discovery-{project_slug}.db"
+    docs_dir = Path(docs_root) / project_slug
 
     if not db_path.exists():
         console.print(f"[red]No discovery DB found:[/] {db_path}")
@@ -150,25 +151,27 @@ def push(
     # Load latest scan's generated docs from DB
     conn = get_conn(db_path)
     try:
-        rows = conn.execute(
-            """SELECT d.doc_id, d.doc_type, d.domain, d.confidence
-               FROM generated_docs d
-               JOIN scan_runs r ON r.id = d.scan_id
-               WHERE r.id = (SELECT MAX(id) FROM scan_runs WHERE project_slug = ?)""",
-            (project_slug,),
-        ).fetchall()
+        query_sql = (
+            "SELECT d.doc_id, d.doc_type, d.domain, d.confidence, d.push_status "
+            "FROM generated_docs d "
+            "JOIN scan_runs r ON r.id = d.scan_id "
+            "WHERE r.id = (SELECT MAX(id) FROM scan_runs WHERE project_slug = ?)"
+        )
+        if only_failed:
+            query_sql += " AND d.push_status IN ('failed', 'local')"
+        rows = conn.execute(query_sql, (project_slug,)).fetchall()
     finally:
         conn.close()
 
     if not rows:
-        console.print("[yellow]No generated docs found in DB. Run scan first.[/]")
-        raise typer.Exit(code=1)
+        msg = "No docs to retry." if only_failed else "No generated docs found in DB. Run scan first."
+        console.print(f"[yellow]{msg}[/]")
+        raise typer.Exit(code=0 if only_failed else 1)
 
-    # Reconstruct written_docs list — file_path mirrors write_docs() output structure
-    written_docs = []
-    missing = []
+    written_docs: list[dict] = []
+    missing: list[str] = []
     for row in rows:
-        file_path = docs_dir / row["doc_type"] / f"{row['doc_id']}.md"
+        file_path = docs_dir / _doc_type_prefix(row["doc_type"]) / f"{row['doc_id']}.md"
         if not file_path.exists():
             missing.append(str(file_path))
             continue
@@ -183,12 +186,13 @@ def push(
     if missing:
         console.print(f"[yellow]Warning: {len(missing)} doc file(s) not found on disk (skipped)[/]")
     if not written_docs:
-        console.print("[red]No doc files found to push.[/]")
+        console.print("[red]No doc files found to ingest.[/]")
         raise typer.Exit(code=1)
 
-    console.print(f"[bold green]discover push[/] project={project_slug}  mode={push_mode}  docs={len(written_docs)}")
+    push_mode = "api" if target == "dochub" else "gitea"
+    console.print(f"[bold green]discover ingest[/] project={project_slug}  target={target}  docs={len(written_docs)}")
 
-    with console.status(f"[bold cyan]Pushing docs ({push_mode})..."):
+    with console.status(f"[bold cyan]Ingesting docs ({target})..."):
         results = push_docs(
             written_docs, push_mode, project_slug,
             api_url=api_url, api_key=api_key, api_token=api_token,
@@ -198,11 +202,12 @@ def push(
 
     ok = sum(1 for r in results if r["status"] == "pushed")
     failed = [r for r in results if r["status"] == "failed"]
-    console.print(f"  [green]{ok} pushed[/]", end="")
+    console.print(f"  [green]{ok} ingested[/]", end="")
     if failed:
         console.print(f", [red]{len(failed)} failed[/]")
         for r in failed:
             console.print(f"    [red]✗[/] {r['doc_id']}: {r['error']}")
+        raise typer.Exit(code=1)
     else:
         console.print()
 

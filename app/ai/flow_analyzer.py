@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..ai.llm_client import LLMClient
 from ..db import get_conn, now_iso
-from ..graph.models import Domain, CallEdge
+from ..graph.models import Domain, CallEdge, ExecutionNode, Scenario, StateTransition
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class BusinessFlow:
 @dataclass
 class ScenarioFlow:
     scenario_id: str
+    domain: str | None = None
     steps: list[dict] = field(default_factory=list)  # list of {step: int, name: str, type: str, description: str}
     input: list[str] = field(default_factory=list)
     process: list[str] = field(default_factory=list)
@@ -56,6 +57,7 @@ class ScenarioFlowInference:
 
         return ScenarioFlow(
             scenario_id=scenario.scenario_id,
+            domain=scenario.domain,
             steps=flow_steps,
             input=ipo_data.get("input", []),
             process=ipo_data.get("process", []),
@@ -96,9 +98,12 @@ class ScenarioFlowInference:
             "1. Group functions into business steps.\n"
             "2. Order steps logically.\n"
             "3. Name steps in business terms.\n"
-            "4. Identify validations, transformations, persistence, and external interactions.\n\n"
+            "4. Identify validations, transformations, persistence, and external interactions.\n"
+            "5. Use type USER_TASK for manual human steps (approval, review).\n"
+            "6. Use type GATEWAY for conditional branches (if/else decisions).\n"
+            "7. Use type DB for database operations, EXTERNAL for external API calls.\n\n"
             "OUTPUT JSON:\n"
-            '{"flow": [{"step": 1, "name": "Validate Order", "type": "PROCESS", "description": "..."}]}'
+            '{"flow": [{"step": 1, "name": "Validate Order", "type": "PROCESS|GATEWAY|USER_TASK|DB|EXTERNAL", "description": "..."}]}'
         )
 
     def _build_ipo_prompt(self, scenario: Scenario, flow_steps: list[dict]) -> str:
@@ -382,3 +387,91 @@ def persist_flows(
         conn.commit()
     finally:
         conn.close()
+
+
+def persist_scenario_flows(
+    scenario_flows: list[ScenarioFlow],
+    artifacts: dict[str, dict],
+    scan_id: int,
+    db_path: Path,
+) -> None:
+    """Write scenario flows and their artifacts to the scenario_flows table."""
+    conn = get_conn(db_path)
+    try:
+        for flow in scenario_flows:
+            art = artifacts.get(flow.scenario_id, {})
+            conn.execute(
+                """INSERT OR REPLACE INTO scenario_flows
+                   (scan_id, scenario_id, domain, steps_json, input_json, process_json,
+                    output_json, data_flow_json, interfaces_json,
+                    mermaid, plantuml, bpmn_xml, ipo_md, confidence, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    scan_id,
+                    flow.scenario_id,
+                    flow.domain,
+                    json.dumps(flow.steps),
+                    json.dumps(flow.input),
+                    json.dumps(flow.process),
+                    json.dumps(flow.output),
+                    json.dumps(flow.data_flow),
+                    json.dumps(flow.external_interfaces),
+                    art.get("mermaid", ""),
+                    art.get("plantuml", ""),
+                    art.get("bpmn", ""),
+                    art.get("ipo", ""),
+                    flow.confidence,
+                    now_iso(),
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def load_scenario_flows(scan_id: int, db_path: Path) -> tuple[list[ScenarioFlow], dict[str, dict]]:
+    """Load ScenarioFlow records and artifacts from DB for resume support.
+
+    Returns (scenario_flows, artifacts) where artifacts maps scenario_id -> dict.
+    """
+    conn = get_conn(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM scenario_flows WHERE scan_id = ?",
+            (scan_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    flows: list[ScenarioFlow] = []
+    artifacts: dict[str, dict] = {}
+
+    def _load_json(val: str | None, default):
+        if not val:
+            return default
+        try:
+            return json.loads(val)
+        except (json.JSONDecodeError, ValueError):
+            return default
+
+    for row in rows:
+        flow = ScenarioFlow(
+            scenario_id=row["scenario_id"],
+            domain=row["domain"],
+            steps=_load_json(row["steps_json"], []),
+            input=_load_json(row["input_json"], []),
+            process=_load_json(row["process_json"], []),
+            output=_load_json(row["output_json"], []),
+            data_flow=_load_json(row["data_flow_json"], []),
+            external_interfaces=_load_json(row["interfaces_json"], []),
+            confidence=row["confidence"] or 1.0,
+        )
+        flows.append(flow)
+        artifacts[row["scenario_id"]] = {
+            "mermaid": row["mermaid"] or "",
+            "plantuml": row["plantuml"] or "",
+            "bpmn": row["bpmn_xml"] or "",
+            "ipo": row["ipo_md"] or "",
+        }
+
+    return flows, artifacts

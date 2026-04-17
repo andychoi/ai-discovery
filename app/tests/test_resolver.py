@@ -28,10 +28,29 @@ def test_resolve_local_path(tmp_path: Path):
     assert len(result.commit_sha) == 40
 
 
-def test_resolve_local_path_not_git(tmp_path: Path):
-    """Dir without .git raises ValueError."""
-    with pytest.raises(ValueError, match="not a git repository"):
-        resolve_repo(str(tmp_path), "main", tmp_path / "work")
+def test_resolve_plain_folder(tmp_path: Path):
+    """Dir without .git resolves as a folder scan with a stable fingerprint."""
+    (tmp_path / "app.py").write_text("print('hi')\n", encoding="utf-8")
+
+    result = resolve_repo(str(tmp_path), "main", tmp_path / "work")
+
+    assert isinstance(result, ResolvedRepo)
+    assert result.is_local is True
+    assert result.url is None
+    assert result.repo_path == tmp_path
+    assert result.branch == "folder"
+    assert len(result.commit_sha) == 40
+
+
+def test_resolve_plain_folder_fingerprint_changes_on_edit(tmp_path: Path):
+    file_path = tmp_path / "app.py"
+    file_path.write_text("print('hi')\n", encoding="utf-8")
+    first = resolve_repo(str(tmp_path), "main", tmp_path / "work")
+
+    file_path.write_text("print('changed')\n", encoding="utf-8")
+    second = resolve_repo(str(tmp_path), "main", tmp_path / "work")
+
+    assert first.commit_sha != second.commit_sha
 
 
 def test_resolve_url_detected():

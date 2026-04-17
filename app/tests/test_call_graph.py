@@ -113,7 +113,7 @@ def test_qualified_name_exact_match():
 
 
 def test_ambiguous_short_name():
-    """Multiple nodes with the same short name should each get confidence=0.8."""
+    """Multiple nodes with the same short name prefer the same-file candidate."""
     nodes = [
         CodeNode(
             file_path="a.py",
@@ -148,8 +148,116 @@ def test_ambiguous_short_name():
         ),
     ]
     edges = build_call_graph(nodes)
-    assert len(edges) == 2
-    assert all(e.confidence == 0.8 for e in edges)
-    callee_names = {e.callee for e in edges}
-    assert "mod.A.run" in callee_names
-    assert "mod.B.run" in callee_names
+    assert len(edges) == 1
+    assert edges[0].callee == "mod.A.run"
+    assert edges[0].confidence == 0.9
+
+
+def test_same_class_match_preferred_over_global_ambiguity():
+    nodes = [
+        CodeNode(
+            file_path="svc.py",
+            language="python",
+            node_type="method",
+            name="process",
+            qualified_name="svc.PaymentService.process",
+            source_code="",
+            line_start=1,
+            line_end=5,
+            calls=["validate"],
+        ),
+        CodeNode(
+            file_path="svc.py",
+            language="python",
+            node_type="method",
+            name="validate",
+            qualified_name="svc.PaymentService.validate",
+            source_code="",
+            line_start=7,
+            line_end=10,
+        ),
+        CodeNode(
+            file_path="other.py",
+            language="python",
+            node_type="method",
+            name="validate",
+            qualified_name="svc.OtherService.validate",
+            source_code="",
+            line_start=1,
+            line_end=3,
+        ),
+    ]
+    edges = build_call_graph(nodes)
+    assert len(edges) == 1
+    assert edges[0].callee == "svc.PaymentService.validate"
+    assert edges[0].confidence == 0.95
+
+
+def test_same_module_match_preferred_when_no_same_class_match():
+    nodes = [
+        CodeNode(
+            file_path="svc.py",
+            language="python",
+            node_type="function",
+            name="process",
+            qualified_name="svc.process",
+            source_code="",
+            line_start=1,
+            line_end=5,
+            calls=["validate"],
+        ),
+        CodeNode(
+            file_path="svc.py",
+            language="python",
+            node_type="function",
+            name="validate",
+            qualified_name="svc.validate",
+            source_code="",
+            line_start=7,
+            line_end=10,
+        ),
+        CodeNode(
+            file_path="other.py",
+            language="python",
+            node_type="function",
+            name="validate",
+            qualified_name="other.validate",
+            source_code="",
+            line_start=1,
+            line_end=3,
+        ),
+    ]
+    edges = build_call_graph(nodes)
+    assert len(edges) == 1
+    assert edges[0].callee == "svc.validate"
+    assert edges[0].confidence == 0.9
+
+
+def test_suffix_match_resolves_partially_qualified_call():
+    nodes = [
+        CodeNode(
+            file_path="svc.py",
+            language="python",
+            node_type="function",
+            name="caller",
+            qualified_name="svc.caller",
+            source_code="",
+            line_start=1,
+            line_end=5,
+            calls=["PaymentService.charge"],
+        ),
+        CodeNode(
+            file_path="svc.py",
+            language="python",
+            node_type="method",
+            name="charge",
+            qualified_name="billing.PaymentService.charge",
+            source_code="",
+            line_start=7,
+            line_end=10,
+        ),
+    ]
+    edges = build_call_graph(nodes)
+    assert len(edges) == 1
+    assert edges[0].callee == "billing.PaymentService.charge"
+    assert edges[0].confidence == 0.85

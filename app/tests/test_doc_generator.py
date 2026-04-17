@@ -100,7 +100,8 @@ class TestWriteDocs:
         assert len(results) == 1
         file_path = Path(results[0]["file_path"])
         assert file_path.exists()
-        assert file_path.parent.name == "as-is"
+        # Folder uses the DocHub type prefix (ASIS), not the doc_type string.
+        assert file_path.parent.name == "ASIS"
         assert file_path.name == "myproj-auth-service-as-is.md"
 
     def test_all_doc_types(self, tmp_path: Path):

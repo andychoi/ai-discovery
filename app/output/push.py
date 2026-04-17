@@ -1,9 +1,10 @@
-"""Push generated docs to ai-docs platform (API or Gitea)."""
+"""Push generated docs to ai-docs platform (API or Gitea) or write them offline."""
 
 from __future__ import annotations
 
 import base64
 import logging
+import shutil
 from pathlib import Path
 
 import httpx
@@ -23,29 +24,62 @@ def push_docs(
     gitea_url: str | None = None,
     gitea_token: str | None = None,
     db_path: Path | None = None,
+    offline_root: Path | None = None,
 ) -> list[dict]:
-    """Push generated docs to ai-docs platform.
+    """Push generated docs to ai-docs platform, or mirror them offline.
 
-    Args:
-        written_docs: list from write_docs(), each dict has: doc_id, doc_type,
-            domain, file_path, confidence
-        push_mode: "api" or "gitea"
-        project_slug: target project
-        api_url: DocHub base URL (required for api mode)
-        api_token: Bearer token for API auth
-        gitea_url: Gitea base URL (required for gitea mode)
-        gitea_token: Gitea API token
-        db_path: if provided, update generated_docs.push_status
+    Modes:
+      - "api":     POST to DocHub ingest endpoint.
+      - "gitea":   PUT via Gitea contents API.
+      - "offline": copy files under offline_root/{project_slug}/{PREFIX}/{doc_id}.md.
 
-    Returns:
-        list of push results: [{doc_id, status, url, error}]
+    Returns a list of push results: [{doc_id, status, url, error}].
     """
     if push_mode == "api":
         return _push_api(written_docs, project_slug, api_url, api_token, api_key, db_path)
     elif push_mode == "gitea":
         return _push_gitea(written_docs, project_slug, gitea_url, gitea_token, db_path)
+    elif push_mode == "offline":
+        return _push_offline(written_docs, project_slug, offline_root, db_path)
     else:
         raise ValueError(f"Invalid push_mode: {push_mode}")
+
+
+def _push_offline(
+    docs: list[dict],
+    project_slug: str,
+    offline_root: Path | None,
+    db_path: Path | None,
+) -> list[dict]:
+    """Copy generated docs into offline_root/{project_slug}/{PREFIX}/{doc_id}.md.
+
+    Offline mode provides an on-disk mirror of the DocHub-shaped tree without
+    requiring network access or an ai-docs deployment.
+    """
+    from .doc_generator import _doc_type_prefix
+
+    root = Path(offline_root) if offline_root else Path("./data")
+    target_dir = root / project_slug
+
+    results: list[dict] = []
+    for doc in docs:
+        try:
+            src = Path(doc["file_path"])
+            dest_dir = target_dir / _doc_type_prefix(doc["doc_type"])
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / f"{doc['doc_id']}.md"
+            # Avoid copying onto itself when write_docs already wrote here.
+            if src.resolve() != dest.resolve():
+                shutil.copyfile(src, dest)
+            url = str(dest)
+            _update_push_status(db_path, doc["doc_id"], "pushed", url)
+            results.append({"doc_id": doc["doc_id"], "status": "pushed", "url": url, "error": None})
+        except Exception as e:
+            logger.error("Offline write failed for %s: %s", doc["doc_id"], e)
+            _update_push_status(db_path, doc["doc_id"], "failed", "")
+            results.append({"doc_id": doc["doc_id"], "status": "failed", "url": "", "error": str(e)})
+
+    return results
 
 
 def _push_api(
@@ -160,10 +194,12 @@ def _push_gitea(
     results = []
     content_repo = "ai-docs-content"
 
+    from .doc_generator import _doc_type_prefix
+
     for doc in docs:
         try:
             content = Path(doc["file_path"]).read_text()
-            file_path = f"projects/{project_slug}/{doc['doc_type']}/{doc['doc_id']}.md"
+            file_path = f"projects/{project_slug}/{_doc_type_prefix(doc['doc_type'])}/{doc['doc_id']}.md"
             b64_content = base64.b64encode(content.encode()).decode()
 
             # Check if file exists first (to get SHA for update)

@@ -97,19 +97,21 @@ def run_pipeline(
     project_slug: str,
     output_dir: Path,
     config: DiscoveryConfig,
-    push_mode: Optional[str] = None,
-    api_url: Optional[str] = None,
-    api_key: Optional[str] = None,
-    gitea_url: Optional[str] = None,
-    api_token: Optional[str] = None,
-    gitea_token: Optional[str] = None,
+    docs_root: Path = Path("./data"),
     resume: bool = False,
     rescan: bool = False,
 ) -> None:
-    """Run the full discovery pipeline."""
+    """Run the full discovery pipeline in offline mode.
+
+    Intermediate state (SQLite DB, repo clone, cache) lives under
+    output_dir/{project_slug}/. Final markdown is written to
+    docs_root/{project_slug}/{PREFIX}/{doc_id}.md. Delivery to DocHub/Gitea
+    is a separate step — see `discover ingest`.
+    """
 
     output_dir = Path(output_dir) / project_slug
     output_dir.mkdir(parents=True, exist_ok=True)
+    docs_dir = Path(docs_root) / project_slug
     db_path = output_dir / f"discovery-{project_slug}.db"
     _pipeline_start = time.perf_counter()
 
@@ -139,31 +141,18 @@ def run_pipeline(
 
     if resume and prev_run:
         if prev_run["status"] in ("push_failed", "llm_complete"):
-            if not push_mode:
-                console.print(
-                    "[yellow]Previous scan needs push. Re-run with --push api (or --push gitea) "
-                    "and --resume to retry.[/]"
-                )
-                return
-            console.print(f"[yellow]Resuming write+push for scan #{prev_run['id']} (status={prev_run['status']})...[/]")
-            _resume_push(
-                prev_run["id"], db_path, output_dir, push_mode, project_slug,
-                api_url=api_url, api_key=api_key, api_token=api_token,
-                gitea_url=gitea_url, gitea_token=gitea_token,
+            console.print(
+                f"[yellow]Scan #{prev_run['id']} finished LLM tiers — re-rendering markdown from DB.[/]"
             )
+            _rewrite_docs_from_db(
+                prev_run["id"], db_path, docs_dir, project_slug,
+                repo_url=resolved.url or str(resolved.repo_path),
+                repo_commit=resolved.commit_sha,
+            )
+            _finalise_scan(prev_run["id"], db_path, "completed")
             return
         if prev_run["status"] == "completed":
-            if push_mode:
-                # Completed scan + push requested → re-push existing docs
-                console.print(f"[cyan]Scan #{prev_run['id']} already completed — re-pushing docs.[/]")
-                _resume_push(
-                    prev_run["id"], db_path, output_dir, push_mode, project_slug,
-                    api_url=api_url, api_key=api_key, api_token=api_token,
-                    gitea_url=gitea_url, gitea_token=gitea_token,
-                    force_all=True,
-                )
-            else:
-                console.print("[green]Previous scan already completed -- nothing to resume.[/]")
+            console.print("[green]Previous scan already completed -- nothing to resume.[/]")
             return
         scan_id = prev_run["id"]
         console.print(f"[yellow]Resuming scan #{scan_id}[/]")
@@ -178,7 +167,7 @@ def run_pipeline(
             return
 
     # Same-SHA fast-path: --rescan but commit unchanged and scan already done.
-    # Skip all parse + LLM tiers — reuse cached results and go straight to push.
+    # Skip parse + LLM tiers — reuse cached rollups and re-render markdown.
     # Only valid if the cached scan actually produced rollup docs; otherwise fall
     # through to a real rescan (a "completed" scan with zero docs is a sticky
     # cache trap — see prior bug where empty cache was reused forever).
@@ -202,20 +191,14 @@ def run_pipeline(
             f"[cyan]Commit {resolved.commit_sha[:10]} already analysed "
             f"(scan #{prev_run['id']}, status={prev_run['status']}, "
             f"docs={cached_doc_count})[/]\n"
-            f"[dim]Skipping parse + LLM tiers — reusing cached results.[/]"
+            f"[dim]Skipping parse + LLM tiers — re-rendering cached rollups.[/]"
         )
-        if push_mode:
-            _resume_push(
-                prev_run["id"], db_path, output_dir, push_mode, project_slug,
-                api_url=api_url, api_key=api_key, api_token=api_token,
-                gitea_url=gitea_url, gitea_token=gitea_token,
-                force_all=True,
-            )
-        else:
-            console.print(
-                "[yellow]No push mode set — cached docs not re-pushed. "
-                "Use --push api to push.[/]"
-            )
+        _rewrite_docs_from_db(
+            prev_run["id"], db_path, docs_dir, project_slug,
+            repo_url=resolved.url or str(resolved.repo_path),
+            repo_commit=resolved.commit_sha,
+        )
+        _finalise_scan(prev_run["id"], db_path, "completed")
         return
 
     # ------------------------------------------------------------------
@@ -301,8 +284,16 @@ def run_pipeline(
         return
 
     # ------------------------------------------------------------------
-    # 7. Persist code_nodes to DB
+    # 7. Classify domains, then persist nodes, then build graphs
     # ------------------------------------------------------------------
+    from .graph.call_graph import build_call_graph, ExecutionSliceBuilder
+    from .graph.domain_classifier import classify_domains
+
+    with _timed("domain classify"), console.status("[bold cyan]Classifying domains..."):
+        domains_dict = classify_domains(all_nodes)
+    domains = list(domains_dict.values())
+    console.print(f"  Domains: [green]{len(domains)}[/] ({', '.join(d.name for d in domains)})")
+
     with _timed("persist nodes"), console.status("[bold cyan]Persisting code nodes..."):
         conn = get_conn(db_path)
         try:
@@ -335,12 +326,6 @@ def run_pipeline(
             conn.close()
     console.print(f"  Persisted [green]{len(all_nodes)}[/] code nodes")
 
-    # ------------------------------------------------------------------
-    # 8. Build call graph + classify domains
-    # ------------------------------------------------------------------
-    from .graph.call_graph import build_call_graph, ExecutionSliceBuilder
-    from .graph.domain_classifier import classify_domains
-
     with _timed("call graph"), console.status("[bold cyan]Building call graph..."):
         edges = build_call_graph(all_nodes)
     console.print(f"  Call graph: [green]{len(edges)}[/] edges")
@@ -350,11 +335,6 @@ def run_pipeline(
         slice_builder = ExecutionSliceBuilder(all_nodes, edges)
         scenarios = slice_builder.build_all_scenarios()
     console.print(f"  Execution slices: [green]{len(scenarios)}[/] scenarios identified")
-
-    with _timed("domain classify"), console.status("[bold cyan]Classifying domains..."):
-        domains_dict = classify_domains(all_nodes)
-    domains = list(domains_dict.values())
-    console.print(f"  Domains: [green]{len(domains)}[/] ({', '.join(d.name for d in domains)})")
 
     # Distribute call edges to domains
     node_domain_map = {n.qualified_name: n.domain for n in all_nodes}
@@ -595,21 +575,22 @@ def run_pipeline(
     persist_rollups(rollups, scan_id, db_path, project_slug)
     console.print(f"  Documents: [green]{len(rollups)}[/] generated")
 
-    # 13.5 NEW: Generate Visual Artifacts (BPMN/Mermaid)
+    # 13.5 NEW: Generate Visual Artifacts (BPMN/Mermaid/PlantUML) and persist
     from .output.bpmn_generator import BPMNGenerator
+    from .ai.flow_analyzer import persist_scenario_flows
     bpmn_gen = BPMNGenerator()
     console.print("[bold cyan]Step 13.5: Generating visual artifacts...[/]")
-    
-    scenario_artifacts = {}
+
+    scenario_artifacts: dict[str, dict] = {}
     for flow in scenario_flows:
-        mermaid = bpmn_gen.generate_mermaid_sequence(flow)
-        bpmn_xml = bpmn_gen.generate_bpmn_xml(flow)
-        ipo_md = bpmn_gen.generate_ipo_markdown(flow)
         scenario_artifacts[flow.scenario_id] = {
-            "mermaid": mermaid,
-            "bpmn": bpmn_xml,
-            "ipo": ipo_md
+            "mermaid": bpmn_gen.generate_mermaid_sequence(flow),
+            "plantuml": bpmn_gen.generate_plantuml(flow),
+            "bpmn": bpmn_gen.generate_bpmn_xml(flow),
+            "ipo": bpmn_gen.generate_ipo_markdown(flow),
         }
+    persist_scenario_flows(scenario_flows, scenario_artifacts, scan_id, db_path)
+    console.print(f"  Visual artifacts: [green]{len(scenario_artifacts)}[/] scenarios persisted")
 
     # Free tier3 (~20 GB) so self-review (tier1) has headroom.
     if config.provider == "ollama":
@@ -772,20 +753,30 @@ def run_pipeline(
             f"pairs across {len(domain_adjacency)} domains"
         )
 
+    from .output.doc_generator import write_scenario_docs
+
     with _timed("write markdown"), console.status("[bold cyan]Writing markdown files..."):
         written = write_docs(
             rollups,
-            output_dir / "docs",
+            docs_dir,
             project_slug,
             repo_url=resolved.url or str(resolved.repo_path),
             repo_commit=resolved.commit_sha,
             domain_adjacency=domain_adjacency,
-            scenario_artifacts=scenario_artifacts,
         )
-    console.print(f"  Written: [green]{len(written)}[/] markdown files to {output_dir / 'docs'}")
+        scenario_written = write_scenario_docs(
+            scenario_flows,
+            scenario_artifacts,
+            docs_dir,
+            project_slug,
+            repo_url=resolved.url or str(resolved.repo_path),
+            repo_commit=resolved.commit_sha,
+        )
+        written.extend(scenario_written)
+    console.print(f"  Written: [green]{len(written)}[/] markdown files to {docs_dir}")
 
-    # Sync generated_docs.doc_id with the sequential IDs written to disk
-    # so _resume_push can locate files on a subsequent run.
+    # Keep DB.doc_id aligned with the on-disk filenames so `discover ingest`
+    # can locate every file without re-deriving paths.
     conn = get_conn(db_path)
     try:
         for doc in written:
@@ -798,73 +789,9 @@ def run_pipeline(
         conn.close()
 
     # ------------------------------------------------------------------
-    # 16. Optionally prompt user to push (when --push not already given)
+    # 16. Finalise (offline-only — no push)
     # ------------------------------------------------------------------
-    if push_mode is None:
-        import sys
-
-        if sys.stdin.isatty():
-            from rich.prompt import Confirm, Prompt
-
-            if Confirm.ask(
-                f"\n[bold cyan]Push {len(written)} docs to DocHub?[/]",
-                default=False,
-                console=console,
-            ):
-                push_mode = Prompt.ask(
-                    "  Push mode",
-                    choices=["api", "gitea"],
-                    default="api",
-                    console=console,
-                )
-                if push_mode == "api":
-                    if not api_url:
-                        api_url = Prompt.ask("  DocHub API URL", console=console)
-                    if not api_key and not api_token:
-                        api_key = Prompt.ask("  API key", password=True, console=console)
-                elif push_mode == "gitea":
-                    if not gitea_url:
-                        gitea_url = Prompt.ask("  Gitea URL", console=console)
-                    if not gitea_token:
-                        gitea_token = Prompt.ask("  Gitea token", password=True, console=console)
-
-    push_had_failures = False
-    if push_mode:
-        try:
-            from .output.push import push_docs
-
-            with console.status(f"[bold cyan]Pushing docs ({push_mode})..."):
-                push_results = push_docs(
-                    written, push_mode, project_slug,
-                    api_url=api_url, api_key=api_key, api_token=api_token,
-                    gitea_url=gitea_url, gitea_token=gitea_token,
-                    db_path=db_path,
-                )
-            ok = sum(1 for r in push_results if r["status"] == "pushed")
-            failed = [r for r in push_results if r["status"] == "failed"]
-            console.print(f"  Push ({push_mode}): [green]{ok} pushed[/]", end="")
-            if failed:
-                push_had_failures = True
-                console.print(f", [red]{len(failed)} failed[/]")
-                for r in failed:
-                    console.print(f"    [red]✗[/] {r['doc_id']}: {r['error']}")
-                console.print(
-                    "  [yellow]Re-run with --resume --push to retry failed docs only.[/]"
-                )
-            else:
-                console.print()
-        except ImportError:
-            console.print("[yellow]Push module not available -- skipping.[/]")
-        except Exception as exc:
-            logger.exception("Push failed")
-            console.print(f"  [red]Push failed:[/] {exc}")
-            push_had_failures = True
-
-    # ------------------------------------------------------------------
-    # 17. Finalise
-    # ------------------------------------------------------------------
-    final_status = "push_failed" if push_had_failures else "completed"
-    _finalise_scan(scan_id, db_path, final_status, llm_client)
+    _finalise_scan(scan_id, db_path, "completed", llm_client)
 
     # Print summary
     cost = llm_client.total_cost_usd()
@@ -877,7 +804,8 @@ def run_pipeline(
     console.print(f"  Documents:   {len(rollups)}")
     console.print(f"  LLM cost:    [bold]${cost:.4f}[/]")
     console.print(f"  Total time:  [bold]{total_elapsed:.1f}s[/]")
-    console.print(f"  Output:      {output_dir / 'docs'}")
+    console.print(f"  Output:      {docs_dir}")
+    console.print(f"  [dim]Ingest:      discover ingest -p {project_slug} --target dochub[/]")
     console.print()
 
 
@@ -948,99 +876,44 @@ def _finalise_scan(
         conn.close()
 
 
-def _resume_push(
+def _rewrite_docs_from_db(
     scan_id: int,
     db_path: Path,
-    output_dir: Path,
-    push_mode: str,
+    docs_dir: Path,
     project_slug: str,
     *,
-    api_url=None,
-    api_key=None,
-    api_token=None,
-    gitea_url=None,
-    gitea_token=None,
-    force_all: bool = False,
+    repo_url: str = "",
+    repo_commit: str = "",
 ) -> None:
-    """Retry push for docs from a previous scan.
+    """Re-materialise markdown from cached rollups without re-running LLM tiers.
 
-    By default only retries docs with push_status 'failed' or 'local'.
-    With force_all=True, pushes all docs in the scan (used by the same-SHA
-    fast-path so a --rescan --push re-delivers already-pushed docs).
+    Used when a previous scan reached llm_complete (Tier 3 done, write skipped
+    or crashed) or when `--rescan` hits a same-SHA cache. Writes each doc to
+    docs_dir/{PREFIX}/{doc_id}.md using content_md stored in generated_docs.
     """
-    from .output.push import push_docs
+    from .output.doc_generator import _doc_type_prefix
 
     conn = get_conn(db_path)
     try:
-        if force_all:
-            rows = conn.execute(
-                "SELECT doc_id, doc_type, domain, confidence, content_md FROM generated_docs "
-                "WHERE scan_id = ?",
-                (scan_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT doc_id, doc_type, domain, confidence, content_md FROM generated_docs "
-                "WHERE scan_id = ? AND push_status IN ('failed', 'local')",
-                (scan_id,),
-            ).fetchall()
+        rows = conn.execute(
+            "SELECT doc_id, doc_type, domain, confidence, content_md "
+            "FROM generated_docs WHERE scan_id = ?",
+            (scan_id,),
+        ).fetchall()
     finally:
         conn.close()
 
     if not rows:
-        if force_all:
-            console.print("[yellow]No generated docs found for this scan.[/]")
-        else:
-            console.print("[green]No docs to retry — all already pushed.[/]")
-        _finalise_scan(scan_id, db_path, "completed")
+        console.print("[yellow]No cached rollups to re-render.[/]")
         return
 
-    docs_dir = output_dir / "docs"
-    written: list[dict] = []
-    missing: list[str] = []
+    written = 0
     for row in rows:
-        file_path = docs_dir / row["doc_type"] / f"{row['doc_id']}.md"
-        if not file_path.exists():
-            if row["content_md"]:
-                # Regenerate markdown from DB — covers the case where the process
-                # was killed after Tier 3 (llm_complete) but before write_docs.
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(row["content_md"], encoding="utf-8")
-            else:
-                missing.append(str(file_path))
-                continue
-        written.append({
-            "doc_id": row["doc_id"],
-            "doc_type": row["doc_type"],
-            "domain": row["domain"],
-            "file_path": str(file_path),
-            "confidence": row["confidence"] or 0.0,
-        })
+        if not row["content_md"]:
+            continue
+        prefix_dir = docs_dir / _doc_type_prefix(row["doc_type"])
+        prefix_dir.mkdir(parents=True, exist_ok=True)
+        (prefix_dir / f"{row['doc_id']}.md").write_text(row["content_md"], encoding="utf-8")
+        written += 1
 
-    if missing:
-        console.print(f"[yellow]Warning: {len(missing)} doc file(s) not found on disk or in DB (skipped)[/]")
-    if not written:
-        console.print("[red]No doc files found to retry.[/]")
-        return
-
-    label = "all" if force_all else "failed/local"
-    console.print(f"  Pushing [bold]{len(written)}[/] doc(s) (push_status: {label})")
-    with console.status(f"[bold cyan]Pushing docs ({push_mode})..."):
-        push_results = push_docs(
-            written, push_mode, project_slug,
-            api_url=api_url, api_key=api_key, api_token=api_token,
-            gitea_url=gitea_url, gitea_token=gitea_token,
-            db_path=db_path,
-        )
-
-    ok = sum(1 for r in push_results if r["status"] == "pushed")
-    failed = [r for r in push_results if r["status"] == "failed"]
-    console.print(f"  Push ({push_mode}): [green]{ok} pushed[/]", end="")
-    if failed:
-        console.print(f", [red]{len(failed)} failed[/]")
-        for r in failed:
-            console.print(f"    [red]✗[/] {r['doc_id']}: {r['error']}")
-        _finalise_scan(scan_id, db_path, "push_failed")
-    else:
-        console.print()
-        _finalise_scan(scan_id, db_path, "completed")
+    console.print(f"  Re-rendered [green]{written}[/] markdown file(s) to {docs_dir}")

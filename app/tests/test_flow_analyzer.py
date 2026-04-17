@@ -10,15 +10,19 @@ import pytest
 
 from app.ai.flow_analyzer import (
     BusinessFlow,
+    ScenarioFlow,
+    ScenarioFlowInference,
     _build_flow_prompt,
     _parse_flows,
     analyze_all_domains,
     analyze_domain,
+    load_scenario_flows,
     persist_flows,
+    persist_scenario_flows,
 )
 from app.ai.llm_client import LLMResponse
 from app.db import get_conn, init_db
-from app.graph.models import CallEdge, CodeNode, Domain
+from app.graph.models import CallEdge, CodeNode, Domain, ExecutionEdge, ExecutionNode, Scenario
 
 
 # ---------------------------------------------------------------------------
@@ -233,3 +237,182 @@ def test_persist_flows_writes_to_db(tmp_path: Path):
         assert isinstance(node_ids, list)
     # Verify model_used
     assert all(r["model_used"] == "claude-sonnet" for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# ScenarioFlowInference tests
+# ---------------------------------------------------------------------------
+
+
+def _make_scenario(domain: str = "orders") -> Scenario:
+    node = ExecutionNode(
+        id="orders.OrderService.create",
+        type="ENTRY",
+        name="create",
+        qualified_name="orders.OrderService.create",
+    )
+    return Scenario(
+        scenario_id="scenario_create_1",
+        name="Flow: create",
+        entry_point="orders.OrderService.create",
+        trigger_type="HTTP",
+        nodes=[node],
+        domain=domain,
+    )
+
+
+def _mock_inference_client(steps=None, ipo=None, interfaces=None) -> MagicMock:
+    """Return an LLM client mock that returns different payloads per call."""
+    steps_payload = json.dumps({"flow": steps or [
+        {"step": 1, "name": "Validate", "type": "PROCESS", "description": "Check input"}
+    ]})
+    ipo_payload = json.dumps(ipo or {
+        "input": ["order_id"], "process": ["validate"], "output": ["confirmation"], "data_flow": []
+    })
+    iface_payload = json.dumps({"interfaces": interfaces or [
+        {"name": "PostgreSQL", "type": "DB", "operation": "INSERT orders"}
+    ]})
+
+    client = MagicMock()
+    client.invoke.side_effect = [
+        LLMResponse(text=steps_payload, tokens_in=100, tokens_out=50, model="sonnet", tier="tier2"),
+        LLMResponse(text=ipo_payload, tokens_in=80, tokens_out=40, model="sonnet", tier="tier2"),
+        LLMResponse(text=iface_payload, tokens_in=60, tokens_out=30, model="sonnet", tier="tier2"),
+    ]
+    return client
+
+
+def test_scenario_flow_inference_returns_scenario_flow():
+    scenario = _make_scenario()
+    client = _mock_inference_client()
+    inference = ScenarioFlowInference(client)
+    flow = inference.infer_flow(scenario, {})
+    assert isinstance(flow, ScenarioFlow)
+    assert flow.scenario_id == "scenario_create_1"
+
+
+def test_scenario_flow_inference_propagates_domain():
+    scenario = _make_scenario(domain="payments")
+    client = _mock_inference_client()
+    inference = ScenarioFlowInference(client)
+    flow = inference.infer_flow(scenario, {})
+    assert flow.domain == "payments"
+
+
+def test_scenario_flow_inference_populates_steps():
+    scenario = _make_scenario()
+    client = _mock_inference_client()
+    inference = ScenarioFlowInference(client)
+    flow = inference.infer_flow(scenario, {})
+    assert len(flow.steps) == 1
+    assert flow.steps[0]["name"] == "Validate"
+
+
+def test_scenario_flow_inference_populates_ipo():
+    scenario = _make_scenario()
+    client = _mock_inference_client()
+    inference = ScenarioFlowInference(client)
+    flow = inference.infer_flow(scenario, {})
+    assert "order_id" in flow.input
+    assert "validate" in flow.process
+    assert "confirmation" in flow.output
+
+
+def test_scenario_flow_inference_populates_interfaces():
+    scenario = _make_scenario()
+    client = _mock_inference_client()
+    inference = ScenarioFlowInference(client)
+    flow = inference.infer_flow(scenario, {})
+    assert len(flow.external_interfaces) == 1
+    assert flow.external_interfaces[0]["name"] == "PostgreSQL"
+
+
+def test_scenario_flow_inference_includes_state_transition_in_prompt():
+    from app.graph.models import StateTransition
+    scenario = _make_scenario()
+    scenario.nodes[0].state_transition = StateTransition(
+        entity="order", field="status", to_state="SUBMITTED",
+        trigger_function="orders.OrderService.create",
+    )
+    client = _mock_inference_client()
+    inference = ScenarioFlowInference(client)
+    inference.infer_flow(scenario, {})
+    # The first call (steps) should include the transition in the prompt
+    first_prompt = client.invoke.call_args_list[0][0][1]
+    assert "SUBMITTED" in first_prompt
+
+
+def test_parse_json_response_handles_markdown_fences():
+    inference = ScenarioFlowInference(MagicMock())
+    text = '```json\n{"flow": [{"step": 1}]}\n```'
+    result = inference._parse_json_response(text, "flow")
+    assert result == [{"step": 1}]
+
+
+def test_parse_json_response_handles_bare_json():
+    inference = ScenarioFlowInference(MagicMock())
+    text = '{"flow": [{"step": 1}]}'
+    result = inference._parse_json_response(text, "flow")
+    assert result == [{"step": 1}]
+
+
+def test_parse_json_response_returns_empty_on_failure():
+    inference = ScenarioFlowInference(MagicMock())
+    result = inference._parse_json_response("not json at all", "flow")
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# persist_scenario_flows / load_scenario_flows
+# ---------------------------------------------------------------------------
+
+
+def test_persist_and_load_scenario_flows(tmp_path: Path):
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+
+    conn = get_conn(db_path)
+    conn.execute(
+        "INSERT INTO scan_runs (repo_url, started_at, status) VALUES (?, ?, ?)",
+        ("https://example.com/repo", "2026-01-01T00:00:00Z", "running"),
+    )
+    conn.commit()
+    scan_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+
+    flows = [
+        ScenarioFlow(
+            scenario_id="scenario_create_1",
+            domain="orders",
+            steps=[{"step": 1, "name": "Validate", "type": "PROCESS", "description": ""}],
+            input=["order_id"],
+            process=["validate"],
+            output=["confirmation"],
+            data_flow=["order -> db"],
+            external_interfaces=[{"name": "PostgreSQL", "type": "DB"}],
+            confidence=0.9,
+        )
+    ]
+    artifacts = {
+        "scenario_create_1": {
+            "mermaid": "sequenceDiagram\n    User->>System: Validate",
+            "plantuml": "@startuml\nstart\n:Validate;\nstop\n@enduml",
+            "bpmn": "<bpmn/>",
+            "ipo": "### IPO",
+        }
+    }
+
+    persist_scenario_flows(flows, artifacts, scan_id, db_path)
+    loaded_flows, loaded_artifacts = load_scenario_flows(scan_id, db_path)
+
+    assert len(loaded_flows) == 1
+    lf = loaded_flows[0]
+    assert lf.scenario_id == "scenario_create_1"
+    assert lf.domain == "orders"
+    assert lf.input == ["order_id"]
+    assert lf.steps[0]["name"] == "Validate"
+    assert abs(lf.confidence - 0.9) < 1e-6
+
+    la = loaded_artifacts["scenario_create_1"]
+    assert "sequenceDiagram" in la["mermaid"]
+    assert la["bpmn"] == "<bpmn/>"

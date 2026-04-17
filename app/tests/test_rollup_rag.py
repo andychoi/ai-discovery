@@ -19,7 +19,7 @@ def mock_llm_client():
 
 def test_retrieve_tier3_context_returns_code_snippets(tmp_path, mock_llm_client):
     """RAG retrieval returns relevant code chunks for a doc_type query."""
-    from discovery.ai.rollup import _retrieve_tier3_context
+    from app.ai.rollup import _retrieve_tier3_context
 
     db_path = tmp_path / "test.db"
 
@@ -60,7 +60,7 @@ def test_retrieve_tier3_context_returns_code_snippets(tmp_path, mock_llm_client)
 
 
 def _make_domain(name="auth"):
-    from discovery.graph.models import Domain, CodeNode
+    from app.graph.models import Domain, CodeNode
 
     node = CodeNode(
         file_path="auth/controller.py",
@@ -77,7 +77,7 @@ def _make_domain(name="auth"):
 
 def test_build_rollup_prompt_includes_rag_section():
     """When rag_context is provided, it appears in the prompt."""
-    from discovery.ai.rollup import _build_rollup_prompt
+    from app.ai.rollup import _build_rollup_prompt
 
     domain = _make_domain()
     rag_context = "### auth.login (auth/handler.py)\n```\ndef login(): pass\n```"
@@ -91,7 +91,7 @@ def test_build_rollup_prompt_includes_rag_section():
 
 def test_build_rollup_prompt_no_rag_context():
     """When rag_context is empty, no RAG section is added."""
-    from discovery.ai.rollup import _build_rollup_prompt
+    from app.ai.rollup import _build_rollup_prompt
 
     domain = _make_domain()
     prompt = _build_rollup_prompt(domain, "as-is", {}, [], rag_context="")
@@ -101,8 +101,8 @@ def test_build_rollup_prompt_no_rag_context():
 
 def test_build_rollup_prompt_includes_external_summaries():
     """External edges include callee summaries when available."""
-    from discovery.ai.rollup import _build_rollup_prompt
-    from discovery.graph.models import CallEdge
+    from app.ai.rollup import _build_rollup_prompt
+    from app.graph.models import CallEdge
 
     domain = _make_domain("orders")
     ext_edge = CallEdge(
@@ -128,7 +128,7 @@ def test_build_rollup_prompt_includes_external_summaries():
 
 def test_retrieve_tier3_context_empty_db(tmp_path, mock_llm_client):
     """Returns empty string when no vectors exist."""
-    from discovery.ai.rollup import _retrieve_tier3_context
+    from app.ai.rollup import _retrieve_tier3_context
 
     db_path = tmp_path / "empty.db"
 
