@@ -16,7 +16,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -176,6 +176,21 @@ CREATE TABLE IF NOT EXISTS schema_version (
     version    INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS phase_checkpoints (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id         INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
+    phase_num       REAL NOT NULL,
+    phase_name      TEXT NOT NULL,
+    status          TEXT DEFAULT 'running',
+    started_at      TEXT,
+    completed_at    TEXT,
+    error_msg       TEXT,
+    metadata_json   TEXT,
+    UNIQUE(scan_id, phase_num)
+);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_scan ON phase_checkpoints(scan_id);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_phase ON phase_checkpoints(scan_id, phase_num);
 """
 
 # ---------------------------------------------------------------------------
@@ -278,3 +293,123 @@ def init_db(db_path: Path) -> None:
     )
     conn.commit()
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase checkpoint helpers
+# ---------------------------------------------------------------------------
+
+def record_phase_start(db_path: Path, scan_id: int, phase_num: float, phase_name: str) -> None:
+    """Record the start of a phase checkpoint."""
+    conn = get_conn(db_path)
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO phase_checkpoints
+               (scan_id, phase_num, phase_name, status, started_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (scan_id, phase_num, phase_name, 'running', now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_phase_complete(
+    db_path: Path,
+    scan_id: int,
+    phase_num: float,
+    phase_name: str,
+    metadata: dict = None,
+) -> None:
+    """Record successful completion of a phase checkpoint.
+
+    Uses UPDATE if a row already exists (preserving started_at from
+    record_phase_start), otherwise inserts a new row.
+    """
+    import json
+    conn = get_conn(db_path)
+    try:
+        # Try UPDATE first (preserves started_at from record_phase_start)
+        result = conn.execute(
+            """UPDATE phase_checkpoints
+               SET status = ?, completed_at = ?, metadata_json = ?
+               WHERE scan_id = ? AND phase_num = ?""",
+            (
+                'complete',
+                now_iso(),
+                json.dumps(metadata) if metadata else None,
+                scan_id,
+                phase_num,
+            ),
+        )
+        if result.rowcount == 0:
+            # No existing row (e.g. called without record_phase_start)
+            conn.execute(
+                """INSERT INTO phase_checkpoints
+                   (scan_id, phase_num, phase_name, status, started_at, completed_at, metadata_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    scan_id,
+                    phase_num,
+                    phase_name,
+                    'complete',
+                    now_iso(),
+                    now_iso(),
+                    json.dumps(metadata) if metadata else None,
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_phase_error(
+    db_path: Path,
+    scan_id: int,
+    phase_num: float,
+    phase_name: str,
+    error_msg: str,
+) -> None:
+    """Record failure of a phase checkpoint.
+
+    Error messages are truncated to 500 chars to avoid storing
+    sensitive data (API keys, connection strings) from exception traces.
+    """
+    safe_msg = str(error_msg)[:500]
+    conn = get_conn(db_path)
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO phase_checkpoints
+               (scan_id, phase_num, phase_name, status, completed_at, error_msg)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (scan_id, phase_num, phase_name, 'failed', now_iso(), safe_msg),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_last_complete_phase(db_path: Path, scan_id: int) -> float | None:
+    """Return the highest phase_num that completed successfully, or None."""
+    conn = get_conn(db_path)
+    try:
+        row = conn.execute(
+            "SELECT MAX(phase_num) as last_phase FROM phase_checkpoints WHERE scan_id = ? AND status = 'complete'",
+            (scan_id,),
+        ).fetchone()
+        return row['last_phase'] if row and row['last_phase'] is not None else None
+    finally:
+        conn.close()
+
+
+def get_all_checkpoints(db_path: Path, scan_id: int) -> list[dict]:
+    """Return all checkpoints for a scan, ordered by phase_num."""
+    conn = get_conn(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM phase_checkpoints WHERE scan_id = ? ORDER BY phase_num ASC",
+            (scan_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()

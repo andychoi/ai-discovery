@@ -21,6 +21,167 @@ _VALID_INGEST_TARGETS = {"dochub", "gitea"}
 
 
 @app.command()
+def init(
+    config: Path = typer.Option(
+        Path("discovery.yaml"), "--config", "-c",
+        help="Output path for generated config template."
+    ),
+    provider: str = typer.Option(
+        "ollama", "--provider",
+        help="Default LLM provider (bedrock|ollama|mlx-gemma|mlx-qwen)."
+    ),
+) -> None:
+    """Generate a discovery.yaml config template.
+
+    Creates a discovery.yaml file with all configurable options and helpful
+    comments. Useful for getting started or documenting your setup.
+    """
+    from ai_discovery.config import (
+        BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig,
+        RagConfig, ProcessMiningConfig, AdvisorConfig
+    )
+
+    config_path = Path(config)
+    if config_path.exists():
+        console.print(f"[yellow]File already exists: {config_path}[/]")
+        if not typer.confirm("Overwrite?"):
+            console.print("Aborted.")
+            raise typer.Exit(code=0)
+
+    # Build template as list of (key, value) tuples to preserve ordering
+    # and allow duplicate blank-line entries.
+    template: list[tuple[str, object]] = [
+        ("# AI-Discovery Configuration", None),
+        ("# Customize discovery behavior, model selection, and optional features", None),
+        ("", None),
+        ("# Provider: bedrock | ollama | mlx-gemma | mlx-qwen", None),
+        ("provider", provider),
+        ("", None),
+        ("# LLM cost limit (USD) — stops pipeline if exceeded", None),
+        ("budget_limit_usd", 50.0),
+        ("", None),
+        ("# Max concurrent workers for parallel processing", None),
+        ("max_concurrent", 10),
+        ("", None),
+        ("# Production mode: use tier3p (deep) instead of tier3d (standard) for doc generation", None),
+        ("prod", False),
+    ]
+
+    # Provider-specific sections
+    if provider == "bedrock":
+        bedrock = BedrockConfig()
+        template.extend([
+            ("", None),
+            ("# Bedrock configuration", None),
+            ("bedrock", {"region": bedrock.region, "tier1": bedrock.tier1,
+                         "tier2": bedrock.tier2, "tier3d": bedrock.tier3d, "tier3p": bedrock.tier3p}),
+        ])
+    elif provider == "mlx-gemma":
+        mlx = MLXGemmaConfig()
+        template.extend([
+            ("", None),
+            ("# MLX Gemma configuration", None),
+            ("mlx_gemma", {"base_url": mlx.base_url, "api_key": mlx.api_key,
+                           "tier1": mlx.tier1, "tier2": mlx.tier2, "tier3d": mlx.tier3d,
+                           "tier3p": mlx.tier3p, "tier1_num_ctx": mlx.tier1_num_ctx}),
+        ])
+    elif provider == "mlx-qwen":
+        mlx = MLXQwenConfig()
+        template.extend([
+            ("", None),
+            ("# MLX Qwen configuration", None),
+            ("mlx_qwen", {"base_url": mlx.base_url, "api_key": mlx.api_key,
+                          "tier1": mlx.tier1, "tier2": mlx.tier2, "tier3d": mlx.tier3d,
+                          "tier3p": mlx.tier3p, "tier1_num_ctx": mlx.tier1_num_ctx}),
+        ])
+    else:  # ollama
+        ollama = OllamaConfig()
+        template.extend([
+            ("", None),
+            ("# Ollama configuration", None),
+            ("ollama", {"base_url": ollama.base_url, "tier1": ollama.tier1,
+                        "tier2": ollama.tier2, "tier3d": ollama.tier3d, "tier3p": ollama.tier3p,
+                        "tier1_num_ctx": ollama.tier1_num_ctx}),
+        ])
+
+    # RAG config
+    rag = RagConfig()
+    template.extend([
+        ("", None),
+        ("# RAG configuration", None),
+        ("rag", {"embedding_provider": rag.embedding_provider, "bedrock_model": rag.bedrock_model,
+                 "ollama_model": rag.ollama_model, "chunk_size": rag.chunk_size,
+                 "chunk_overlap": rag.chunk_overlap, "top_k": rag.top_k}),
+    ])
+
+    # Process Mining config
+    mining = ProcessMiningConfig()
+    template.extend([
+        ("", None),
+        ("# Process Mining Configuration (Stage 10.5) — OPTIONAL", None),
+        ("# Set enabled: true to enable process mining and conformance analysis", None),
+        ("process_mining", {"enabled": mining.enabled, "miner_variant": mining.miner_variant,
+                            "fitness_threshold": mining.fitness_threshold,
+                            "precision_threshold": mining.precision_threshold,
+                            "generalization_threshold": mining.generalization_threshold,
+                            "max_traces": mining.max_traces, "output_reports": mining.output_reports}),
+    ])
+
+    # Advisor config
+    advisor = AdvisorConfig()
+    template.extend([
+        ("", None),
+        ("# Advisor Configuration (beta) — OPTIONAL", None),
+        ("# Set enabled: true to enable advisor tool integration", None),
+        ("advisor", {"enabled": advisor.enabled, "provider": advisor.provider,
+                     "model": advisor.model, "tiers": advisor.tiers,
+                     "max_uses_per_call": advisor.max_uses_per_call,
+                     "tier3_executor_override": advisor.tier3_executor_override}),
+    ])
+
+    # Write as YAML
+    yaml_content = _template_to_yaml(template)
+    config_path.write_text(yaml_content)
+    console.print(f"[green]✓ Generated[/] {config_path}")
+    console.print(f"  [dim]Next: edit {config_path} or use with --config {config_path}[/]")
+    console.print(f"  [dim]Then: discover scan repo --project-slug=myapp --config {config_path}[/]")
+
+
+def _yaml_scalar(v: object) -> str:
+    """Format a scalar value safely for YAML output."""
+    if isinstance(v, bool):
+        return str(v).lower()
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, list):
+        return str(v)
+    # String: quote if it contains special YAML chars or newlines
+    s = str(v)
+    if not s or '\n' in s or ':' in s or '#' in s or s.startswith('{') or s.startswith('['):
+        return f'"{s}"'
+    return s
+
+
+def _template_to_yaml(entries: list[tuple[str, object]]) -> str:
+    """Convert a list of (key, value) tuples to YAML text with comments and blank lines."""
+    lines = []
+    for key, value in entries:
+        if key.startswith("#"):
+            lines.append(key)
+        elif key == "":
+            lines.append("")
+        elif value is None:
+            continue
+        elif isinstance(value, dict):
+            lines.append(f"{key}:")
+            for k, v in value.items():
+                lines.append(f"  {k}: {_yaml_scalar(v)}")
+        else:
+            lines.append(f"{key}: {_yaml_scalar(value)}")
+    return "\n".join(lines) + "\n"
+
+
+@app.command()
 def scan(
     repo: str = typer.Argument(..., help="Path to a folder/git repo, or URL of a git repository to scan."),
     project_slug: str = typer.Option(..., "--project-slug", "-p", help="Target project slug."),
@@ -36,6 +197,8 @@ def scan(
     provider: Optional[str] = typer.Option(None, "--provider", help="LLM provider (bedrock|ollama)."),
     config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to YAML config file."),
     resume: bool = typer.Option(False, "--resume", help="Resume a previous interrupted run."),
+    resume_from: Optional[str] = typer.Option(None, "--resume-from", help="Resume from specific phase (e.g. 14, self_review, tier1)."),
+    skip_phases: Optional[str] = typer.Option(None, "--skip-phases", help="Skip specific phases (comma-separated, e.g. 13.6,10)."),
     rescan: bool = typer.Option(False, "--rescan", help="Force full rescan (ignore cache)."),
     budget: Optional[float] = typer.Option(None, "--budget", help="Budget limit in USD."),
     prod: bool = typer.Option(False, "--prod", help="Use production model (tier3p) for doc generation instead of dev model (tier3d)."),
@@ -73,6 +236,8 @@ def scan(
         docs_root=docs_root,
         config=cfg,
         resume=resume,
+        resume_from=resume_from,
+        skip_phases=[p.strip() for p in skip_phases.split(",")] if skip_phases else [],
         rescan=rescan,
     )
 

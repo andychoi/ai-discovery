@@ -15,6 +15,7 @@ cd ai-discovery
 cp .env.sample .env
 # Edit .env with your AWS credentials
 docker compose build
+docker compose run --rm discovery init
 docker compose run --rm discovery scan https://github.com/org/repo -p myproject
 ```
 
@@ -26,16 +27,42 @@ cd ai-discovery
 pip install -e .
 cp .env.sample .env
 # Edit .env with your AWS credentials
-discover scan /path/to/repo -p myproject
+discover init                                          # Generate discovery.yaml template
+discover scan /path/to/repo -p myproject --config discovery.yaml
+```
+
+### Generate Config Template
+
+When first installing, generate a `discovery.yaml` config template:
+
+```bash
+# Docker
+docker compose run --rm discovery init
+
+# Or local
+discover init
+```
+
+This creates `discovery.yaml` with:
+- LLM provider selection (bedrock, ollama, mlx-gemma, mlx-qwen)
+- Model tier defaults (tier1, tier2, tier3d/tier3p)
+- RAG chunk settings
+- Optional process mining (Stage 10.5) config
+- Optional advisor tool (beta) config
+
+**Customize as needed, then:**
+
+```bash
+discover scan repo --project-slug=myapp --config discovery.yaml
 ```
 
 ### Your First Scan
 
 ```bash
-# Docker
-docker compose run --rm discovery scan https://github.com/django/django -p django
+# With config
+discover scan https://github.com/django/django -p django --config discovery.yaml
 
-# Or local
+# Or with defaults (no config needed)
 discover scan https://github.com/django/django -p django
 ```
 
@@ -126,20 +153,36 @@ Then use: `discover scan <repo> -p <project> -c config.yaml`
 
 ## CLI Reference
 
-### Basic Usage
+### Commands
+
+#### `discover init` — Generate Config Template
+
+Create a `discovery.yaml` template with all configurable options:
+
+```bash
+discover init [--config discovery.yaml] [--provider ollama]
+```
+
+**Options:**
+- `--config` — Output path for config file (default: `discovery.yaml`)
+- `--provider` — Default provider: `bedrock`, `ollama`, `mlx-gemma`, `mlx-qwen`
+
+**Output:** Generates `discovery.yaml` with comments explaining each setting.
+
+#### `discover scan` — Scan Codebase
 
 ```bash
 discover scan REPO -p PROJECT_SLUG [OPTIONS]
 ```
 
-### Required Arguments
+**Required Arguments:**
 
 | Argument | Description |
 |----------|-------------|
 | `REPO` | Path or URL (file path or `https://github.com/org/repo.git`) |
 | `-p, --project-slug` | Project slug for outputs (e.g., `myproject`) |
 
-### Options
+**Options:**
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -148,32 +191,103 @@ discover scan REPO -p PROJECT_SLUG [OPTIONS]
 | `-c, --config` | YAML config file | (uses env vars) |
 | `--provider` | LLM provider: `bedrock` \| `ollama` | (from env) |
 | `--budget` | Budget limit in USD | (from env) |
-| `--resume` | Resume interrupted run | (disabled) |
+| `--resume` | Resume from last complete phase | (disabled) |
+| `--resume-from` | Jump to specific phase (e.g., `14`, `self_review`) | (resume from last) |
+| `--skip-phases` | Skip phases (comma-separated, e.g., `13.6,10`) | (none) |
 | `--rescan` | Force full rescan, ignore cache | (disabled) |
+
+**Resume Examples:**
+
+```bash
+# Resume from where it left off
+discover scan repo -p myapp --resume
+
+# Jump to phase 14 (self-review)
+discover scan repo -p myapp --resume --resume-from=14
+
+# Skip optional phase 13.6 (process mining)
+discover scan repo -p myapp --skip-phases=13.6
+
+# Resume and skip process mining
+discover scan repo -p myapp --resume --skip-phases=13.6
+```
+
+**Phase Numbers:**
+- 5: Language detection
+- 6: Parse files
+- 7: Domain classification
+- 8.5: Execution slices
+- 9: Chunk code
+- 10: RAG embedding
+- 11: Tier 1 summarization
+- 12: Tier 2 flow analysis
+- 12.5: Scenario flow inference
+- 13: Tier 3 doc rollup
+- 13.5: Visual artifacts (BPMN/Mermaid)
+- 13.6: Process mining (optional)
+- 14: Self-review
+- 15: Render markdown
+- 16: Finalize
+
+### Monitoring & Debugging
+
+Check phase completion status:
+
+```bash
+discover scan repo -p myapp --resume
+```
+
+Output shows phase progress:
+```
+Phase progress:
+  ✓ Phase  5.0 (lang_detect)
+  ✓ Phase  6.0 (parse)
+  ✓ Phase  7.0 (domain_classify)
+  ⊘ Phase 14.0 (self_review)    [interrupted]
+  ⊘ Phase 15.0 (render_markdown)
+```
+
+### Process Mining (Optional Stage 10.5)
+
+Enable in `discovery.yaml`:
+
+```yaml
+process_mining:
+  enabled: true           # Set to true to enable
+  miner_variant: inductive
+  fitness_threshold: 0.90
+```
+
+Then run normally — process mining will run after Tier 3.
 
 ### Push Options (Optional)
 
 Push results to a remote system:
 
 ```bash
-discover scan <repo> -p <project> \
-  --push api \
+discover ingest -p myproject --target dochub \
   --api-url https://api.example.com \
-  --api-token $DISCOVERY_API_TOKEN
+  --api-key $DISCOVERY_API_KEY
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--push` | Mode: `api` \| `gitea` |
+| `--target` | Ingest target: `dochub` \| `gitea` |
 | `--api-url` | DocHub API base URL |
-| `--api-token` | Bearer token (or env `DISCOVERY_API_TOKEN`) |
+| `--api-key` | API key for DocHub (or env `DISCOVERY_API_KEY`) |
 | `--gitea-url` | Gitea base URL |
 | `--gitea-token` | Gitea API token (or env `DISCOVERY_GITEA_TOKEN`) |
 
 ### Query Database
 
+Query the discovery database directly:
+
 ```bash
+# Use discovered.db from latest scan
 discover query "SELECT name, node_type, domain FROM code_nodes LIMIT 20"
+
+# Or specify the database
+sqlite3 ./data/discovery-output/myapp/discovery-myapp.db "SELECT COUNT(*) FROM code_nodes"
 ```
 
 ## Installation Methods
