@@ -66,6 +66,7 @@ config.yaml:
 
 If **Phase 6 (Parse + Call Graph)** > 15% of total time → Likely bottleneck.
 
+
 **Symptoms**:
 - Many unresolved calls
 - Complex namespace/package structures
@@ -348,15 +349,14 @@ For very large codebases, memory usage can become a bottleneck.
 
 ```bash
 # Run with memory profiling
-python -m memory_profiler app/pipeline.py scan repo --project-slug myproj --profile
+python -m memory_profiler src/ai_discovery/pipeline.py scan repo --project-slug myproj --profile
 
 # Output shows memory usage per phase
 ```
 
 **Memory-hungry phases**:
-- **Phase 6 (Parsing)**: Entire codebase in memory (ASTs)
-- **Phase 9 (Call Graph)**: Call edge graph
-- **Phase 13 (Embedding)**: Vector store (sqlite-vec)
+- **Phase 6 (Parsing + Call Graph)**: Entire codebase in memory (ASTs + call edge graph)
+- **Phase 10 (rag_embed)**: Vector store (sqlite-vec)
 
 **Optimization**:
 ```yaml

@@ -50,10 +50,10 @@
 
 ## Phase 3: Pipeline Wiring (COMPLETE)
 
-- [x] `app/pipeline.py` modifications
+- [x] `src/ai_discovery/pipeline.py` modifications
   - [x] Add imports (lines 16-17)
   - [x] Add `_mine_processes()` helper (lines 855-894)
-  - [x] Add Stage 10.5 stage in pipeline (lines 594-615)
+  - [x] Add Phase 13.6 stage in pipeline (lines 594-615)
   - [x] Conditional execution (check `config.process_mining.enabled`)
   - [x] Pass `mining_results` to markdown writer
   - [x] Graceful error handling (non-blocking)
@@ -77,7 +77,7 @@
   - [x] Default values (disabled, inductive miner, thresholds)
 
 - [x] Syntax validation
-  - [x] ✅ `app/pipeline.py` compiles
+  - [x] ✅ `src/ai_discovery/pipeline.py` compiles
   - [x] ✅ `app/config.py` compiles
   - [x] ✅ `app/output/doc_generator.py` compiles
 
@@ -134,7 +134,7 @@ discover scan ./myrepo -p myproject
                │
                ↓
 ┌──────────────────────────────────────────────┐
-│ Pipeline Stage 10.5: Process Mining         │
+│ Pipeline Phase 13.6: Process Mining         │
 │ ┌────────────────────────────────────────┐  │
 │ │ if config.process_mining.enabled:      │  │
 │ │    mining_results = _mine_processes()  │  │
@@ -236,9 +236,9 @@ discover scan ./test-repo -p test2
 If process mining causes issues:
 
 1. **Disable temporarily**: Set `process_mining.enabled: false`
-2. **Revert code**: Remove Stage 10.5 from pipeline (lines 594-615 in `app/pipeline.py`)
+2. **Revert code**: Remove Phase 13.6 from pipeline (lines 594-615 in `src/ai_discovery/pipeline.py`)
 3. **Keep imports**: Imports can stay (no-op if unused)
-4. **Revert files**: Git checkout `app/pipeline.py` if needed
+4. **Revert files**: Git checkout `src/ai_discovery/pipeline.py` if needed
 
 **Risk**: Low. Mining is optional and non-blocking.
 

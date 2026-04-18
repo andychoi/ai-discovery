@@ -479,7 +479,7 @@ def test_detect_go():
 ### Step 7.3: Run Full Pipeline on Test Corpus
 
 ```bash
-python -m app.pipeline scan \
+discover scan \
     tests/fixtures/go-corpus/prometheus \
     --project-slug go-test \
     --output tests/output \

@@ -45,10 +45,10 @@
 
 ### What Was Built
 
-**Stage 10.5: Process Mining & Conformance Analysis**
+**Phase 13.6: Process Mining & Conformance Analysis**
 
 ```
-Pseudo Event Logs (from Stage 10)
+Pseudo Event Logs (from Phase 13.5)
        ↓
 Discovery (Inductive Miner) → Petri Net model
 Conformance (Token Replay) → fitness, precision, generalization metrics
@@ -56,7 +56,7 @@ Performance Analysis → bottlenecks, edge frequencies, cycle times
 Quality Gates → threshold validation (default: 90% fitness)
 Report Generation → Markdown + JSON artifacts
        ↓
-Mining Results (ready for Stage 12 markdown rendering)
+Mining Results (ready for Phase 15 markdown rendering)
 ```
 
 ### Key Capabilities
@@ -227,9 +227,9 @@ cat docs/PM4PY_INTEGRATION.md
 - [ ] Install PM4Py: `pip install pm4py`
 - [ ] Read: `docs/PM4PY_INTEGRATION.md` (§Integration Steps)
 - [ ] Run examples: `python examples/process_mining_example.py`
-- [ ] Add imports to `app/pipeline.py`
+- [ ] Add imports to `src/ai_discovery/pipeline.py`
 - [ ] Define `_mine_processes()` function
-- [ ] Call in `discover_scan()` after Stage 10
+- [ ] Call in `discover_scan()` after Phase 13.5
 - [ ] Add DB schema (`process_mining_results` table)
 - [ ] Update `doc_generator.py` to include mining reports
 - [ ] Add config to `discovery.yaml`
@@ -306,7 +306,7 @@ cat docs/PM4PY_INTEGRATION.md
 **4. Integrate** (2-3 hours)
    - Read: `docs/PM4PY_INTEGRATION.md`
    - Follow: 5-step integration guide
-   - Wire: Stage 10.5 into pipeline
+   - Wire: Phase 13.6 into pipeline
 
 **5. Test** (1 hour)
    - Run on small repo
@@ -358,7 +358,7 @@ A: Default fitness threshold 90% (configurable). See `docs/PM4PY_INTEGRATION.md`
 
 ## ✨ Key Takeaways
 
-1. **Process Mining is Stage 10.5** — Inserts between BPMN generation (Stage 10) and markdown rendering (Stage 12)
+1. **Process Mining is Phase 13.6** — Inserts between visual artifacts (Phase 13.5) and markdown rendering (Phase 15)
 
 2. **Three Key Metrics**:
    - **Fitness**: Does discovered model match observed logs? (default threshold: 90%)

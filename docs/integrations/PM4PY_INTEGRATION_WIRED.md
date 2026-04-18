@@ -1,6 +1,6 @@
 # PM4Py Integration: WIRED TO PIPELINE ✅
 
-**Status**: Stage 10.5 fully integrated into `app/pipeline.py`  
+**Status**: Phase 13.6 fully integrated into `src/ai_discovery/pipeline.py`  
 **Date**: 2026-04-17  
 **Config**: `discovery.yaml` (process_mining section)
 
@@ -19,31 +19,31 @@ PM4Py process mining is now **optional and configurable**. The pipeline:
 
 ## Integration Points
 
-### 1. **Imports** (`app/pipeline.py`, lines 16-17)
+### 1. **Imports** (`src/ai_discovery/pipeline.py`, lines 16-17)
 ```python
 from .ai.process_miner import mine_scenarios
 from .ai.mining_reporter import MiningReporter
 ```
 
-### 2. **Helper Function** (`app/pipeline.py`, lines 855-894)
+### 2. **Helper Function** (`src/ai_discovery/pipeline.py`, lines 855-894)
 ```python
 def _mine_processes(scenario_flows, output_dir) -> dict:
-    """Stage 10.5: Process mining (optional)."""
+    """Phase 13.6: Process mining (optional)."""
     # Extract pseudo logs
     # Mine scenarios
     # Save reports
     # Return dict[scenario_id] → MiningResult
 ```
 
-### 3. **Pipeline Stage 10.5** (`app/pipeline.py`, lines 594-615)
+### 3. **Pipeline Phase 13.6** (`src/ai_discovery/pipeline.py`, lines 594-615)
 ```python
-# OPTIONAL: Stage 10.5 — Process Mining & Conformance
+# OPTIONAL: Phase 13.6 — Process Mining & Conformance
 mining_results = {}
 mining_enabled = getattr(config, 'process_mining', None)
 if mining_enabled and getattr(mining_enabled, 'enabled', False):
     mining_results = _mine_processes(scenario_flows, output_dir)
 else:
-    console.print("[dim]Stage 10.5: Process mining disabled...[/]")
+    console.print("[dim]Phase 13.6: Process mining disabled...[/]")
 ```
 
 ### 4. **Markdown Rendering** (`app/output/doc_generator.py`, lines 178-260)
@@ -102,14 +102,14 @@ process_mining:
 ## Flow Diagram
 
 ```
-Stage 13.5: Visual artifacts (BPMN, Mermaid, PlantUML, IPO)
+Phase 13.5: Visual artifacts (BPMN, Mermaid, PlantUML, IPO)
        ↓
-Stage 10.5: Process Mining (OPTIONAL)
+Phase 13.6: Process Mining (OPTIONAL)
        ├─ Check: config.process_mining.enabled?
        │  ├─ true  → _mine_processes() → mining_results
        │  └─ false → mining_results = {}
        ↓
-Stage 15: Write Markdown
+Phase 15: Write Markdown
        ├─ write_docs() — rollup documents
        └─ write_scenario_docs(..., mining_results)
             ├─ For each scenario:
@@ -126,7 +126,7 @@ Final markdown files with mining analysis (if enabled)
 
 | File | Changes |
 |------|---------|
-| `app/pipeline.py` | +2 imports, +1 helper function, +1 stage, +1 markdown param |
+| `src/ai_discovery/pipeline.py` | +2 imports, +1 helper function, +1 stage, +1 markdown param |
 | `app/config.py` | +1 dataclass (ProcessMiningConfig), +1 field, +1 YAML load |
 | `app/output/doc_generator.py` | +1 mining_results param, +5 lines to append mining report |
 | `discovery.yaml` | NEW config template (16 lines) |
@@ -149,7 +149,7 @@ process_mining:
 ```bash
 discover scan ./myrepo -p myproject
 # Logs:
-# [bold cyan]Stage 10.5: Process mining & conformance analysis...[/]
+# [bold cyan]Phase 13.6: Process mining & conformance analysis...[/]
 # [dim]⏱  process mining: 2.3s[/]
 # Process mining: [green]5[/] scenarios analysed
 ```
@@ -188,7 +188,7 @@ And embedded in scenario markdown:
 All syntax checks pass:
 
 ```bash
-✅ app/pipeline.py
+✅ src/ai_discovery/pipeline.py
 ✅ app/config.py
 ✅ app/output/doc_generator.py
 ```
@@ -218,7 +218,7 @@ python examples/process_mining_example.py
 To persist mining results to DB (Step 4 in integration guide):
 
 ```python
-# In app/pipeline.py, add after _mine_processes():
+# In src/ai_discovery/pipeline.py, add after _mine_processes():
 _persist_mining_results(mining_results, conn)
 ```
 

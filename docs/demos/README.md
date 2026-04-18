@@ -54,7 +54,7 @@ cat data/todoapp/mining_reports/*.md   # Mining analysis (if enabled)
 ### Skip Process Mining (Faster)
 ```bash
 ./demo.sh --no-mining
-# Skips Stage 10.5 (process mining)
+# Skips Phase 13.6 (process mining)
 # Time: 1.5-2 hours
 # Output: No mining_reports/
 ```

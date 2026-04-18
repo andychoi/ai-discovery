@@ -50,14 +50,14 @@ llm:
 Pipeline checks budget before each tier:
 
 ```python
-# Phase 14: Tier 1 Summarize
+# Phase 11: Tier 1 Summarize
 if total_cost_usd + estimated_tier_1_cost > budget_limit_usd:
     logger.warning(f"Tier 1 would exceed budget: ${total_cost} + ${est} > ${limit}")
     # Options: raise error, skip tier, or reduce concurrency
 else:
     run_tier_1_summarization()
 
-# Phase 15: Tier 2 Analysis
+# Phase 12: Tier 2 Analysis
 if total_cost_usd + estimated_tier_2_cost > budget_limit_usd:
     logger.warning(f"Tier 2 would exceed budget: switching to fallback model")
     tier_2_model = config.tier_2_fallback  # Use Haiku instead of Sonnet
@@ -158,10 +158,10 @@ analyze_top_n_domains: 10
 **Trade-off**: No self-review, or no doc rollup
 
 ```yaml
-# Skip self-review (Phase 17)
+# Skip self-review (Phase 14)
 skip_self_review: true
 
-# Skip Tier 3 doc rollup (Phase 16)
+# Skip Tier 3 doc rollup (Phase 13)
 max_tier: 2  # Only Tier 1 + Tier 2
 ```
 

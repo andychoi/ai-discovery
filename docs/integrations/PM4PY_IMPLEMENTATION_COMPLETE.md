@@ -7,20 +7,20 @@ Status: ✅ **READY FOR INTEGRATION**
 
 ## Executive Summary
 
-A complete, production-ready PM4Py integration for AI-Discovery has been implemented. This adds **Stage 10.5: Process Mining & Conformance Analysis** to the reverse-engineering pipeline.
+A complete, production-ready PM4Py integration for AI-Discovery has been implemented. This adds **Phase 13.6: Process Mining & Conformance Analysis** to the reverse-engineering pipeline.
 
 ### What You Get
 
 ```
-Pseudo Event Logs (from Stage 10)
+Pseudo Event Logs (from Phase 13.5)
          ↓
-[Stage 10.5: Process Mining]
+[Phase 13.6: Process Mining]
   ├─ Discover: Inductive Miner → Petri Net model
   ├─ Conform: Token Replay → fitness (0-1), precision (0-1), generalization (0-1)
   ├─ Analyze: Bottlenecks, edge frequencies, cycle time
   └─ Report: Markdown + JSON artifacts
          ↓
-Mining Results + Reports (ready for Stage 12 rendering)
+Mining Results + Reports (ready for Phase 15 rendering)
 ```
 
 ### Key Capabilities
@@ -142,7 +142,7 @@ python examples/process_mining_example.py
 ```
                     Pseudo Event Logs (JSON)
                             ↓
-                    Stage 10.5: Process Mining
+                    Phase 13.6: Process Mining
                             ↓
         ┌───────────────────┼───────────────────┐
         ↓                   ↓                   ↓
@@ -169,14 +169,14 @@ python examples/process_mining_example.py
 
 ## How to Integrate (TL;DR)
 
-### Step 1: Add to `app/pipeline.py`
+### Step 1: Add to `src/ai_discovery/pipeline.py`
 
 ```python
 from app.ai.process_miner import mine_scenarios
 from app.ai.mining_reporter import MiningReporter
 ```
 
-### Step 2: Define Stage 10.5 function
+### Step 2: Define Phase 13.6 function
 
 ```python
 def _mine_processes(scenarios, scenario_flows, output_dir):
@@ -197,7 +197,7 @@ def discover_scan(...):
     # ... Stage 10: BPMN ...
     scenario_flows = _generate_bpmn_artifacts(...)
     
-    # NEW: Stage 10.5
+    # NEW: Phase 13.6
     mining_results = _mine_processes(scenarios, scenario_flows, output_dir)
     
     # ... Stage 12: Rendering (include mining_results) ...
@@ -374,7 +374,7 @@ process_mining:
 ```
 
 **If threshold fails**:
-- Stage 10.5 continues (non-blocking)
+- Phase 13.6 continues (non-blocking)
 - `fitness_passed = false` in DB
 - ⚠️ FAIL badge in markdown report
 - Recommendations included for manual review
@@ -524,7 +524,7 @@ You now have a **production-ready, well-documented PM4Py integration** that:
 ✅ Provides working examples  
 ✅ Requires minimal effort to wire into the main pipeline  
 
-**Next action**: Follow `docs/PM4PY_INTEGRATION.md` to integrate Stage 10.5 into your pipeline.
+**Next action**: Follow `docs/PM4PY_INTEGRATION.md` to integrate Phase 13.6 into your pipeline.
 
 Questions? See the FAQs in `PM4PY_INTEGRATION.md` or run the examples.
 
