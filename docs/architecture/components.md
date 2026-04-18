@@ -3,8 +3,8 @@
 ## Module Breakdown
 
 ```
-app/
-├── pipeline.py          ← Orchestrator (phases 1–13)
+src/ai_discovery/
+├── pipeline.py          ← Orchestrator (phases 5–16)
 ├── cli.py               ← CLI: discover scan | ingest | chat | query
 ├── config.py            ← YAML config + provider model routing
 ├── db.py                ← SQLite schema, connection helpers
@@ -99,7 +99,7 @@ app/
 
 ### Configuration & Execution
 - **`pipeline.py`** — Orchestrator
-  - Coordinates phases 1–13
+  - Coordinates checkpoint phases 5–16 (plus pre-pipeline setup phases 1–4)
   - Manages database, LLM budget, resume logic
   - **Entry point**: Main execution engine
 
@@ -164,7 +164,7 @@ class ScenarioFlow:
 ## Hard Problem Areas
 
 ### 1. Call Graph Resolution (Area A)
-**File**: `app/graph/call_graph.py`
+**File**: `src/ai_discovery/graph/call_graph.py`
 
 **Why it's hard**:
 - Function names are context-dependent (same name, different modules)
@@ -177,7 +177,7 @@ class ScenarioFlow:
 - **See**: `docs/guides/call-graph/resolution-heuristics.md`
 
 ### 2. Language Parser Extension (Area D)
-**File**: `app/parsers/*.py`
+**File**: `src/ai_discovery/parsers/*.py`
 
 **Why it's hard**:
 - Each language has different AST structure, naming conventions, call semantics
@@ -185,7 +185,7 @@ class ScenarioFlow:
 - Hard to test: need real codebases in target language
 
 **Approach**:
-- Templated parser interface in `parsers/base.py`
+- Templated parser interface in `src/ai_discovery/parsers/base.py`
 - Language-specific heuristics for name resolution
 - Test corpus collection + validation checklist
 - **See**: `docs/guides/parsers/extension-checklist.md`

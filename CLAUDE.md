@@ -122,11 +122,11 @@ Three custom skills accelerate development in the hard problem areas:
 
 ### Task: "The pipeline is slow. Where should I optimize?"
 
-1. Run with profiling: `python -m app.pipeline scan repo --profile`
+1. Run with profiling: `discover scan repo --project-slug myproj --profile`
 2. Identify bottleneck phase (parsing? Tier 1? Tier 3?)
 3. Check `/pipeline-analyze` for optimization strategies
 4. Measure cost/benefit trade-offs
-5. Update config.yaml and re-profile
+5. Update discovery.yaml and re-profile
 
 **Reference**: `docs/guides/pipeline/profiling.md`
 
@@ -188,7 +188,7 @@ Three custom skills accelerate development in the hard problem areas:
 ai-discovery/
 ├── CLAUDE.md ← You are here
 ├── README.md
-├── app/
+├── src/ai_discovery/
 │   ├── graph/call_graph.py (Area A: call resolution)
 │   ├── parsers/ (Area D: language-specific parsing)
 │   └── ...

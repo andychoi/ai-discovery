@@ -2,14 +2,14 @@
 
 ## Phase 1: Core Implementation (COMPLETE)
 
-- [x] `app/ai/process_miner.py` (440 lines)
+- [x] `src/ai_discovery/ai/process_miner.py` (440 lines)
   - [x] `PseudoLogConverter` class
   - [x] `ProcessMiner` class with discovery, conformance, performance
   - [x] `MiningResult`, `ConformanceMetrics`, `BottleneckInfo`, `EdgeFrequency` dataclasses
   - [x] `mine_scenarios()` batch function
   - [x] Handle PM4Py API quirks (ProcessTree, log-based metrics)
 
-- [x] `app/ai/mining_reporter.py` (340 lines)
+- [x] `src/ai_discovery/ai/mining_reporter.py` (340 lines)
   - [x] `MiningReporter` for markdown generation
   - [x] `MiningReporter` for JSON generation
   - [x] `save_reports()` to disk
@@ -50,21 +50,21 @@
 
 ## Phase 3: Pipeline Wiring (COMPLETE)
 
-- [x] `app/pipeline.py` modifications
+- [x] `src/ai_discovery/pipeline.py` modifications
   - [x] Add imports (lines 16-17)
   - [x] Add `_mine_processes()` helper (lines 855-894)
-  - [x] Add Stage 10.5 stage in pipeline (lines 594-615)
+  - [x] Add Phase 13.6 stage in pipeline (lines 594-615)
   - [x] Conditional execution (check `config.process_mining.enabled`)
   - [x] Pass `mining_results` to markdown writer
   - [x] Graceful error handling (non-blocking)
 
-- [x] `app/config.py` modifications
+- [x] `src/ai_discovery/config.py` modifications
   - [x] Add `ProcessMiningConfig` dataclass
   - [x] Add `process_mining` field to `DiscoveryConfig`
   - [x] Add config loading in `DiscoveryConfig.load()`
   - [x] Defaults: `enabled=false` (opt-in)
 
-- [x] `app/output/doc_generator.py` modifications
+- [x] `src/ai_discovery/output/doc_generator.py` modifications
   - [x] Add `mining_results` parameter to `write_scenario_docs()`
   - [x] Include mining reports in scenario markdown
   - [x] Handle missing mining results gracefully
@@ -77,9 +77,9 @@
   - [x] Default values (disabled, inductive miner, thresholds)
 
 - [x] Syntax validation
-  - [x] ✅ `app/pipeline.py` compiles
-  - [x] ✅ `app/config.py` compiles
-  - [x] ✅ `app/output/doc_generator.py` compiles
+  - [x] ✅ `src/ai_discovery/pipeline.py` compiles
+  - [x] ✅ `src/ai_discovery/config.py` compiles
+  - [x] ✅ `src/ai_discovery/output/doc_generator.py` compiles
 
 - [x] Example validation
   - [x] ✅ All 5 examples execute successfully
@@ -134,7 +134,7 @@ discover scan ./myrepo -p myproject
                │
                ↓
 ┌──────────────────────────────────────────────┐
-│ Pipeline Stage 10.5: Process Mining         │
+│ Pipeline Phase 13.6: Process Mining         │
 │ ┌────────────────────────────────────────┐  │
 │ │ if config.process_mining.enabled:      │  │
 │ │    mining_results = _mine_processes()  │  │
@@ -195,7 +195,7 @@ discover scan ./myrepo -p myproject
 
 ### 1. **Unit Test**: Single Scenario
 ```python
-from app.ai.process_miner import ProcessMiner
+from ai_discovery.ai.process_miner import ProcessMiner
 
 pseudo_log = {"case_id": "test", "events": [...]}
 miner = ProcessMiner("test", "Test", "Test")
@@ -236,9 +236,9 @@ discover scan ./test-repo -p test2
 If process mining causes issues:
 
 1. **Disable temporarily**: Set `process_mining.enabled: false`
-2. **Revert code**: Remove Stage 10.5 from pipeline (lines 594-615 in `app/pipeline.py`)
+2. **Revert code**: Remove Phase 13.6 from pipeline (lines 594-615 in `src/ai_discovery/pipeline.py`)
 3. **Keep imports**: Imports can stay (no-op if unused)
-4. **Revert files**: Git checkout `app/pipeline.py` if needed
+4. **Revert files**: Git checkout `src/ai_discovery/pipeline.py` if needed
 
 **Risk**: Low. Mining is optional and non-blocking.
 

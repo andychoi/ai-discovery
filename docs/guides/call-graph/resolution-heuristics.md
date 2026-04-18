@@ -354,7 +354,7 @@ result = handler.send(message)  # ← Which handler?
 
 ## Tuning Confidence Thresholds
 
-In `config.yaml`:
+In `discovery.yaml`:
 
 ```yaml
 # Confidence thresholds for different uses

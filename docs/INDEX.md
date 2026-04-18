@@ -44,7 +44,7 @@ Practical guides for working on specific areas:
 ### Pipeline & Performance
 *"The pipeline is slow. Where's the bottleneck? How do I optimize?"*
 
-- **`guides/pipeline/phase-breakdown.md`** — Details of all 13 phases, cost per phase, typical timing
+- **`guides/pipeline/phase-breakdown.md`** — Details of all pipeline phases (pre-pipeline 1–4, checkpoint phases 5–16), cost per phase, typical timing
 - **`guides/pipeline/cost-tracking.md`** — Budget configuration, cost monitoring, optimization strategies (reduce tier 2/3, skip phases, batch chunks)
 - **`guides/pipeline/profiling.md`** — Identifying bottlenecks, experiments, benchmarks for small/medium/large codebases
 
@@ -103,7 +103,7 @@ Demo applications and example usage:
 |---|---|---|
 | **A: Call Graph Resolution** | `guides/call-graph/*` | `architecture/decisions.md` (7-level scoring) |
 | **D: Language Parsers** | `guides/parsers/*` | `architecture/components.md` (hard problems) |
-| **Pipeline Performance** | `guides/pipeline/*` | `architecture/overview.md` (phases 1–19) |
+| **Pipeline Performance** | `guides/pipeline/*` | `architecture/overview.md` (phases 5–16) |
 
 ### By Development Phase
 
@@ -181,8 +181,8 @@ Confidence combines multiple signals: depth (how far from entry point?), state t
 
 ---
 
-### 13-Phase Pipeline
-From code to docs: resolve repo → parse → classify domains → build call graph → execution slices → chunk & embed → Tier 1/2/3 LLM → render markdown.
+### Pipeline (Logical View)
+From code to docs: resolve repo → parse → classify domains → build call graph → execution slices → chunk & embed → Tier 1/2/3 LLM → self-review → render markdown → ingest. CLI checkpoint phases are numbered 5–16 (plus sub-phases 8.5, 12.5, 13.5, 13.6); see `guides/pipeline/phase-breakdown.md` for the full mapping.
 
 **Reference**: `guides/pipeline/phase-breakdown.md`
 

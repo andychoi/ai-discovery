@@ -1,10 +1,10 @@
 # Pipeline Phases: Detailed Breakdown
 
-Reference guide for the 13 phases of the AI-Discovery pipeline.
+Reference guide for all AI-Discovery pipeline phases: pre-pipeline setup (phases 1–4) and checkpoint phases (5–16, including optional sub-phases 8.5, 12.5, 13.5, 13.6).
 
 ---
 
-## Phases 1–5: Repository Resolution & Parsing
+## Pre-Pipeline Setup Phases (Not Checkpointed)
 
 ### Phase 1: Database Initialization
 **Input**: `db_path`  
@@ -29,7 +29,7 @@ Fallback: if target branch unavailable, tries main/master.
 
 If `--resume` flag: loads previous scan state, skips already-parsed files.  
 If `--rescan` flag: deletes previous scan, starts fresh.  
-If same commit SHA: skips phases 4–7 (parsing), resumes at phase 8 (chunking).
+If same commit SHA: skips phases 5–7 (parsing), resumes at phase 9 (chunk).
 
 ### Phase 4: Create Scan Run
 **Input**: Scan metadata (repo, branch, config)  
@@ -37,6 +37,10 @@ If same commit SHA: skips phases 4–7 (parsing), resumes at phase 8 (chunking).
 **Time**: < 1s
 
 Creates entry in `scan_runs` table. Records start time, status, config. Later updated with completion time and cost.
+
+---
+
+## Checkpoint Phases (5–16)
 
 ### Phase 5: Language Detection
 **Input**: Repository files  
@@ -47,7 +51,7 @@ Scans file extensions and manifest files (package.json, pom.xml, requirements.tx
 
 ---
 
-## Phases 6–9: Code Parsing & Graph Building
+## Phases 6–7: Code Parsing & Domain Classification
 
 ### Phase 6: Parse Files
 **Input**: Source files per language  
@@ -78,17 +82,12 @@ Creates domain metadata (entry points, tech stack).
 ### Phase 8: Persist Nodes
 **Input**: `CodeNode[]`, `Domain[]`  
 **Output**: Rows in `code_nodes` and `domains` tables  
-**Time**: 1–10s
+**Time**: 1–10s  
+**Note**: Internal step; not tracked as a checkpoint phase.
 
 Writes to SQLite. Handles duplicates (same node parsed multiple times). Sets resume checkpoints.
 
-### Phase 9: Build Call Graph
-**Input**: `CodeNode[]` (all parsed nodes with call references)  
-**Output**: `CallEdge[]` (resolved calls with confidence scores)  
-**Time**: 10–60s (depends on codebase size and complexity)
-
-Multi-strategy call resolution (7-level confidence scoring).  
-For each unresolved call reference:
+Call graph building (multi-strategy 7-level confidence scoring) is integrated into the parse/chunk phases. For each unresolved call reference:
 1. Try exact match (confidence 1.0)
 2. Try class owner prefix (0.95)
 3. Try file local (0.90)
@@ -97,13 +96,11 @@ For each unresolved call reference:
 6. Try prefix overlap (0.65–0.75)
 7. Mark unresolved (0.50)
 
-Stores edges in `call_edges` table.
-
 ---
 
-## Phases 10–12: Execution Slicing & Distribution
+## Phases 8.5–10: Execution Slicing & Embedding
 
-### Phase 10: Build Execution Slices
+### Phase 8.5: Build Execution Slices (Optional)
 **Input**: `CodeNode[]`, `CallEdge[]`, entry points  
 **Output**: `Scenario[]` (execution scenarios from each entry point)  
 **Time**: 5–20s
@@ -115,36 +112,21 @@ Bounded BFS traversal (depth ≤ 5) from each entry point:
 
 Stores scenarios in `scenario_flows` table.
 
-### Phase 11: Distribute Edges
-**Input**: `CallEdge[]`, `Domain[]`  
-**Output**: `domain.internal_edges`, `domain.external_edges`  
-**Time**: < 1s
-
-Categorizes call edges as:
-- Internal: both caller and callee in same domain
-- External: caller and callee in different domains
-
-Used by Tier 2 analysis to understand domain boundaries.
-
-### Phase 12: Persist Domains & Edges
-**Input**: `domain.internal_edges`, `domain.external_edges`  
-**Output**: Updated `domains` table  
-**Time**: 1–5s
-
-Writes domain metadata (internal/external edge counts, cross-domain dependencies).
-
----
-
-## Phases 13–15: Chunking & Embedding
-
-### Phase 13: Chunk & Embed
+### Phase 9: Chunk
 **Input**: `CodeNode[]` (all parsed nodes)  
-**Output**: `CodeChunk[]` + vectors in sqlite-vec  
-**Time**: 30–120s (depends on codebase size and embedding model)
+**Output**: `CodeChunk[]`  
+**Time**: 5–30s (depends on codebase size)
 
 Method-level splits with RAG overlap:
 - Each method → one chunk
 - Surrounding context (class definition, imports) → prepended
+
+Resume-aware: skips already-chunked nodes.
+
+### Phase 10: RAG Embed
+**Input**: `CodeChunk[]`  
+**Output**: Vectors in sqlite-vec  
+**Time**: 20–90s (depends on codebase size and embedding model)
 
 Embeds chunks using embedding model (typically Ada or similar).  
 Stores vectors in sqlite-vec for later semantic search.
@@ -153,9 +135,9 @@ Resume-aware: skips already-embedded chunks.
 
 ---
 
-## Phases 14–16: LLM Pipeline (Tiered)
+## Phases 11–13: LLM Pipeline (Tiered)
 
-### Phase 14: Tier 1 Summarize
+### Phase 11: Tier 1 Summarize
 **Input**: `CodeChunk[]`  
 **Output**: `node_summaries` (purpose, business_rules, io_summary)  
 **Time**: 2–10 min (Haiku model, high concurrency)
@@ -172,7 +154,7 @@ Output:
 Uses Claude Haiku (fast) or Ollama gemma4:e2b (local).  
 Stores in `node_summaries` table.
 
-### Phase 15: Tier 2 Flow Analysis
+### Phase 12: Tier 2 Flow Analysis
 **Input**: `domain[]` + `node_summaries`  
 **Output**: `business_flows`, `scenario_flows` (execution flows per scenario)  
 **Time**: 5–30 min (Sonnet model, per-domain)
@@ -184,7 +166,7 @@ Per-domain analysis:
 Uses Claude Sonnet or Ollama gemma4:26b.  
 Stores in `business_flows` and `scenario_flows` tables.
 
-### Phase 16: Tier 3 Doc Rollup
+### Phase 13: Tier 3 Doc Rollup
 **Input**: `domain[]` + `business_flows` + `scenario_flows`  
 **Output**: `generated_docs` (markdown content, BPMN, diagrams)  
 **Time**: 10–60 min (Opus model, per-domain×doc_type)
@@ -195,14 +177,14 @@ Final document generation per domain×doc_type:
 - as-is-schema.md (data models)
 - process-flow.md (BPMN + IPO)
 
-Uses Claude Opus or Ollama gemma4:31b.  
+Uses Claude Opus (Bedrock), or Ollama gemma4:26b (dev) / gemma4:31b (prod, `--prod` flag).  
 Stores in `generated_docs` table.
 
 ---
 
-## Phases 17–19: Verification & Output
+## Phases 14–16: Verification & Output
 
-### Phase 17: Self-Review
+### Phase 14: Self-Review
 **Input**: `generated_docs`  
 **Output**: `review_claims` (verified/unverified/contradicted)  
 **Time**: 5–20 min
@@ -215,7 +197,7 @@ Claim extraction + RAG verification:
 Stores findings in `review_claims` table.  
 High unverified rate (>20%) triggers human review flag.
 
-### Phase 18: Render Markdown
+### Phase 15: Render Markdown
 **Input**: `generated_docs` + artifacts (BPMN, Mermaid, IPO tables)  
 **Output**: `.md` files on disk  
 **Time**: 1–5s
@@ -235,7 +217,7 @@ data/{slug}/
     └── scenario_create_order_1.json
 ```
 
-### Phase 19: Finalize
+### Phase 16: Finalize
 **Input**: Scan metadata  
 **Output**: Updated `scan_runs` row  
 **Time**: < 1s
@@ -250,14 +232,14 @@ Records end time.
 
 | Phase | Typical Duration | Cost | Bottleneck |
 |-------|---|---|---|
-| 1–5 (Parse) | 10–100s | ~$0 | Cloning large repos |
-| 6–12 (Graph) | 30–300s | ~$0 | Call resolution complexity |
-| 13 (Embed) | 30–120s | ~$0.05 | Embedding API quota |
-| 14 (Tier 1) | 2–10 min | ~$0.50 | High volume; LLM concurrency limit |
-| 15 (Tier 2) | 5–30 min | ~$2–5 | Reasoning; per-domain |
-| 16 (Tier 3) | 10–60 min | ~$5–10 | Deep reasoning; per-doc-type |
-| 17 (Review) | 5–20 min | ~$1–2 | Verification prompts |
-| 18–19 (Output) | 1–5s | ~$0 | Template rendering |
+| 1–4 (Pre-pipeline) | 10–100s | ~$0 | Cloning large repos |
+| 5–8 (Parse & Graph) | 30–300s | ~$0 | Call resolution complexity |
+| 9–10 (Chunk & Embed) | 30–120s | ~$0.05 | Embedding API quota |
+| 11 (Tier 1) | 2–10 min | ~$0.50 | High volume; LLM concurrency limit |
+| 12 (Tier 2) | 5–30 min | ~$2–5 | Reasoning; per-domain |
+| 13 (Tier 3) | 10–60 min | ~$5–10 | Deep reasoning; per-doc-type |
+| 14 (Review) | 5–20 min | ~$1–2 | Verification prompts |
+| 15–16 (Output) | 1–5s | ~$0 | Template rendering |
 
 **Total typical cost**: $10–25 per medium codebase (5K–50K LOC).
 
@@ -266,13 +248,13 @@ Records end time.
 ## Tuning Phases
 
 ### Speed Tuning
-- Increase `max_concurrent_tier_1`: faster Tier 1, but higher LLM quota usage
+- Increase `max_concurrent` in discovery.yaml: faster Tier 1, but higher LLM quota usage
 - Reduce `execution_slice_depth`: shallower scenarios, less detail
 - Skip Tier 3: only generate Tier 1–2 docs (faster, less detailed)
 
 ### Cost Tuning
 - Use Haiku for Tier 2 (cheaper, less detailed)
-- Skip self-review (Phase 17)
+- Skip self-review (Phase 14)
 - Limit domains analyzed (analyze only top-N by LOC)
 
 ### Quality Tuning

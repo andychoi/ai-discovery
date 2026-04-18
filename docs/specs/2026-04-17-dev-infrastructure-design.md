@@ -32,7 +32,7 @@ This spec designs a modular development infrastructure for AI-Discovery, a compl
 docs/
 ├── architecture/                    ← System design & decisions
 │   ├── overview.md                 (high-level purpose, L1–L7 framework)
-│   ├── pipeline.md                 (13 phases, data flow)
+│   ├── pipeline.md                 (pipeline phases, data flow)
 │   ├── components.md               (module breakdown, responsibilities)
 │   └── decisions.md                (why: heuristics, trade-offs, constraints)
 │
@@ -48,7 +48,7 @@ docs/
 │   │   └── language-patterns.md        (Python vs Java vs C# AST differences)
 │   │
 │   └── pipeline/
-│       ├── phase-breakdown.md          (details of each 13 phases)
+│       ├── phase-breakdown.md          (details of pipeline phases (5–16))
 │       ├── cost-tracking.md            (LLM budget, tier routing, tracking)
 │       └── profiling.md                (bottleneck ID, metrics, optimization)
 │
@@ -92,7 +92,7 @@ docs/
 
 ## Part 2: Project-Level CLAUDE.md
 
-File: `/Users/andymini/ai/ai-discovery/CLAUDE.md`
+File: `CLAUDE.md` (project root)
 
 **Purpose**: Quick reference for this project's structure, skills, and development workflows.
 
@@ -126,7 +126,7 @@ File: `/Users/andymini/ai/ai-discovery/CLAUDE.md`
 7. **Documentation** — Record language-specific patterns in `docs/guides/parsers/language-patterns.md`
 
 **Output**: 
-- Runnable parser module (e.g., `app/parsers/go.py`)
+- Runnable parser module (e.g., `src/ai_discovery/parsers/go_parser.py`)
 - Test harness with corpus
 - Documentation of language-specific heuristics
 
@@ -182,7 +182,7 @@ File: `/Users/andymini/ai/ai-discovery/CLAUDE.md`
 
 ## Part 4: Global CLAUDE.md Updates
 
-File: `~/.claude/CLAUDE.md`
+File: `~/.claude/CLAUDE.md` (global)
 
 **Addition** (after existing content):
 
@@ -290,7 +290,7 @@ After implementation, this project should have:
 | `docs/guides/parsers/architecture.md` | Create | Tree-sitter setup, AST mapping, name resolution |
 | `docs/guides/parsers/extension-checklist.md` | Create | Templated workflow for new language |
 | `docs/guides/parsers/language-patterns.md` | Create | Python vs Java vs C# AST differences |
-| `docs/guides/pipeline/phase-breakdown.md` | Create | Details of 13 phases |
+| `docs/guides/pipeline/phase-breakdown.md` | Create | Details of pipeline phases (5–16) |
 | `docs/guides/pipeline/cost-tracking.md` | Create | LLM budget, tier routing, cost analysis |
 | `docs/guides/pipeline/profiling.md` | Create | Bottleneck identification, metrics |
 | `docs/INDEX.md` | Create | Entry point, navigation guide |
@@ -310,7 +310,7 @@ After implementation, this project should have:
 User: I want to add Go support
 → /parser-extension
 → Skill guides through: grammar check → AST mapping → name resolution → test corpus → validation → integration
-→ Output: app/parsers/go.py + test harness + language patterns documented
+→ Output: src/ai_discovery/parsers/go_parser.py + test harness + language patterns documented
 ```
 
 ### Using `/call-graph-debug`
