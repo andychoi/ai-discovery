@@ -8,32 +8,30 @@ Guide for identifying bottlenecks and optimizing pipeline performance.
 
 ```bash
 # Run pipeline with profiling enabled
-python -m app.pipeline scan \
+discover scan \
     /path/to/repo \
     --project-slug myproj \
     --profile \
     --verbose
 
 # Output:
-# Phase 1 (DB init): 0.5s
-# Phase 2 (Resolve repo): 25.3s
-# Phase 3 (Resume check): 0.1s
-# Phase 4 (Scan run): 0.2s
-# Phase 5 (Language detect): 2.1s
-# Phase 6 (Parse files): 45.2s
-# Phase 7 (Classify domains): 1.8s
-# Phase 8 (Persist nodes): 3.2s
-# Phase 9 (Build call graph): 28.5s
-# Phase 10 (Execution slices): 8.3s
-# Phase 11 (Distribute edges): 0.3s
-# Phase 12 (Persist domains): 0.8s
-# Phase 13 (Chunk & embed): 65.4s
-# Phase 14 (Tier 1 summarize): 240s
-# Phase 15 (Tier 2 flow): 180s
-# Phase 16 (Tier 3 doc rollup): 360s
-# Phase 17 (Self-review): 90s
-# Phase 18 (Render markdown): 2.1s
-# Phase 19 (Finalize): 0.1s
+# Pre-pipeline (not checkpointed):
+# DB init: 0.5s
+# Resolve repo: 25.3s
+# Resume check: 0.1s
+# Create scan run: 0.2s
+# Phase 5 (lang_detect): 2.1s
+# Phase 6 (parse): 45.2s
+# Phase 7 (domain_classify): 1.8s
+# Phase 8.5 (execution_slices): 8.3s
+# Phase 9 (chunk): 25.4s
+# Phase 10 (rag_embed): 40.0s
+# Phase 11 (tier1_summarize): 240s
+# Phase 12 (tier2_flow_analysis): 180s
+# Phase 13 (tier3_doc_rollup): 360s
+# Phase 14 (self_review): 90s
+# Phase 15 (render_markdown): 2.1s
+# Phase 16 (finalise): 0.1s
 # =====================================
 # Total: ~1060s = 17.7 minutes
 ```
@@ -64,9 +62,9 @@ config.yaml:
 
 **Cost**: Accuracy may drop slightly (fewer files analyzed).
 
-### 2. Call Graph Resolution (Phase 9)
+### 2. Call Graph Resolution (Phase 6 + Parse)
 
-If **Phase 9 (Call Graph)** > 15% of total time → Likely bottleneck.
+If **Phase 6 (Parse + Call Graph)** > 15% of total time → Likely bottleneck.
 
 **Symptoms**:
 - Many unresolved calls
@@ -85,9 +83,9 @@ config.yaml:
 
 **Cost**: More low-confidence calls (lower quality flows).
 
-### 3. Embedding Phase (Phase 13)
+### 3. Embedding Phase (Phase 10)
 
-If **Phase 13 (Chunk & Embed)** > 20% of total time → Likely bottleneck.
+If **Phase 10 (rag_embed)** > 20% of total time → Likely bottleneck.
 
 **Symptoms**:
 - Large codebase (10K+ functions)
@@ -316,11 +314,11 @@ Phases:
 
 ```bash
 # Baseline
-python -m app.pipeline scan repo --profile
+discover scan repo --profile
 # Tier 1: 240s
 
 # With increased concurrency
-python -m app.pipeline scan repo --profile --max_concurrent_tier_1=20
+discover scan repo --profile --max_concurrent_tier_1=20
 # Tier 1: 120s
 
 # Result: 50% speedup
@@ -332,11 +330,11 @@ python -m app.pipeline scan repo --profile --max_concurrent_tier_1=20
 
 ```bash
 # Baseline (all edges)
-python -m app.pipeline scan repo --profile
+discover scan repo --profile
 # Tier 2: 180s, num_edges: 1200
 
 # With confidence threshold
-python -m app.pipeline scan repo --profile --min_confidence=0.7
+discover scan repo --profile --min_confidence=0.7
 # Tier 2: 90s, num_edges: 600
 
 # Result: 50% speedup, but some flows missing
