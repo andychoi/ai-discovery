@@ -8,7 +8,7 @@ This guide walks you through debugging why a call resolution succeeded, failed, 
 
 ### Step 1: Identify the Suspect Call
 ```
-File: app/parsers/python_parser.py
+File: src/ai_discovery/parsers/python_parser.py
 Line: 245
 Call: validate_order(order_data)
 Current confidence: 0.65
@@ -16,8 +16,8 @@ Current confidence: 0.65
 
 ### Step 2: Run Debugging Tool
 ```bash
-python -m app.debug.call_tracer \
-  --file app/parsers/python_parser.py \
+python -m ai_discovery.debug.call_tracer \
+  --file src/ai_discovery/parsers/python_parser.py \
   --line 245 \
   --function validate_order
 ```
@@ -281,8 +281,8 @@ OrderService.create_order()
 
 ### Command-Line Tracer
 ```bash
-python -m app.debug.call_tracer \
-  --file app/parsers/python_parser.py \
+python -m ai_discovery.debug.call_tracer \
+  --file src/ai_discovery/parsers/python_parser.py \
   --line 245 \
   --function validate_order \
   --show-signals \
@@ -291,17 +291,16 @@ python -m app.debug.call_tracer \
 
 ### Interactive REPL
 ```python
-from app.graph.call_graph import CallGraphDebugger
+from ai_discovery.graph.call_graph import build_call_graph
 
-debugger = CallGraphDebugger(code_graph)
-call_info = debugger.trace_call(file_path="orders/order_service.py", line=42)
-debugger.print_candidates(call_info)
-debugger.validate_candidate(call_info.candidates[0], source_code)
+# Build call graph from parsed nodes, then inspect edges
+edges = build_call_graph(code_nodes)
+low_conf = [e for e in edges if e.confidence < 0.8]
 ```
 
 ### Batch Validation
 ```bash
-python -m app.debug.validate_calls \
+python -m ai_discovery.debug.validate_calls \
   --db data/discovery.db \
   --min-confidence 0.5 \
   --max-confidence 0.8 \
@@ -337,7 +336,7 @@ python -m app.debug.validate_calls \
 
 **Fixes**:
 - Mark as `EXTERNAL_API` or `UNRESOLVED` (accept 0.5)
-- Add manual annotations in config.yaml
+- Add manual annotations in discovery.yaml
 - Extend parser to handle language idioms
 
 ### Issue 3: Wrong Resolutions (Incorrect Candidates)

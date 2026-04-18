@@ -28,21 +28,20 @@ Guide for controlling LLM costs and understanding the cost breakdown.
 ### Set Budget Limits
 
 ```yaml
-# config.yaml
+# discovery.yaml
 
-llm:
-  budgets:
-    tier_1_usd: 100.00      # No limit (per-scan)
-    tier_2_usd: 50.00       # Per scan
-    tier_3_usd: 30.00       # Per scan
-    
-  # Cost optimization
-  max_concurrent_tier_1: 10  # Parallel summarization
-  max_chunks_per_summary: 5  # Group small chunks
-  
-  # Fallback strategy if budget exceeded
-  tier_2_fallback: haiku     # Use cheaper model
-  tier_3_fallback: sonnet    # Use cheaper model
+budget_limit_usd: 50.00    # Total per-scan budget across all tiers
+max_concurrent: 10          # Parallel summarization (Tier 1 concurrency)
+
+# Provider selection
+provider: bedrock  # bedrock | ollama | mlx-gemma | mlx-qwen
+
+# Bedrock model selection (all tiers from the same provider section)
+bedrock:
+  tier1: us.anthropic.claude-haiku-4-5-20251001-v1:0
+  tier2: us.anthropic.claude-sonnet-4-6
+  tier3d: us.anthropic.claude-opus-4-6   # dev mode (discover scan without --prod)
+  tier3p: us.anthropic.claude-opus-4-6   # prod mode (discover scan --prod)
 ```
 
 ### Cost Guards
@@ -128,13 +127,15 @@ sqlite3 data/discovery.db "
 **Trade-off**: Lower cost, potentially lower quality
 
 ```yaml
-# Before:
-tier_2_model: sonnet  # $3.00 / 1M input tokens
-tier_3_model: opus    # $15.00 / 1M input tokens
+# Before (discovery.yaml):
+bedrock:
+  tier2: us.anthropic.claude-sonnet-4-6          # $3.00 / 1M input tokens
+  tier3d: us.anthropic.claude-opus-4-6           # $15.00 / 1M input tokens
 
 # After:
-tier_2_model: haiku   # $0.80 / 1M input tokens
-tier_3_model: sonnet  # $3.00 / 1M input tokens
+bedrock:
+  tier2: us.anthropic.claude-haiku-4-5-20251001-v1:0   # $0.80 / 1M input tokens
+  tier3d: us.anthropic.claude-sonnet-4-6               # $3.00 / 1M input tokens
 ```
 
 **Cost impact**: 60–70% reduction, but summaries may be less detailed.
@@ -186,15 +187,16 @@ max_chunks_per_summary: 5
 **Trade-off**: Lower API costs, but slower (offline)
 
 ```yaml
-# Before:
-llm_provider: bedrock   # AWS API
-tier_1_model: haiku
-tier_2_model: sonnet
+# Before (discovery.yaml):
+provider: bedrock   # AWS API
 
 # After:
-llm_provider: ollama    # Local Ollama instance
-tier_1_model: gemma4:e2b    # 2B parameters
-tier_2_model: gemma4:26b    # 26B parameters
+provider: ollama    # Local Ollama instance
+ollama:
+  tier1: gemma4:e2b    # 2B parameters
+  tier2: gemma4:26b    # 26B parameters
+  tier3d: gemma4:26b
+  tier3p: gemma4:31b
 ```
 
 **Cost impact**: $0 API cost (just compute cost).
@@ -267,7 +269,7 @@ print(f"Estimated cost: ${costs['total']:.2f}")
 ### Email Alert on Budget Exceeded
 
 ```python
-# app/config.py
+# src/ai_discovery/config.py
 
 if total_cost_usd > budget_limit_usd:
     send_alert_email(
@@ -290,7 +292,7 @@ if total_cost_usd > budget_limit_usd:
 ### Slack Notification
 
 ```python
-# app/config.py
+# src/ai_discovery/config.py
 
 if total_cost_usd > budget_limit_usd * 0.8:  # 80% of budget
     slack_notify(

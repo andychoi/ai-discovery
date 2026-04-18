@@ -91,7 +91,7 @@ tree-sitter parse tests/fixtures/go-corpus/prometheus/main.go
 Create a mapping of language AST types to AI-Discovery `CodeNode` types:
 
 ```python
-# app/parsers/go_parser.py
+# src/ai_discovery/parsers/go_parser.py
 
 # AST Type Mapping for Go
 AST_TYPE_TO_NODE_TYPE = {
@@ -338,7 +338,7 @@ def extract_framework_hints(self, source_code: str):
 ### Step 6.1: Unit Tests
 
 ```python
-# app/parsers/tests/test_go_parser.py
+# tests/test_go_parser.py
 
 class TestGoParser:
     @pytest.fixture
@@ -447,7 +447,7 @@ def test_parse_real_prometheus_code(parser):
 ### Step 7.1: Register Parser
 
 ```python
-# app/repo/lang_detector.py
+# src/ai_discovery/repo/lang_detector.py
 
 LANGUAGE_PARSERS = {
     "python": PythonParser,
@@ -536,7 +536,7 @@ Add Go to the language examples section.
 ### Step 9.1: Measure Accuracy
 
 ```bash
-python -m app.debug.validate_calls \
+python -m ai_discovery.debug.validate_calls \
     --db tests/output/go-test/discovery.db \
     --sample-size 50 \
     --output tests/validation-go.json

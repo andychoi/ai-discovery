@@ -51,7 +51,7 @@ If **Phase 6 (Parse)** > 10% of total time → Likely bottleneck.
 
 **Optimization**:
 ```yaml
-config.yaml:
+# discovery.yaml
   # Reduce scope
   skip_framework_dirs: [vendor, node_modules, .venv, target]
   max_file_size: 100_000  # Skip very large files
@@ -74,7 +74,7 @@ If **Phase 6 (Parse + Call Graph)** > 15% of total time → Likely bottleneck.
 
 **Optimization**:
 ```yaml
-config.yaml:
+# discovery.yaml
   # Reduce resolution strictness
   confidence_threshold_for_graph: 0.5  # Include more ambiguous calls
   
@@ -95,7 +95,7 @@ If **Phase 10 (rag_embed)** > 20% of total time → Likely bottleneck.
 
 **Optimization**:
 ```yaml
-config.yaml:
+# discovery.yaml
   # Use faster embedding model
   embedding_model: "text-embedding-3-small"  # Faster than Ada
   
@@ -121,22 +121,23 @@ If **Tier 1/2/3 combined** > 50% of total time → Likely bottleneck.
 
 **For Tier 1 (Summarization)**:
 ```yaml
-config.yaml:
-  max_concurrent_tier_1: 20  # Increase parallelism
-  tier_1_batch_size: 5       # Batch small chunks
-  tier_1_model: haiku        # Use faster model (already default)
+# discovery.yaml
+max_concurrent: 20           # Increase parallelism
+# Tier 1 already uses the fast (haiku/gemma4:e2b) model by default
 ```
 
 **For Tier 2/3**:
 ```yaml
-config.yaml:
-  # Skip if not needed
-  skip_tier_2: false
-  skip_tier_3: false
-  
-  # Or: use faster models
-  tier_2_model: haiku        # Faster, cheaper
-  tier_3_model: sonnet       # Instead of opus
+# discovery.yaml
+# Use faster Tier 2/3 models (bedrock example):
+bedrock:
+  tier2: us.anthropic.claude-haiku-4-5-20251001-v1:0  # Faster, cheaper
+  tier3d: us.anthropic.claude-sonnet-4-6               # Instead of opus
+
+# Ollama equivalent:
+ollama:
+  tier2: gemma4:e2b    # Fastest local model
+  tier3d: gemma4:26b   # Standard instead of heaviest
 ```
 
 **Cost**: Quality degrades; less detailed summaries/docs.
@@ -238,8 +239,8 @@ sqlite3 data/discovery.db "
 - [ ] **Skip vendor directories**: `skip_framework_dirs: [vendor, node_modules, .venv]`
 - [ ] **Limit domains**: `analyze_top_n_domains: 20`
 - [ ] **Reduce execution slice depth**: `execution_slice_depth: 3`
-- [ ] **Increase Tier 1 concurrency**: `max_concurrent_tier_1: 20`
-- [ ] **Use faster Tier 2/3 models**: `tier_2_model: haiku`, `tier_3_model: sonnet`
+- [ ] **Increase Tier 1 concurrency**: `max_concurrent: 20` in discovery.yaml
+- [ ] **Use faster Tier 2/3 models**: override `bedrock.tier2` / `bedrock.tier3d` in discovery.yaml
 
 **Expected impact**: 50–70% faster, but less detailed.
 
@@ -254,7 +255,7 @@ sqlite3 data/discovery.db "
 
 ### For Best Quality (Comprehensive Analysis)
 
-- [ ] **Use deepest models**: `tier_3_model: opus`
+- [ ] **Use deepest models**: run `discover scan --prod` (selects tier3p = Opus/gemma4:31b)
 - [ ] **Increase depth**: `execution_slice_depth: 7`
 - [ ] **Enable self-review**: `skip_self_review: false`
 - [ ] **Enable embeddings**: `skip_embeddings: false`
@@ -318,8 +319,8 @@ Phases:
 discover scan repo --profile
 # Tier 1: 240s
 
-# With increased concurrency
-discover scan repo --profile --max_concurrent_tier_1=20
+# With increased concurrency (set max_concurrent: 20 in discovery.yaml)
+discover scan repo --profile
 # Tier 1: 120s
 
 # Result: 50% speedup
@@ -360,12 +361,9 @@ python -m memory_profiler src/ai_discovery/pipeline.py scan repo --project-slug 
 
 **Optimization**:
 ```yaml
-config.yaml:
-  # Process in batches
-  processing_batch_size: 100  # Process 100 files at a time
-  
-  # Clear intermediate results
-  clear_parsed_ast_after_phase_6: true
+# discovery.yaml
+processing_batch_size: 100  # Process 100 files at a time
+clear_parsed_ast_after_phase_6: true
 ```
 
 ---

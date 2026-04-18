@@ -20,17 +20,29 @@ All parsers implement the same interface (`LanguageParser`) so the pipeline can 
 ```python
 class LanguageParser(ABC):
     """Base parser interface for all languages"""
-    
+
+    @property
     @abstractmethod
-    def parse(self, source_code: str, file_path: str) -> List[CodeNode]:
-        """Parse source code and return CodeNode list"""
-        pass
-    
+    def language(self) -> str:
+        """Language name (e.g. 'python', 'java')"""
+        ...
+
+    @property
     @abstractmethod
-    def get_calls(self, source_code: str) -> List[CallReference]:
-        """Extract function call references"""
-        pass
+    def extensions(self) -> frozenset[str]:
+        """File extensions handled (e.g. frozenset({'.py'}))"""
+        ...
+
+    @abstractmethod
+    def parse_file(self, file_path: Path) -> list[CodeNode]:
+        """Parse a source file and return CodeNode list (including embedded call refs)"""
+        ...
+
+    def can_parse(self, file_path: Path) -> bool:
+        return file_path.suffix.lower() in self.extensions
 ```
+
+Call references are embedded directly in `CodeNode.calls` — there is no separate `get_calls()` method. Each parser extracts both node definitions and call references in a single `parse_file()` pass.
 
 ---
 
@@ -257,7 +269,7 @@ def extract_framework_hints(node, source_code, imports):
 ### File Structure
 
 ```
-app/parsers/
+src/ai_discovery/parsers/
 ├── base.py             ← LanguageParser interface
 ├── python_parser.py    ← Python-specific implementation
 ├── go_parser.py        ← (To be added) Go-specific implementation
@@ -269,65 +281,66 @@ app/parsers/
 ### Minimal Implementation
 
 ```python
-# app/parsers/go_parser.py
+# src/ai_discovery/parsers/go_parser.py
 
+from pathlib import Path
 from tree_sitter import Language, Parser
-from .base import LanguageParser, CodeNode, CallReference
+from .base import LanguageParser
+from ..graph.models import CodeNode
 
 class GoParser(LanguageParser):
+    @property
+    def language(self) -> str:
+        return "go"
+
+    @property
+    def extensions(self) -> frozenset[str]:
+        return frozenset({".go"})
+
     def __init__(self):
-        self.language = Language("./build/languages.so", "go")
-        self.parser = Parser()
-        self.parser.set_language(self.language)
-    
-    def parse(self, source_code: str, file_path: str) -> List[CodeNode]:
-        tree = self.parser.parse(source_code.encode())
+        self._ts_language = Language("./build/languages.so", "go")
+        self._parser = Parser()
+        self._parser.set_language(self._ts_language)
+
+    def parse_file(self, file_path: Path) -> list[CodeNode]:
+        source_code = file_path.read_text(encoding="utf-8", errors="replace")
+        tree = self._parser.parse(source_code.encode())
         code_nodes = []
-        
-        # Traverse AST and extract CodeNodes
+
+        # Traverse AST and extract CodeNodes (including call refs in node.calls)
         self._traverse(tree.root_node, source_code, file_path, code_nodes)
-        
+
         return code_nodes
-    
-    def get_calls(self, source_code: str) -> List[CallReference]:
-        tree = self.parser.parse(source_code.encode())
-        calls = []
-        
-        # Extract call references
-        self._extract_calls(tree.root_node, source_code, calls)
-        
-        return calls
-    
+
     def _traverse(self, node, source_code, file_path, code_nodes):
         """Recursively traverse AST and extract CodeNodes"""
         if node.type == "function_declaration":
+            calls = []
+            self._extract_calls(node, calls)
             code_nodes.append(CodeNode(
                 qualified_name=self._get_qualified_name(node),
                 node_type="function",
                 source_code=self._get_source(node, source_code),
+                calls=calls,
+                file_path=str(file_path),
                 ...
             ))
-        
+
         for child in node.children:
             self._traverse(child, source_code, file_path, code_nodes)
-    
-    def _extract_calls(self, node, source_code, calls):
-        """Extract call references"""
+
+    def _extract_calls(self, node, calls):
+        """Collect call references into list (called during _traverse)"""
         if node.type == "call_expression":
-            calls.append(CallReference(
-                name=self._get_function_name(node),
-                line=node.start_point[0],
-                ...
-            ))
-        
+            calls.append(self._get_function_name(node))
         for child in node.children:
-            self._extract_calls(child, source_code, calls)
-    
+            self._extract_calls(child, calls)
+
     def _get_qualified_name(self, node):
         """Go-specific: extract qualified name"""
         # Implementation: package.FunctionName or package.StructName.MethodName
         pass
-    
+
     def _get_function_name(self, node):
         """Go-specific: extract function name from call"""
         # Implementation: FunctionName or receiver.MethodName
@@ -341,65 +354,69 @@ class GoParser(LanguageParser):
 ### Unit Test Template
 
 ```python
-# app/parsers/tests/test_go_parser.py
+# tests/test_go_parser.py
 
 import pytest
-from app.parsers.go_parser import GoParser
+from pathlib import Path
+from ai_discovery.parsers.go_parser import GoParser
 
-def test_parse_function():
+def test_parse_function(tmp_path):
     """Test parsing a simple function"""
-    code = """
-    package main
-    
-    func sayHello(name string) {
-        println("Hello " + name)
-    }
-    """
-    
+    code = """package main
+
+func sayHello(name string) {
+    println("Hello " + name)
+}
+"""
+    f = tmp_path / "main.go"
+    f.write_text(code)
+
     parser = GoParser()
-    nodes = parser.parse(code, "main.go")
-    
+    nodes = parser.parse_file(f)
+
     assert len(nodes) == 1
     assert nodes[0].qualified_name == "main.sayHello"
     assert nodes[0].node_type == "function"
 
-def test_parse_struct_methods():
+def test_parse_struct_methods(tmp_path):
     """Test parsing struct and methods"""
-    code = """
-    package orders
-    
-    type Order struct {
-        ID int
-    }
-    
-    func (o *Order) Validate() bool {
-        return o.ID > 0
-    }
-    """
-    
+    code = """package orders
+
+type Order struct {
+    ID int
+}
+
+func (o *Order) Validate() bool {
+    return o.ID > 0
+}
+"""
+    f = tmp_path / "order.go"
+    f.write_text(code)
+
     parser = GoParser()
-    nodes = parser.parse(code, "order.go")
-    
+    nodes = parser.parse_file(f)
+
     assert len(nodes) == 2  # struct + method
     assert nodes[1].qualified_name == "orders.Order.Validate"
 
-def test_extract_calls():
-    """Test extracting call references"""
-    code = """
-    package orders
-    
-    func createOrder(items []Item) {
-        validateItems(items)
-        price := calculatePrice(items)
-    }
-    """
-    
+def test_extract_calls(tmp_path):
+    """Test that call references are embedded in node.calls"""
+    code = """package orders
+
+func createOrder(items []Item) {
+    validateItems(items)
+    price := calculatePrice(items)
+}
+"""
+    f = tmp_path / "order.go"
+    f.write_text(code)
+
     parser = GoParser()
-    calls = parser.get_calls(code)
-    
-    assert len(calls) == 2
-    assert "validateItems" in [c.name for c in calls]
-    assert "calculatePrice" in [c.name for c in calls]
+    nodes = parser.parse_file(f)
+
+    create_order = next(n for n in nodes if "createOrder" in n.qualified_name)
+    assert "validateItems" in create_order.calls
+    assert "calculatePrice" in create_order.calls
 ```
 
 ---

@@ -69,20 +69,20 @@ Map execution models to business primitives:
 ## 4. Phased Implementation Plan
 
 ### Phase 1: Data Model & Schema Evolution
-- **Action**: Update `app/graph/models.py`.
+- **Action**: Update `src/ai_discovery/graph/models.py`.
 - **New Symbols**: `ExecutionNode`, `ExecutionEdge`, `Scenario`.
 - **Goal**: Support typed graphs with confidence scores and conditional metadata.
 
 ### Phase 2: Execution Slicing & Boundary Detection
-- **Action**: Update `app/parsers/base.py` and `app/graph/call_graph.py`.
+- **Action**: Update `src/ai_discovery/parsers/base.py` and `src/ai_discovery/graph/call_graph.py`.
 - **Goal**: Implement bounded traversals that stop at persistence (DB) or integration (API/Queue) boundaries.
 
 ### Phase 3: GenAI Flow Reconstruction (Tier 2.5)
-- **Action**: Create `app/ai/flow_inference.py`.
+- **Action**: Create `src/ai_discovery/ai/flow_inference.py`.
 - **Goal**: Staged prompts to abstract technical call-stacks into "Process Flows" and detect IPO patterns.
 
 ### Phase 4: Artifact Generation (Tier 3.5)
-- **Action**: Create `app/output/bpmn_generator.py`.
+- **Action**: Create `src/ai_discovery/output/bpmn_generator.py`.
 - **Goal**: Template-driven generation of Mermaid, PlantUML, and BPMN 2.0 XML.
 
 ---

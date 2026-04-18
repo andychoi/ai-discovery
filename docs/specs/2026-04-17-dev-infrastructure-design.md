@@ -92,7 +92,7 @@ docs/
 
 ## Part 2: Project-Level CLAUDE.md
 
-File: `/Users/andymini/ai/ai-discovery/CLAUDE.md`
+File: `CLAUDE.md` (project root)
 
 **Purpose**: Quick reference for this project's structure, skills, and development workflows.
 
@@ -126,7 +126,7 @@ File: `/Users/andymini/ai/ai-discovery/CLAUDE.md`
 7. **Documentation** — Record language-specific patterns in `docs/guides/parsers/language-patterns.md`
 
 **Output**: 
-- Runnable parser module (e.g., `app/parsers/go.py`)
+- Runnable parser module (e.g., `src/ai_discovery/parsers/go_parser.py`)
 - Test harness with corpus
 - Documentation of language-specific heuristics
 
@@ -182,7 +182,7 @@ File: `/Users/andymini/ai/ai-discovery/CLAUDE.md`
 
 ## Part 4: Global CLAUDE.md Updates
 
-File: `~/.claude/CLAUDE.md`
+File: `~/.claude/CLAUDE.md` (global)
 
 **Addition** (after existing content):
 
@@ -310,7 +310,7 @@ After implementation, this project should have:
 User: I want to add Go support
 → /parser-extension
 → Skill guides through: grammar check → AST mapping → name resolution → test corpus → validation → integration
-→ Output: app/parsers/go.py + test harness + language patterns documented
+→ Output: src/ai_discovery/parsers/go_parser.py + test harness + language patterns documented
 ```
 
 ### Using `/call-graph-debug`

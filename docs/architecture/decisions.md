@@ -112,13 +112,25 @@ Three-tier LLM pipeline with increasing model capacity:
 
 ### Tuning Levers
 ```yaml
-config.yaml:
-  tier_1_model: haiku  # or: gemma4:e2b (Ollama)
-  tier_2_model: sonnet
-  tier_3_model: opus
-  max_concurrent_tier_1: 10  # Increase to speed up
-  tier_2_budget: 100.00
-  tier_3_budget: 50.00
+discovery.yaml:
+  # Provider selection: bedrock | ollama | mlx-gemma | mlx-qwen
+  provider: bedrock
+  max_concurrent: 10  # Increase to speed up
+  budget_limit_usd: 50.00
+
+  # Bedrock model overrides (defaults to claude-haiku-4-5/sonnet-4-6/opus-4-6)
+  bedrock:
+    tier1: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    tier2: us.anthropic.claude-sonnet-4-6
+    tier3d: us.anthropic.claude-opus-4-6
+    tier3p: us.anthropic.claude-opus-4-6
+
+  # Ollama model overrides (defaults to gemma4:e2b / gemma4:26b / gemma4:31b)
+  ollama:
+    tier1: gemma4:e2b
+    tier2: gemma4:26b
+    tier3d: gemma4:26b
+    tier3p: gemma4:31b
 ```
 
 ---
@@ -145,7 +157,7 @@ Group code nodes by namespace prefix + directory path, with fallback to file-lev
 - **Pro**: Works without training; easy to explain
 - **Con**: Doesn't capture cross-cutting concerns (logging, auth might belong in multiple domains); doesn't handle microservice boundaries
 
-**When heuristics fail**, you can manually define domains in `config.yaml`:
+**When heuristics fail**, you can manually define domains in `discovery.yaml`:
 
 ```yaml
 domains:

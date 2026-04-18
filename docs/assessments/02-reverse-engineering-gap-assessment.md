@@ -32,10 +32,10 @@ Impact:
 
 Key references:
 
-- `app/repo/resolver.py`
-- `app/repo/file_walker.py`
-- `app/graph/call_graph.py`
-- `app/pipeline.py`
+- `src/ai_discovery/repo/resolver.py`
+- `src/ai_discovery/repo/file_walker.py`
+- `src/ai_discovery/graph/call_graph.py`
+- `src/ai_discovery/pipeline.py`
 
 ### 2. Call graph resolution is too ambiguous for large enterprise repos
 
@@ -51,11 +51,11 @@ This is especially risky in Java/C# service layers and Python/JavaScript handler
 
 Key references:
 
-- `app/parsers/javascript.py`
-- `app/parsers/python_parser.py`
-- `app/parsers/java.py`
-- `app/parsers/csharp.py`
-- `app/graph/call_graph.py`
+- `src/ai_discovery/parsers/javascript.py`
+- `src/ai_discovery/parsers/python_parser.py`
+- `src/ai_discovery/parsers/java.py`
+- `src/ai_discovery/parsers/csharp.py`
+- `src/ai_discovery/graph/call_graph.py`
 
 ### 3. Scenario flow reconstruction is heuristic, not execution-ordered
 
@@ -69,8 +69,8 @@ Impact:
 
 Key references:
 
-- `app/graph/call_graph.py`
-- `app/output/bpmn_generator.py`
+- `src/ai_discovery/graph/call_graph.py`
+- `src/ai_discovery/output/bpmn_generator.py`
 
 ### 4. Scenario flow generation currently loses domain fidelity
 
@@ -83,9 +83,9 @@ Impact:
 
 Key references:
 
-- `app/pipeline.py`
-- `app/graph/call_graph.py`
-- `app/ai/flow_analyzer.py`
+- `src/ai_discovery/pipeline.py`
+- `src/ai_discovery/graph/call_graph.py`
+- `src/ai_discovery/ai/flow_analyzer.py`
 
 ### 5. Domain inference is too naive for enterprise bounded contexts
 
@@ -99,8 +99,8 @@ Impact:
 
 Key references:
 
-- `app/graph/domain_classifier.py`
-- `app/pipeline.py`
+- `src/ai_discovery/graph/domain_classifier.py`
+- `src/ai_discovery/pipeline.py`
 
 ### 6. Framework and artifact coverage is too narrow
 
@@ -123,10 +123,10 @@ Impact:
 
 Key references:
 
-- `app/repo/lang_detector.py`
-- `app/repo/file_walker.py`
-- `app/parsers/javascript.py`
-- `app/parsers/python_parser.py`
+- `src/ai_discovery/repo/lang_detector.py`
+- `src/ai_discovery/repo/file_walker.py`
+- `src/ai_discovery/parsers/javascript.py`
+- `src/ai_discovery/parsers/python_parser.py`
 
 ### 7. Rollups are domain-centric, not integration-centric
 
@@ -140,9 +140,9 @@ Impact:
 
 Key references:
 
-- `app/ai/rollup.py`
-- `app/output/doc_generator.py`
-- `app/pipeline.py`
+- `src/ai_discovery/ai/rollup.py`
+- `src/ai_discovery/output/doc_generator.py`
+- `src/ai_discovery/pipeline.py`
 
 ### 8. Test coverage is not in a reliable state for the parser/graph core
 
@@ -155,9 +155,9 @@ Impact:
 
 Key references:
 
-- `app/requirements.txt`
-- `app/tests/test_doc_generator.py`
-- `app/tests/test_self_review_regen.py`
+- `requirements.txt`
+- `tests/test_doc_generator.py`
+- `tests/test_self_review_regen.py`
 
 ## Highest-Value Improvements
 

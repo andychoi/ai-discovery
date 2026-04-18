@@ -38,7 +38,7 @@ Mining Results + Reports (ready for Phase 15 rendering)
 
 ### Core Implementation (2 files)
 
-#### 1. `app/ai/process_miner.py` (440 lines)
+#### 1. `src/ai_discovery/ai/process_miner.py` (440 lines)
 
 **Main mining engine.**
 
@@ -59,7 +59,7 @@ result = miner.mine_from_pseudo_log(pseudo_log)
 summary = miner.get_summary()  # → dict for markdown
 ```
 
-#### 2. `app/ai/mining_reporter.py` (340 lines)
+#### 2. `src/ai_discovery/ai/mining_reporter.py` (340 lines)
 
 **Report generation.**
 
@@ -172,8 +172,8 @@ python examples/process_mining_example.py
 ### Step 1: Add to `src/ai_discovery/pipeline.py`
 
 ```python
-from app.ai.process_miner import mine_scenarios
-from app.ai.mining_reporter import MiningReporter
+from .ai.process_miner import mine_scenarios
+from .ai.mining_reporter import MiningReporter
 ```
 
 ### Step 2: Define Phase 13.6 function
@@ -205,7 +205,7 @@ def discover_scan(...):
 
 ### Step 4: Update markdown rendering
 
-In `app/output/doc_generator.py`, include mining reports in scenario docs:
+In `src/ai_discovery/output/doc_generator.py`, include mining reports in scenario docs:
 
 ```python
 mining_md = MiningReporter.generate_markdown_report(mining_results[scenario_id])
@@ -431,13 +431,17 @@ process_mining:
 - [x] Working examples (`process_mining_example.py`)
 - [x] Full documentation
 
-### 🔧 To Integrate
+### Status: Integrated
 
-1. **Wire into pipeline** (follow `PM4PY_INTEGRATION.md` steps 1-5)
-2. **Add DB schema** (table: `process_mining_results`)
-3. **Update markdown rendering** to include mining reports
-4. **Add config** to `discovery.yaml`
-5. **Test** with `examples/process_mining_example.py`
+Pipeline wiring is **complete** (see `docs/integrations/PM4PY_INTEGRATION_WIRED.md`):
+
+1. ✅ Imports wired in `src/ai_discovery/pipeline.py`
+2. ✅ Phase 13.6 (`process_mining`) wired into pipeline
+3. ✅ Markdown rendering includes mining reports
+4. ✅ Config section in `discovery.yaml` (opt-in via `process_mining.enabled: true`)
+5. ✅ Runnable examples validated
+
+**To enable**: Set `process_mining.enabled: true` in `discovery.yaml` and run `discover scan`.
 
 ### 📋 Future Enhancements
 
@@ -456,7 +460,7 @@ process_mining:
 ### Run Examples
 
 ```bash
-cd /Users/andymini/ai/ai-discovery
+cd /path/to/ai-discovery
 python examples/process_mining_example.py
 ```
 
@@ -466,16 +470,13 @@ Output: Markdown and JSON reports in `./data/mining_reports/`
 
 ```bash
 # Core mining engine
-cat app/ai/process_miner.py
+cat src/ai_discovery/ai/process_miner.py
 
 # Report generator
-cat app/ai/mining_reporter.py
+cat src/ai_discovery/ai/mining_reporter.py
 
 # Integration guide
-cat docs/PM4PY_INTEGRATION.md
-
-# Module reference
-cat docs/PM4PY_MODULES_SUMMARY.md
+cat docs/integrations/PM4PY_INTEGRATION_WIRED.md
 ```
 
 ### Next: Integration
@@ -488,12 +489,12 @@ Follow **Step 1–6** in `docs/PM4PY_INTEGRATION.md` to wire into the main pipel
 
 | File | Type | Lines | Purpose |
 |------|------|-------|---------|
-| `app/ai/process_miner.py` | Python | 440 | Core mining engine |
-| `app/ai/mining_reporter.py` | Python | 340 | Report generation |
-| `docs/PM4PY_INTEGRATION.md` | Markdown | 600 | Integration guide (step-by-step) |
-| `docs/PM4PY_MODULES_SUMMARY.md` | Markdown | 350 | Module reference (for developers) |
+| `src/ai_discovery/ai/process_miner.py` | Python | 440 | Core mining engine |
+| `src/ai_discovery/ai/mining_reporter.py` | Python | 340 | Report generation |
+| `docs/integrations/PM4PY_INTEGRATION_WIRED.md` | Markdown | — | Integration architecture & quick start |
+| `docs/integrations/PM4PY_IMPLEMENTATION_COMPLETE.md` | Markdown | — | Executive summary |
 | `examples/process_mining_example.py` | Python | 250 | Runnable examples |
-| **Total** | — | **1,980** | Complete PM4Py integration |
+| **Total** | — | **~1,980** | Complete PM4Py integration |
 
 ---
 

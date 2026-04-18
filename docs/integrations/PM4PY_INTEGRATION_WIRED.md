@@ -46,7 +46,7 @@ else:
     console.print("[dim]Phase 13.6: Process mining disabled...[/]")
 ```
 
-### 4. **Markdown Rendering** (`app/output/doc_generator.py`, lines 178-260)
+### 4. **Markdown Rendering** (`src/ai_discovery/output/doc_generator.py`, lines 178-260)
 ```python
 def write_scenario_docs(..., mining_results=None):
     """Include mining reports in scenario markdown."""
@@ -55,7 +55,7 @@ def write_scenario_docs(..., mining_results=None):
         content_parts.append(mining_md)
 ```
 
-### 5. **Configuration** (`app/config.py`, lines 107-115)
+### 5. **Configuration** (`src/ai_discovery/config.py`, lines 107-115)
 ```python
 @dataclass
 class ProcessMiningConfig:
@@ -68,7 +68,7 @@ class ProcessMiningConfig:
     output_reports: bool = True
 ```
 
-### 6. **Config Loading** (`app/config.py`, lines 209-210)
+### 6. **Config Loading** (`src/ai_discovery/config.py`, lines 209-210)
 ```python
 if "process_mining" in raw and isinstance(raw["process_mining"], dict):
     cfg.process_mining = ProcessMiningConfig(...)
@@ -127,8 +127,8 @@ Final markdown files with mining analysis (if enabled)
 | File | Changes |
 |------|---------|
 | `src/ai_discovery/pipeline.py` | +2 imports, +1 helper function, +1 stage, +1 markdown param |
-| `app/config.py` | +1 dataclass (ProcessMiningConfig), +1 field, +1 YAML load |
-| `app/output/doc_generator.py` | +1 mining_results param, +5 lines to append mining report |
+| `src/ai_discovery/config.py` | +1 dataclass (ProcessMiningConfig), +1 field, +1 YAML load |
+| `src/ai_discovery/output/doc_generator.py` | +1 mining_results param, +5 lines to append mining report |
 | `discovery.yaml` | NEW config template (16 lines) |
 
 ---
@@ -189,8 +189,8 @@ All syntax checks pass:
 
 ```bash
 ✅ src/ai_discovery/pipeline.py
-✅ app/config.py
-✅ app/output/doc_generator.py
+✅ src/ai_discovery/config.py
+✅ src/ai_discovery/output/doc_generator.py
 ```
 
 Example execution:

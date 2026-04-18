@@ -93,10 +93,10 @@ AI-Discovery reconstructs and documents business processes at multiple abstracti
 
 | Tier | Model (Bedrock) | Model (Ollama) | Role | Concurrency |
 |------|----------------|----------------|------|------------|
-| Tier 1 | Claude Haiku | gemma4:e2b (2B) | Chunk summarization | High (max_concurrent) |
-| Tier 2 | Claude Sonnet | gemma4:26b (26B) | Flow analysis | Per domain |
-| Tier 3 (dev) | Claude Opus | gemma4:26b | Doc rollup | Configurable |
-| Tier 3 (prod) | Claude Opus | gemma4:31b | Doc rollup | Configurable |
+| Tier 1 | claude-haiku-4-5-20251001 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) | gemma4:e2b (2B) | Chunk summarization | High (max_concurrent) |
+| Tier 2 | claude-sonnet-4-6 (`us.anthropic.claude-sonnet-4-6`) | gemma4:26b (26B) | Flow analysis | Per domain |
+| Tier 3 (dev) | claude-opus-4-6 (`us.anthropic.claude-opus-4-6`) | gemma4:26b | Doc rollup | Configurable |
+| Tier 3 (prod) | claude-opus-4-6 (`us.anthropic.claude-opus-4-6`) | gemma4:31b | Doc rollup | Configurable |
 
 Budget guard: each tier checks `total_cost_usd < budget_limit_usd` before running.
 

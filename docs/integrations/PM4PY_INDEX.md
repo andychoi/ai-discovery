@@ -25,18 +25,17 @@
 ## 📁 File Structure
 
 ```
-/Users/andymini/ai/ai-discovery/
-├── app/ai/
+ai-discovery/
+├── src/ai_discovery/ai/
 │   ├── process_miner.py (440 lines) ..................... Core mining engine
 │   └── mining_reporter.py (340 lines) ................... Report generation
 ├── docs/
-│   ├── PM4PY_INTEGRATION.md (600 lines) ................. Integration guide (MAIN)
-│   └── PM4PY_MODULES_SUMMARY.md (350 lines) ............ Module reference
+│   ├── integrations/PM4PY_INDEX.md (this file) ......... Navigation guide
+│   ├── integrations/PM4PY_IMPLEMENTATION_COMPLETE.md ... Executive summary
+│   ├── integrations/PM4PY_INTEGRATION_WIRED.md ......... Integration architecture
+│   └── archived/PM4PY_INTEGRATION.md ................... Integration guide (archived)
 ├── examples/
 │   └── process_mining_example.py (250 lines) ........... Runnable examples (5 demos)
-├── PM4PY_QUICKSTART.txt (text visual) .................. Quick reference
-├── PM4PY_IMPLEMENTATION_COMPLETE.md .................... Executive summary
-└── PM4PY_INDEX.md (this file) .......................... Navigation guide
 ```
 
 ---
@@ -135,7 +134,7 @@ Mining Results (ready for Phase 15 markdown rendering)
 
 ## 💻 Code Files
 
-### app/ai/process_miner.py (440 lines)
+### src/ai_discovery/ai/process_miner.py (440 lines)
 **Core mining engine**
 
 Classes:
@@ -151,7 +150,7 @@ Key Methods:
 - `ProcessMiner.get_summary()` — Human-readable dict for markdown
 - `mine_scenarios()` — Batch mining function
 
-### app/ai/mining_reporter.py (340 lines)
+### src/ai_discovery/ai/mining_reporter.py (340 lines)
 **Report generation**
 
 Classes:
@@ -186,15 +185,15 @@ cat PM4PY_IMPLEMENTATION_COMPLETE.md
 ### Step 2: Explore Code
 ```bash
 # Core mining
-less app/ai/process_miner.py
+less src/ai_discovery/ai/process_miner.py
 
 # Reports
-less app/ai/mining_reporter.py
+less src/ai_discovery/ai/mining_reporter.py
 ```
 
 ### Step 3: Run Examples
 ```bash
-cd /Users/andymini/ai/ai-discovery
+cd /path/to/ai-discovery
 pip install pm4py  # If not already installed
 python examples/process_mining_example.py
 ```
@@ -227,12 +226,12 @@ cat docs/PM4PY_INTEGRATION.md
 - [ ] Install PM4Py: `pip install pm4py`
 - [ ] Read: `docs/PM4PY_INTEGRATION.md` (§Integration Steps)
 - [ ] Run examples: `python examples/process_mining_example.py`
-- [ ] Add imports to `src/ai_discovery/pipeline.py`
-- [ ] Define `_mine_processes()` function
-- [ ] Call in `discover_scan()` after Phase 13.5
-- [ ] Add DB schema (`process_mining_results` table)
-- [ ] Update `doc_generator.py` to include mining reports
-- [ ] Add config to `discovery.yaml`
+- [ ] Confirm imports in `src/ai_discovery/pipeline.py` (already wired — see `PM4PY_INTEGRATION_WIRED.md`)
+- [ ] Confirm `_mine_processes()` helper is present (lines 855–894)
+- [ ] Enable Phase 13.6 by setting `process_mining.enabled: true` in `discovery.yaml`
+- [ ] Add DB schema (`process_mining_results` table) if persisting results
+- [ ] Verify mining reports appear in scenario markdown
+- [ ] Test with small repository
 - [ ] Test with small repository
 - [ ] Deploy
 
@@ -298,7 +297,7 @@ cat docs/PM4PY_INTEGRATION.md
 
 **2. Explore** (15 min)
    - Run: `python examples/process_mining_example.py`
-   - Browse: `app/ai/process_miner.py` and `mining_reporter.py`
+   - Browse: `src/ai_discovery/ai/process_miner.py` and `mining_reporter.py`
 
 **3. Learn** (30 min)
    - Read: `docs/PM4PY_MODULES_SUMMARY.md`
@@ -348,11 +347,11 @@ A: Default fitness threshold 90% (configurable). See `docs/PM4PY_INTEGRATION.md`
 |----------|----------|-----------|----------|
 | PM4PY_QUICKSTART.txt | Overview | 5 min | Architecture, capabilities, checklist |
 | PM4PY_IMPLEMENTATION_COMPLETE.md | Context | 20 min | Summary, data flows, metrics |
-| **docs/PM4PY_INTEGRATION.md** | **Integration** | 45 min | Step-by-step guide (USE THIS) |
-| docs/PM4PY_MODULES_SUMMARY.md | Reference | 30 min | APIs, data models, algorithms |
+| **docs/integrations/PM4PY_INTEGRATION_WIRED.md** | **Integration** | 10 min | Wired architecture & quick start (USE THIS) |
+| docs/integrations/PM4PY_IMPLEMENTATION_COMPLETE.md | Reference | 20 min | Executive summary, data flows, metrics |
 | examples/process_mining_example.py | Learning | 15 min | 5 working examples |
-| app/ai/process_miner.py | Code review | 20 min | Core implementation |
-| app/ai/mining_reporter.py | Code review | 15 min | Report generation |
+| src/ai_discovery/ai/process_miner.py | Code review | 20 min | Core implementation |
+| src/ai_discovery/ai/mining_reporter.py | Code review | 15 min | Report generation |
 
 ---
 

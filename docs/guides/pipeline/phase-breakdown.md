@@ -177,7 +177,7 @@ Final document generation per domain×doc_type:
 - as-is-schema.md (data models)
 - process-flow.md (BPMN + IPO)
 
-Uses Claude Opus or Ollama gemma4:31b.  
+Uses Claude Opus (Bedrock), or Ollama gemma4:26b (dev) / gemma4:31b (prod, `--prod` flag).  
 Stores in `generated_docs` table.
 
 ---
@@ -248,7 +248,7 @@ Records end time.
 ## Tuning Phases
 
 ### Speed Tuning
-- Increase `max_concurrent_tier_1`: faster Tier 1, but higher LLM quota usage
+- Increase `max_concurrent` in discovery.yaml: faster Tier 1, but higher LLM quota usage
 - Reduce `execution_slice_depth`: shallower scenarios, less detail
 - Skip Tier 3: only generate Tier 1–2 docs (faster, less detailed)
 

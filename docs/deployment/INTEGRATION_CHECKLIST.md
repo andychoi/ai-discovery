@@ -2,14 +2,14 @@
 
 ## Phase 1: Core Implementation (COMPLETE)
 
-- [x] `app/ai/process_miner.py` (440 lines)
+- [x] `src/ai_discovery/ai/process_miner.py` (440 lines)
   - [x] `PseudoLogConverter` class
   - [x] `ProcessMiner` class with discovery, conformance, performance
   - [x] `MiningResult`, `ConformanceMetrics`, `BottleneckInfo`, `EdgeFrequency` dataclasses
   - [x] `mine_scenarios()` batch function
   - [x] Handle PM4Py API quirks (ProcessTree, log-based metrics)
 
-- [x] `app/ai/mining_reporter.py` (340 lines)
+- [x] `src/ai_discovery/ai/mining_reporter.py` (340 lines)
   - [x] `MiningReporter` for markdown generation
   - [x] `MiningReporter` for JSON generation
   - [x] `save_reports()` to disk
@@ -58,13 +58,13 @@
   - [x] Pass `mining_results` to markdown writer
   - [x] Graceful error handling (non-blocking)
 
-- [x] `app/config.py` modifications
+- [x] `src/ai_discovery/config.py` modifications
   - [x] Add `ProcessMiningConfig` dataclass
   - [x] Add `process_mining` field to `DiscoveryConfig`
   - [x] Add config loading in `DiscoveryConfig.load()`
   - [x] Defaults: `enabled=false` (opt-in)
 
-- [x] `app/output/doc_generator.py` modifications
+- [x] `src/ai_discovery/output/doc_generator.py` modifications
   - [x] Add `mining_results` parameter to `write_scenario_docs()`
   - [x] Include mining reports in scenario markdown
   - [x] Handle missing mining results gracefully
@@ -78,8 +78,8 @@
 
 - [x] Syntax validation
   - [x] ✅ `src/ai_discovery/pipeline.py` compiles
-  - [x] ✅ `app/config.py` compiles
-  - [x] ✅ `app/output/doc_generator.py` compiles
+  - [x] ✅ `src/ai_discovery/config.py` compiles
+  - [x] ✅ `src/ai_discovery/output/doc_generator.py` compiles
 
 - [x] Example validation
   - [x] ✅ All 5 examples execute successfully
@@ -195,7 +195,7 @@ discover scan ./myrepo -p myproject
 
 ### 1. **Unit Test**: Single Scenario
 ```python
-from app.ai.process_miner import ProcessMiner
+from ai_discovery.ai.process_miner import ProcessMiner
 
 pseudo_log = {"case_id": "test", "events": [...]}
 miner = ProcessMiner("test", "Test", "Test")
