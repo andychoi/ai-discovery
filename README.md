@@ -47,7 +47,7 @@ This creates `discovery.yaml` with:
 - LLM provider selection (bedrock, ollama, mlx-gemma, mlx-qwen)
 - Model tier defaults (tier1, tier2, tier3d/tier3p)
 - RAG chunk settings
-- Optional process mining (Stage 10.5) config
+- Optional process mining (Phase 13.6) config
 - Optional advisor tool (beta) config
 
 **Customize as needed, then:**
@@ -89,15 +89,16 @@ Code → Parse (Tree-sitter) → Build call graph → Classify domains
 1. **Resolve repo** (clone or validate local)
 2. **Detect languages** (extensions + manifests)
 3. **Parse files** (Tree-sitter AST extraction)
-4. **Build call graph** + classify domains
-5. **Smart chunk** (AST-aware, not naive char split)
-6. **Embed chunks** for RAG (sqlite-vec)
-7. **Tier 1 (Haiku)**: Summarize chunks — cheap, concurrent
-8. **Tier 2 (Sonnet)**: Analyze business flows per domain
-9. **Tier 3 (Opus)**: Generate doc rollups
-10. **Render markdown** with ai-docs frontmatter
+4. **Classify domains** (namespace/path heuristics)
+5. **Build call graph** (multi-strategy name resolution)
+6. **Build execution slices** (BFS from entry points; optional)
+7. **Chunk & embed** for RAG (method-level splits + sqlite-vec)
+8. **Tier 1 (Haiku)**: Summarize chunks — cheap, concurrent
+9. **Tier 2 (Sonnet)**: Analyze business flows per domain
+10. **Tier 3 (Opus)**: Generate doc rollups
 11. **Self-review**: Verify claims against source via RAG
-12. **Push to DocHub API** or Gitea (optional)
+12. **Render markdown** with ai-docs frontmatter
+13. **Push to DocHub API** or Gitea (optional)
 
 ### Why 3 LLM Tiers?
 
@@ -440,7 +441,7 @@ pytest --cov                        # Coverage report
 ai-discovery/
 ├── src/ai_discovery/               # Main package
 │   ├── cli.py                      # Typer CLI entry point
-│   ├── pipeline.py                 # 13-phase orchestrator
+│   ├── pipeline.py                 # Pipeline orchestrator (phases 5–16)
 │   ├── ai/                         # LLM operations (chunker, summarizer, etc.)
 │   ├── graph/                      # Call graph & domain classification
 │   ├── ingest/                     # Code ingestion & parsing

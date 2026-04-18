@@ -1,6 +1,6 @@
 # Pipeline Phases: Detailed Breakdown
 
-Reference guide for the 13 phases of the AI-Discovery pipeline.
+Reference guide for all AI-Discovery pipeline phases: pre-pipeline setup (phases 1–4) and checkpoint phases (5–16, including optional sub-phases 8.5, 12.5, 13.5, 13.6).
 
 ---
 
