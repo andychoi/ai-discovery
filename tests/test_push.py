@@ -65,8 +65,14 @@ class TestPushApi:
 
     @patch("ai_discovery.output.push.httpx.post")
     def test_push_api_sends_correct_request(self, mock_post: MagicMock, sample_docs: list[dict]) -> None:
+        # Batch ingest response: one results entry per doc
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"url": "http://dochub/projects/myproj/docs/AS-IS-001"}
+        mock_resp.json.return_value = {
+            "results": [
+                {"doc_id": "AS-IS-001", "url": "/projects/myproj/docs/AS-IS-001"},
+            ],
+            "errors": [],
+        }
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
 
@@ -85,11 +91,13 @@ class TestPushApi:
 
         mock_post.assert_called_once()
         call_kwargs = mock_post.call_args
-        assert call_kwargs.args[0] == "http://dochub/api/projects/myproj/docs"
+        assert call_kwargs.args[0] == "http://dochub/api/projects/myproj/docs/ingest/batch"
         assert call_kwargs.kwargs["headers"] == {"Authorization": "Bearer tok123"}
-        assert call_kwargs.kwargs["json"]["doc_id"] == "AS-IS-001"
-        assert call_kwargs.kwargs["json"]["doc_type"] == "as-is"
-        assert "# As-Is Document" in call_kwargs.kwargs["json"]["body"]
+        batch = call_kwargs.kwargs["json"]["docs"]
+        assert len(batch) == 1
+        assert batch[0]["doc_id"] == "AS-IS-001"
+        assert batch[0]["doc_type"] == "as-is"
+        assert "# As-Is Document" in batch[0]["body"]
 
     def test_push_api_requires_api_url(self, sample_docs: list[dict]) -> None:
         with pytest.raises(ValueError, match="--api-url required"):
@@ -203,7 +211,12 @@ class TestPushDocsDispatch:
         db_with_generated_docs: Path,
     ) -> None:
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"url": "http://dochub/docs/AS-IS-001"}
+        mock_resp.json.return_value = {
+            "results": [
+                {"doc_id": "AS-IS-001", "url": "/docs/AS-IS-001"},
+            ],
+            "errors": [],
+        }
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
 

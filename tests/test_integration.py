@@ -63,7 +63,7 @@ def _make_mock_llm():
     """
     mock = MagicMock()
 
-    def invoke_side_effect(tier, prompt, max_tokens=4096):
+    def invoke_side_effect(tier, prompt, max_tokens=4096, **kwargs):
         if tier == "tier1":
             # Summarizer expects JSON with 4 keys.
             # Self-review extract_claims also uses tier1 — return a JSON array
@@ -109,7 +109,10 @@ def _make_mock_llm():
             tier=tier,
         )
 
+    # Production code dispatches through invoke_with_advisor (commit 91880bb);
+    # mirror to legacy invoke so either surface works in tests.
     mock.invoke.side_effect = invoke_side_effect
+    mock.invoke_with_advisor.side_effect = invoke_side_effect
     mock.get_embedding.return_value = [0.1] * 256
     mock.total_cost_usd.return_value = 0.0
     mock.persist_costs = MagicMock()
@@ -229,6 +232,7 @@ def test_full_pipeline(tmp_path):
             branch=branch,
             project_slug="test-proj",
             output_dir=output_dir,
+            docs_root=output_dir,
             config=config,
         )
 
@@ -275,7 +279,8 @@ def test_full_pipeline(tmp_path):
     conn.close()
 
     # ── Verify markdown output ─────────────────────────────────────────
-    docs_dir = output_dir / "test-proj" / "docs"
+    # Pipeline writes markdown under docs_root/{project_slug}/{PREFIX}/…
+    docs_dir = output_dir / "test-proj"
     assert docs_dir.exists(), f"{docs_dir} should exist"
 
     md_files = list(docs_dir.rglob("*.md"))
