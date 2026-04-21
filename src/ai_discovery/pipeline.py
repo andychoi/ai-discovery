@@ -588,6 +588,7 @@ def run_pipeline(
     # not re-scan scenarios.
     from .graph.fsm_rollup import build_entity_state_machines, build_fsms_from_sql_nodes
     from .graph.fsm_identity import consolidate_entities
+    from .graph.entity_classifier import classify_entities
     from .graph.fsm_export import write_entity_state_machines_json
     from .graph.fsm_persistence import persist_entity_state_machines
     from .extractors import extract_sql_entities
@@ -614,6 +615,10 @@ def run_pipeline(
     raw_fsms = raw_fsms + sql_fsms
     with _timed("fsm consolidate"), console.status("[bold cyan]Consolidating entity name-variants..."):
         fsms, projection_links = consolidate_entities(raw_fsms, nodes_for_consolidation)
+    # Phase 2.5.2: annotate each FSM with entity_kind so downstream generators
+    # can branch on role (transactional vs. master vs. key vs. summary / …).
+    with _timed("fsm classify"), console.status("[bold cyan]Classifying entity kinds..."):
+        classify_entities(fsms)
     if fsms:
         fsm_json_path = output_dir / "entity_state_machines.json"
         write_entity_state_machines_json(fsms, fsm_json_path)
@@ -628,6 +633,13 @@ def run_pipeline(
             f"{merge_suffix}{proj_suffix}, "
             f"[green]{total_transitions}[/] deduped transitions → {fsm_json_path.name}"
         )
+        kind_counts: dict[str, int] = {}
+        for f in fsms:
+            k = f.metadata.get("entity_kind", "unknown")
+            kind_counts[k] = kind_counts.get(k, 0) + 1
+        if kind_counts:
+            parts = ", ".join(f"[green]{n}[/] {k}" for k, n in sorted(kind_counts.items()))
+            console.print(f"  Entity kinds: {parts}")
 
     # ------------------------------------------------------------------
     # 9. Smart chunk
