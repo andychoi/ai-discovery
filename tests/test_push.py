@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from ai_discovery.output.push import push_docs, _update_push_status
+from ai_discovery.generators.push import push_docs, _update_push_status
 
 
 @pytest.fixture
@@ -63,7 +63,7 @@ def db_with_generated_docs(tmp_path: Path) -> Path:
 class TestPushApi:
     """Tests for API push mode."""
 
-    @patch("ai_discovery.output.push.httpx.post")
+    @patch("ai_discovery.generators.push.httpx.post")
     def test_push_api_sends_correct_request(self, mock_post: MagicMock, sample_docs: list[dict]) -> None:
         # Batch ingest response: one results entry per doc
         mock_resp = MagicMock()
@@ -103,7 +103,7 @@ class TestPushApi:
         with pytest.raises(ValueError, match="--api-url required"):
             push_docs(sample_docs, push_mode="api", project_slug="myproj")
 
-    @patch("ai_discovery.output.push.httpx.post")
+    @patch("ai_discovery.generators.push.httpx.post")
     def test_push_api_handles_failure(self, mock_post: MagicMock, sample_docs: list[dict]) -> None:
         mock_post.side_effect = httpx.HTTPStatusError(
             "500 Server Error",
@@ -127,8 +127,8 @@ class TestPushApi:
 class TestPushGitea:
     """Tests for Gitea push mode."""
 
-    @patch("ai_discovery.output.push.httpx.get")
-    @patch("ai_discovery.output.push.httpx.put")
+    @patch("ai_discovery.generators.push.httpx.get")
+    @patch("ai_discovery.generators.push.httpx.put")
     def test_push_gitea_sends_correct_request(
         self, mock_put: MagicMock, mock_get: MagicMock, sample_docs: list[dict]
     ) -> None:
@@ -167,8 +167,8 @@ class TestPushGitea:
         with pytest.raises(ValueError, match="--gitea-url required"):
             push_docs(sample_docs, push_mode="gitea", project_slug="myproj")
 
-    @patch("ai_discovery.output.push.httpx.get")
-    @patch("ai_discovery.output.push.httpx.put")
+    @patch("ai_discovery.generators.push.httpx.get")
+    @patch("ai_discovery.generators.push.httpx.put")
     def test_push_gitea_updates_existing_file(
         self, mock_put: MagicMock, mock_get: MagicMock, sample_docs: list[dict]
     ) -> None:
@@ -203,7 +203,7 @@ class TestPushDocsDispatch:
         with pytest.raises(ValueError, match="Invalid push_mode"):
             push_docs(sample_docs, push_mode="invalid", project_slug="myproj")
 
-    @patch("ai_discovery.output.push.httpx.post")
+    @patch("ai_discovery.generators.push.httpx.post")
     def test_update_push_status_writes_db(
         self,
         mock_post: MagicMock,

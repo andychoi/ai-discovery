@@ -1,4 +1,4 @@
-"""Tests for app.output.doc_generator."""
+"""Tests for ai_discovery.generators.doc_generator."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from ai_discovery.ai.rollup import RollupResult
-from ai_discovery.output.doc_generator import _slugify, render_doc, write_docs
+from ai_discovery.generators.doc_generator import _slugify, render_doc, write_docs
 
 
 # ---------------------------------------------------------------------------

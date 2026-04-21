@@ -297,8 +297,8 @@ def ingest(
 ) -> None:
     """Batch-ingest already-generated docs from the offline tree to DocHub or Gitea."""
     from ai_discovery.db import get_conn
-    from ai_discovery.output.doc_generator import _doc_type_prefix
-    from ai_discovery.output.push import push_docs
+    from ai_discovery.generators.doc_generator import _doc_type_prefix
+    from ai_discovery.generators.push import push_docs
 
     if target not in _VALID_INGEST_TARGETS:
         console.print(f"[red]Invalid --target '{target}'. Must be: dochub | gitea[/]")

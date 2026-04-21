@@ -262,7 +262,7 @@ def _push_gitea(
     result: IngestResult,
 ) -> None:
     """Push files to Gitea — delegates to existing push module."""
-    from ..output.push import push_docs
+    from ..generators.push import push_docs
 
     written_docs = []
     for f in files:

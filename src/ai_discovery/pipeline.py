@@ -1087,7 +1087,7 @@ def run_pipeline(
     # 15. Render markdown files (after self-review so annotations are included)
     # ------------------------------------------------------------------
     with _with_checkpoint(db_path, scan_id, 15, "render_markdown"):
-        from .output.doc_generator import write_docs
+        from .generators.doc_generator import write_docs
 
         # Compute cross-domain call graph for Layer 2 graph links
         with _timed("domain adjacency"), console.status("[bold cyan]Computing cross-domain links..."):
@@ -1098,7 +1098,7 @@ def run_pipeline(
                 f"pairs across {len(domain_adjacency)} domains"
             )
 
-        from .output.doc_generator import write_scenario_docs
+        from .generators.doc_generator import write_scenario_docs
 
         with _timed("write markdown"), console.status("[bold cyan]Writing markdown files..."):
             written = write_docs(
@@ -1434,7 +1434,7 @@ def _rewrite_docs_from_db(
     or crashed) or when `--rescan` hits a same-SHA cache. Writes each doc to
     docs_dir/{PREFIX}/{doc_id}.md using content_md stored in generated_docs.
     """
-    from .output.doc_generator import _doc_type_prefix
+    from .generators.doc_generator import _doc_type_prefix
 
     conn = get_conn(db_path)
     try:
