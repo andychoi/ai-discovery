@@ -49,6 +49,14 @@ _GENERIC_ENTITY_NAMES = frozenset({
     "thing", "obj", "item", "arg", "value", "self_", "result", "data",
 })
 
+# Node types whose `fields` contribute to an FSM's shape fingerprint. Regular
+# OO classes anchor Pass 1; `sql_table` / `sql_view` synthetics from Phase
+# 2.5.1 join the same pass so SQL-discovered entities merge with matching
+# classful FSMs (`orders` table + `Order` class) instead of orphaning.
+_CLASS_LIKE_NODE_TYPES: frozenset[str] = frozenset(
+    {"class", "db_model", "sql_table", "sql_view"}
+)
+
 # Infrastructure fields that every ORM-mapped class carries. They do not
 # represent entity state and must not drive fingerprint similarity.
 _ORM_META_FIELDS = frozenset({
@@ -250,7 +258,7 @@ def _build_class_by_id(nodes: list[CodeNode]) -> dict[str, CodeNode]:
     """entity_id → backing class node. entity_id is the class's qualified_name."""
     result: dict[str, CodeNode] = {}
     for n in nodes:
-        if n.node_type in ("class", "db_model"):
+        if n.node_type in _CLASS_LIKE_NODE_TYPES:
             result[n.qualified_name] = n
     return result
 
@@ -259,7 +267,7 @@ def _build_classes_by_name(nodes: list[CodeNode]) -> dict[str, list[CodeNode]]:
     """Short class name → list of matching class nodes (usually one)."""
     result: dict[str, list[CodeNode]] = defaultdict(list)
     for n in nodes:
-        if n.node_type in ("class", "db_model"):
+        if n.node_type in _CLASS_LIKE_NODE_TYPES:
             result[n.name].append(n)
     return dict(result)
 
@@ -268,7 +276,7 @@ def _find_mixin_class_names(nodes: list[CodeNode]) -> set[str]:
     """A class used as a base by ≥2 classes is a likely mixin/abstract base."""
     usage: dict[str, int] = defaultdict(int)
     for n in nodes:
-        if n.node_type not in ("class", "db_model"):
+        if n.node_type not in _CLASS_LIKE_NODE_TYPES:
             continue
         for base in n.bases or []:
             usage[base] += 1
@@ -301,7 +309,7 @@ def _build_ancestors_by_id(
     return {
         n.qualified_name: _ancestors_for_class(n, classes_by_name)
         for n in nodes
-        if n.node_type in ("class", "db_model")
+        if n.node_type in _CLASS_LIKE_NODE_TYPES
     }
 
 
@@ -319,7 +327,7 @@ def _build_mixin_fields_by_id(
     mixin_names = _find_mixin_class_names(nodes)
     result: dict[str, set[str]] = {}
     for n in nodes:
-        if n.node_type not in ("class", "db_model"):
+        if n.node_type not in _CLASS_LIKE_NODE_TYPES:
             continue
         inherited: set[str] = set()
         for ancestor in _ancestors_for_class(n, classes_by_name):

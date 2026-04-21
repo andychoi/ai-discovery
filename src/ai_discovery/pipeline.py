@@ -586,16 +586,34 @@ def run_pipeline(
     # persist to SQLite, export JSON. This is the canonical backbone artifact
     # — every downstream BPMN/DMN/EARS view is supposed to consume the FSM,
     # not re-scan scenarios.
-    from .graph.fsm_rollup import build_entity_state_machines
+    from .graph.fsm_rollup import build_entity_state_machines, build_fsms_from_sql_nodes
     from .graph.fsm_identity import consolidate_entities
     from .graph.fsm_export import write_entity_state_machines_json
     from .graph.fsm_persistence import persist_entity_state_machines
+    from .extractors import extract_sql_entities
+
+    # Phase 2.5.1: synthesize classless CodeNodes for tables/views referenced
+    # in raw SQL string literals, plus placeholder FSMs for each. The Phase
+    # 2.4 consolidator treats `sql_table` / `sql_view` as class-like, so a
+    # synthetic FSM for `orders` (fields from SQL) merges with the classful
+    # `Order` FSM (transitions from Python) when stems + fields overlap.
+    with _timed("sql extract"), console.status("[bold cyan]Extracting SQL entities..."):
+        sql_nodes = extract_sql_entities(all_nodes)
+    sql_fsms = build_fsms_from_sql_nodes(sql_nodes) if sql_nodes else []
+    if sql_nodes:
+        view_count = sum(1 for n in sql_nodes if n.node_type == "sql_view")
+        console.print(
+            f"  SQL entities: [green]{len(sql_nodes)}[/] synthesized "
+            f"([dim]{view_count} views[/])"
+        )
+    nodes_for_consolidation = all_nodes + sql_nodes
 
     node_file_index = {n.qualified_name: n.file_path for n in all_nodes}
     with _timed("fsm rollup"), console.status("[bold cyan]Aggregating state transitions into entity FSMs..."):
         raw_fsms = build_entity_state_machines(all_transitions, node_file_index=node_file_index)
+    raw_fsms = raw_fsms + sql_fsms
     with _timed("fsm consolidate"), console.status("[bold cyan]Consolidating entity name-variants..."):
-        fsms, projection_links = consolidate_entities(raw_fsms, all_nodes)
+        fsms, projection_links = consolidate_entities(raw_fsms, nodes_for_consolidation)
     if fsms:
         fsm_json_path = output_dir / "entity_state_machines.json"
         write_entity_state_machines_json(fsms, fsm_json_path)

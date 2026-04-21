@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from .models import EntityStateMachine, StateTransition
+from .models import CodeNode, EntityStateMachine, StateTransition
 
 
 def build_entity_state_machines(
@@ -54,6 +54,44 @@ def build_entity_state_machines(
 
     # Sort by entity_id for stable diffs — `entity` (display) may be disambiguated
     # later by consolidation, but entity_id is stable at rollup time.
+    fsms.sort(key=lambda f: (f.entity_id, f.entity))
+    return fsms
+
+
+def build_fsms_from_sql_nodes(sql_nodes: list[CodeNode]) -> list[EntityStateMachine]:
+    """Synthesize placeholder FSMs for SQL-derived entities (Phase 2.5.1).
+
+    SQL extractors find tables and views but not transitions — without a
+    placeholder FSM, those entities never participate in consolidation. This
+    emits one FSM per synthetic node with `fields` populated and an empty
+    `transitions` list. The Phase 2.4 consolidator's Pass 1 treats `sql_table`
+    and `sql_view` as class-like (see `fsm_identity._CLASS_LIKE_NODE_TYPES`),
+    so when a class-backed FSM exists with overlapping fields and a matching
+    stem, the two merge — and the real class's transitions carry through.
+
+    A placeholder that never merges survives as a standalone entity record,
+    which is the correct outcome for SQL-first codebases where no matching
+    class exists. Confidence is capped below class-backed FSMs so downstream
+    reviewers can filter by evidence strength.
+    """
+    fsms: list[EntityStateMachine] = []
+    for node in sql_nodes:
+        if not node.fields:
+            continue
+        fsms.append(EntityStateMachine(
+            entity=node.name,
+            entity_id=node.qualified_name,
+            transitions=[],
+            states=set(),
+            fields=set(node.fields),
+            source_files={node.file_path} if node.file_path else set(),
+            confidence=0.7,
+            metadata={
+                "discovered_by": "sql_extractor",
+                "node_type": node.node_type,
+                "sql_ops": list(node.framework_hints.get("sql_ops", [])),
+            },
+        ))
     fsms.sort(key=lambda f: (f.entity_id, f.entity))
     return fsms
 
