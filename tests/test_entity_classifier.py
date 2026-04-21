@@ -37,6 +37,59 @@ def _transition(from_state: str, to_state: str, field: str = "status") -> StateT
     )
 
 
+# --- staging ----------------------------------------------------------------
+
+def test_staging_prefix_classified_as_staging():
+    fsm = _fsm(
+        entity="stg_orders",
+        fields={"id", "status", "created_at", "updated_at"},
+    )
+    out = classify_entities([fsm])[0]
+    assert out.metadata["entity_kind"] == "staging"
+    assert out.metadata["entity_kind_signals"]["staging_name_prefix"] == "stg_"
+
+
+def test_staging_suffix_classified_as_staging():
+    fsm = _fsm(
+        entity="customer_inbound",
+        fields={"id", "payload", "received_at"},
+    )
+    out = classify_entities([fsm])[0]
+    assert out.metadata["entity_kind"] == "staging"
+
+
+def test_staging_with_delete_ops_higher_confidence():
+    """Staging tables routinely cleared → raise confidence."""
+    fsm = _fsm(
+        entity="inbound_events",
+        fields={"id", "payload"},
+        metadata={"sql_ops": ["INSERT", "DELETE"]},
+    )
+    out = classify_entities([fsm])[0]
+    assert out.metadata["entity_kind"] == "staging"
+    assert out.metadata["entity_kind_confidence"] == 0.95
+
+
+def test_staging_columns_alone_classified_as_staging():
+    """Processing-specific columns detect staging even without a name hint."""
+    fsm = _fsm(
+        entity="order_queue_records",
+        fields={"id", "processing_status", "retry_count", "error_message"},
+    )
+    out = classify_entities([fsm])[0]
+    assert out.metadata["entity_kind"] == "staging"
+
+
+def test_staging_wins_over_transactional():
+    """stg_* name + status + timestamps must classify as staging, not transactional."""
+    fsm = _fsm(
+        entity="staging_invoices",
+        fields={"id", "status", "created_at"},
+    )
+    out = classify_entities([fsm])[0]
+    assert out.metadata["entity_kind"] == "staging"
+
+
 # --- summary ----------------------------------------------------------------
 
 def test_sql_view_classified_as_summary():

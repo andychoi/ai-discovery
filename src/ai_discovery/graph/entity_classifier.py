@@ -2,7 +2,7 @@
 
 Every entity is annotated with:
   metadata["entity_kind"]: one of
-      {key, master, transactional, event, summary, junction, config, unknown}
+      {staging, key, master, transactional, event, summary, junction, config, unknown}
   metadata["entity_kind_confidence"]: float 0.0–1.0
   metadata["entity_kind_signals"]: dict of the positive signals that fired,
       preserved for explainability.
@@ -47,6 +47,27 @@ from .models import EntityStateMachine
 # transactional even without parsed transitions.
 _STATUS_FIELDS: frozenset[str] = frozenset({
     "status", "state", "workflow_state", "phase", "stage", "lifecycle_state",
+})
+
+# Staging / ephemeral / interface signals.
+# Staging tables look structurally like transactional (status, timestamps,
+# INSERT+UPDATE) but are infrastructure, not business entities. BPMN should
+# render them as intermediate data stores between external and internal
+# pools; impact analysis ranks their schema changes lower since by design
+# there are no long-term consumers.
+_STAGING_NAME_PREFIXES: tuple[str, ...] = (
+    "stg_", "staging_", "inbound_", "outbound_", "import_", "export_",
+    "tmp_", "temp_", "raw_", "queue_", "work_",
+    # `pending_` deliberately excluded — too often used for business
+    # aggregates like `pending_total` / `pending_balance`.
+)
+_STAGING_NAME_SUFFIXES: tuple[str, ...] = (
+    "_staging", "_stg", "_queue", "_tmp", "_temp", "_raw",
+    "_inbound", "_outbound", "_import", "_export",
+)
+_STAGING_FIELDS: frozenset[str] = frozenset({
+    "processed_at", "processing_status", "error_message", "retry_count",
+    "batch_id", "import_status", "export_status",
 })
 
 # Append-only / audit signatures.
@@ -127,6 +148,32 @@ def _classify_one(fsm: EntityStateMachine) -> tuple[str, float, dict]:
     has_status_field: bool = bool(fields_lc & _STATUS_FIELDS)
 
     signals: dict[str, object] = {}
+
+    # 0. staging — name pattern is the decisive signal; placed first so
+    #    a `stg_orders` table with a status field doesn't get pulled into
+    #    transactional. Structurally identical to transactional but the
+    #    name makes the intent unambiguous.
+    staging_prefix = next(
+        (p for p in _STAGING_NAME_PREFIXES if name_lc.startswith(p)), None,
+    )
+    staging_suffix = next(
+        (s for s in _STAGING_NAME_SUFFIXES if name_lc.endswith(s)), None,
+    )
+    if staging_prefix or staging_suffix:
+        if staging_prefix:
+            signals["staging_name_prefix"] = staging_prefix
+        if staging_suffix:
+            signals["staging_name_suffix"] = staging_suffix
+        # DELETE / TRUNCATE in SQL ops raises confidence — real staging
+        # tables are routinely cleared, business entities almost never are.
+        if "DELETE" in sql_ops or "TRUNCATE" in sql_ops:
+            signals["cleared_by_sql"] = sorted(sql_ops & {"DELETE", "TRUNCATE"})
+            return "staging", 0.95, signals
+        return "staging", 0.85, signals
+    staging_cols = fields_lc & _STAGING_FIELDS
+    if staging_cols:
+        signals["staging_columns"] = sorted(staging_cols)
+        return "staging", 0.75, signals
 
     # 1. summary — sql_view or aggregate columns without a status field.
     if node_type == "sql_view":

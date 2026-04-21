@@ -170,4 +170,36 @@ class EntityStateMachine:
     #   - "source_node_types": list[str | None] — node_type per consolidated name
     #   - "merge_rule": str — e.g. "pass1:jaccard_0.93"
     #   - "projection_links": list[str] — related projection entities (DTOs, etc.)
+    # Phase 2.5.2 / 3.1a additions (see entity_classifier / entity_correlator):
+    #   - "entity_kind", "entity_kind_confidence", "entity_kind_signals"
+    #   - "denormalized_fields": list[dict] — copies from other entities
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class CrossEntityTransitionLink:
+    """Phase 3.1b: an ordered pair of transitions on two *different* entities
+    that scenario walks consistently show co-occurring in the same direction.
+
+    Example: across 4 out of 5 scenarios that include both, `Order` reaches
+    `submitted` before `Invoice` reaches `pending`. That's strong evidence
+    of a causal / sequential relationship that downstream generators should
+    render as a BPMN sequence flow crossing swim lanes.
+
+    Fields capture both endpoints symmetrically so BPMN / DMN generators can
+    label the edge (`from_state` → `to_state`) without re-parsing the FSM.
+    `support` and `directional_confidence` let consumers filter — for strict
+    docs, require support ≥ 3 and directional ≥ 0.9; for exploratory views,
+    include weaker links.
+    """
+    from_entity_id: str
+    from_entity: str
+    from_field: str
+    from_state: str | None   # the to_state of the triggering transition
+    to_entity_id: str
+    to_entity: str
+    to_field: str
+    to_state: str | None     # the to_state of the triggered transition
+    support: int             # scenarios where the pair appears in this order
+    directional_confidence: float  # support / (support + reverse_count)
     metadata: dict = field(default_factory=dict)

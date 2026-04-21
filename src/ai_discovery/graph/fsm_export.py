@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .models import EntityStateMachine, StateTransition
+from .models import CrossEntityTransitionLink, EntityStateMachine, StateTransition
 
 
 def fsm_to_dict(fsm: EntityStateMachine) -> dict[str, Any]:
@@ -80,4 +80,43 @@ def write_entity_state_machines_json(
     """Write `entity_state_machines.json` to `output_path`. Returns the path."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(entity_state_machines_to_json(fsms))
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.1b: cross-entity transition links export.
+# ---------------------------------------------------------------------------
+
+def cross_entity_link_to_dict(link: CrossEntityTransitionLink) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "from_entity": link.from_entity,
+        "from_entity_id": link.from_entity_id,
+        "from_field": link.from_field,
+        "from_state": link.from_state,
+        "to_entity": link.to_entity,
+        "to_entity_id": link.to_entity_id,
+        "to_field": link.to_field,
+        "to_state": link.to_state,
+        "support": link.support,
+        "directional_confidence": round(link.directional_confidence, 4),
+    }
+    if link.metadata:
+        out["metadata"] = link.metadata
+    return out
+
+
+def cross_entity_links_to_json(links: list[CrossEntityTransitionLink]) -> str:
+    payload = {
+        "version": 1,
+        "cross_entity_transitions": [cross_entity_link_to_dict(l) for l in links],
+    }
+    return json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def write_cross_entity_links_json(
+    links: list[CrossEntityTransitionLink],
+    output_path: Path,
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(cross_entity_links_to_json(links))
     return output_path

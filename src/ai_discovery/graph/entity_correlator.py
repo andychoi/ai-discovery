@@ -37,8 +37,9 @@ Known limitations (accept for v1, queue for a later pass):
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 
-from .models import EntityStateMachine
+from .models import CrossEntityTransitionLink, EntityStateMachine, Scenario
 
 
 # Fields that are almost never denormalized — common bookkeeping that
@@ -138,6 +139,115 @@ def _try_match_field(
                 "confidence": 0.75,
             }
     return None
+
+
+def mine_cross_entity_transitions(
+    fsms: list[EntityStateMachine],
+    scenarios: list[Scenario],
+    min_support: int = 1,
+    directional_threshold: float = 0.75,
+) -> list[CrossEntityTransitionLink]:
+    """Mine ordered cross-entity transition pairs from scenario walks.
+
+    For each scenario, walks `primary_path` in order and collects transitions.
+    For every ordered pair of transitions on *different* entities within the
+    same scenario, increments a co-occurrence counter. After iterating all
+    scenarios, emits one `CrossEntityTransitionLink` per pair that:
+      - Appears in at least `min_support` scenarios going A→B, AND
+      - Shows a directional ratio (A→B / (A→B + B→A)) ≥ `directional_threshold`.
+
+    The directional gate prevents emitting both (A→B) and (B→A) for a pair
+    that bounces back and forth: only the dominant direction survives. Pairs
+    that are roughly 50/50 are suppressed entirely — they're probably
+    independent transitions that happen to co-occur, not a causal sequence.
+
+    Scope — deliberately simple for v1:
+      - Uses only `primary_path` (top-confidence nodes per scenario), not
+        alternate paths. Alternates would inflate support with repeats of
+        the same logical sequence.
+      - Transitions without `entity_id` are skipped (can't group).
+      - Self-loops on the same entity are skipped (not "cross-entity").
+      - No transitive inference (A→B→C does not imply A→C).
+    """
+    if not scenarios:
+        return []
+    # Index entity_id → display name so we can label each side of the link.
+    entity_name: dict[str, str] = {f.entity_id: f.entity for f in fsms}
+
+    # {(a_key, b_key): count}  — a_key, b_key are (entity_id, field, to_state) triples.
+    pair_counts: dict[tuple, int] = defaultdict(int)
+    for scenario in scenarios:
+        seq = _ordered_transitions(scenario)
+        # Dedup within-scenario: the same transition appearing multiple times
+        # in primary_path (rare, but possible with re-entries) should count
+        # once per scenario toward the pair, to keep support honest.
+        seen_triples: list[tuple] = []
+        seen_set: set[tuple] = set()
+        for t in seq:
+            if not t.entity_id:
+                continue
+            triple = (t.entity_id, t.field, t.to_state)
+            if triple in seen_set:
+                continue
+            seen_set.add(triple)
+            seen_triples.append(triple)
+        for i in range(len(seen_triples)):
+            a = seen_triples[i]
+            for j in range(i + 1, len(seen_triples)):
+                b = seen_triples[j]
+                if a[0] == b[0]:
+                    continue
+                pair_counts[(a, b)] += 1
+
+    emitted: dict[tuple, CrossEntityTransitionLink] = {}
+    for (a, b), count in pair_counts.items():
+        if count < min_support:
+            continue
+        reverse = pair_counts.get((b, a), 0)
+        total = count + reverse
+        directional_confidence = count / total if total else 1.0
+        if directional_confidence < directional_threshold:
+            continue
+        # Canonicalize — if both (a,b) and (b,a) pass, emit only the dominant.
+        canonical = (a, b) if count >= reverse else (b, a)
+        if canonical in emitted:
+            continue
+        from_triple, to_triple = (a, b) if count >= reverse else (b, a)
+        emitted[canonical] = CrossEntityTransitionLink(
+            from_entity_id=from_triple[0],
+            from_entity=entity_name.get(from_triple[0], from_triple[0]),
+            from_field=from_triple[1],
+            from_state=from_triple[2],
+            to_entity_id=to_triple[0],
+            to_entity=entity_name.get(to_triple[0], to_triple[0]),
+            to_field=to_triple[1],
+            to_state=to_triple[2],
+            support=max(count, reverse),
+            directional_confidence=max(count, reverse) / total if total else 1.0,
+        )
+    # Deterministic ordering for stable diffs.
+    result = list(emitted.values())
+    result.sort(key=lambda l: (
+        l.from_entity_id, l.from_field, l.from_state or "",
+        l.to_entity_id, l.to_field, l.to_state or "",
+    ))
+    return result
+
+
+def _ordered_transitions(scenario: Scenario) -> list:
+    """Return transitions in execution order for a scenario's primary_path.
+
+    Only the primary path is walked — alternate paths are skipped here so a
+    branching scenario doesn't double-count the same sequence. Nodes without
+    a `state_transition` attached are invisible (they're not lifecycle events).
+    """
+    by_id = {n.id: n for n in scenario.nodes}
+    out = []
+    for nid in scenario.primary_path:
+        node = by_id.get(nid)
+        if node is not None and node.state_transition is not None:
+            out.append(node.state_transition)
+    return out
 
 
 def _normalize_stem(name: str) -> str:

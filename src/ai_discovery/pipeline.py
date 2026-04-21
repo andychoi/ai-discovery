@@ -588,9 +588,15 @@ def run_pipeline(
     # not re-scan scenarios.
     from .graph.fsm_rollup import build_entity_state_machines, build_fsms_from_sql_nodes
     from .graph.fsm_identity import consolidate_entities
-    from .graph.entity_correlator import detect_denormalization_links
+    from .graph.entity_correlator import (
+        detect_denormalization_links,
+        mine_cross_entity_transitions,
+    )
     from .graph.entity_classifier import classify_entities
-    from .graph.fsm_export import write_entity_state_machines_json
+    from .graph.fsm_export import (
+        write_cross_entity_links_json,
+        write_entity_state_machines_json,
+    )
     from .graph.fsm_persistence import persist_entity_state_machines
     from .extractors import extract_sql_entities
 
@@ -648,6 +654,16 @@ def run_pipeline(
         if kind_counts:
             parts = ", ".join(f"[green]{n}[/] {k}" for k, n in sorted(kind_counts.items()))
             console.print(f"  Entity kinds: {parts}")
+        # Phase 3.1b: cross-entity transition sequence mining. Drives BPMN
+        # cross-lane sequence flows and impact analysis.
+        with _timed("cross-entity mining"), console.status("[bold cyan]Mining cross-entity transition sequences..."):
+            cross_links = mine_cross_entity_transitions(fsms, scenarios)
+        if cross_links:
+            cross_json_path = output_dir / "cross_entity_transitions.json"
+            write_cross_entity_links_json(cross_links, cross_json_path)
+            console.print(
+                f"  Cross-entity links: [green]{len(cross_links)}[/] sequences → {cross_json_path.name}"
+            )
 
     # ------------------------------------------------------------------
     # 9. Smart chunk
