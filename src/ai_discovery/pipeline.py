@@ -588,6 +588,7 @@ def run_pipeline(
     # not re-scan scenarios.
     from .graph.fsm_rollup import build_entity_state_machines, build_fsms_from_sql_nodes
     from .graph.fsm_identity import consolidate_entities
+    from .graph.entity_correlator import detect_denormalization_links
     from .graph.entity_classifier import classify_entities
     from .graph.fsm_export import write_entity_state_machines_json
     from .graph.fsm_persistence import persist_entity_state_machines
@@ -615,6 +616,13 @@ def run_pipeline(
     raw_fsms = raw_fsms + sql_fsms
     with _timed("fsm consolidate"), console.status("[bold cyan]Consolidating entity name-variants..."):
         fsms, projection_links = consolidate_entities(raw_fsms, nodes_for_consolidation)
+    # Phase 3.1a: detect denormalized field copies across entities so the
+    # classifier's junction rule can see through them.
+    with _timed("denorm detect"), console.status("[bold cyan]Detecting denormalized fields..."):
+        detect_denormalization_links(fsms)
+    denorm_count = sum(1 for f in fsms if f.metadata.get("denormalized_fields"))
+    if denorm_count:
+        console.print(f"  Denormalized fields: [green]{denorm_count}[/] entities annotated")
     # Phase 2.5.2: annotate each FSM with entity_kind so downstream generators
     # can branch on role (transactional vs. master vs. key vs. summary / …).
     with _timed("fsm classify"), console.status("[bold cyan]Classifying entity kinds..."):

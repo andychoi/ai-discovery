@@ -138,11 +138,28 @@ def _classify_one(fsm: EntityStateMachine) -> tuple[str, float, dict]:
         return "summary", 0.75, signals
 
     # 2. junction — two or more FKs and no other meaningful columns.
+    #    Denormalized fields (copies from other entities, detected by
+    #    `entity_correlator.detect_denormalization_links`) don't count
+    #    as "other meaningful columns", so `order_item(order_id,
+    #    product_id, product_name, product_price, quantity)` still
+    #    classifies as junction when `product_name` / `product_price`
+    #    are flagged copies from `Product`.
+    denorm_fields = {
+        (d.get("field") or "").lower()
+        for d in fsm.metadata.get("denormalized_fields") or []
+    }
     fk_cols = sorted(f for f in fields_lc if f.endswith("_id") and f != "id")
     if len(fk_cols) >= 2:
-        non_fk_non_meta = fields_lc - _JUNCTION_ALLOWED_EXTRA - set(fk_cols)
+        non_fk_non_meta = (
+            fields_lc
+            - _JUNCTION_ALLOWED_EXTRA
+            - set(fk_cols)
+            - denorm_fields
+        )
         if not non_fk_non_meta and not has_status_field:
             signals["foreign_keys"] = fk_cols
+            if denorm_fields:
+                signals["denormalized_fields"] = sorted(denorm_fields)
             return "junction", 0.85, signals
 
     # 3. config — name pattern or key/value field signature.
