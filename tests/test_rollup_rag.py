@@ -82,7 +82,7 @@ def test_build_rollup_prompt_includes_rag_section():
     domain = _make_domain()
     rag_context = "### auth.login (auth/handler.py)\n```\ndef login(): pass\n```"
 
-    prompt = _build_rollup_prompt(domain, "as-is-api", {}, [], rag_context=rag_context)
+    prompt = _build_rollup_prompt(domain, "as-is-detail", {}, [], rag_context=rag_context)
 
     assert "Source Code Context" in prompt
     assert "auth.login" in prompt

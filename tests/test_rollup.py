@@ -101,13 +101,16 @@ SAMPLE_FLOWS = [
 
 def _mock_llm_client(text: str = "# Generated Doc\n\nSome content.\n\nConfidence: 0.85") -> MagicMock:
     client = MagicMock()
-    client.invoke.return_value = LLMResponse(
+    response = LLMResponse(
         text=text,
         tokens_in=1000,
         tokens_out=500,
         model="claude-opus",
         tier="tier3",
     )
+    # rollup dispatches through invoke_with_advisor (post-91880bb).
+    client.invoke.return_value = response
+    client.invoke_with_advisor.return_value = response
     return client
 
 
@@ -153,36 +156,28 @@ def test_build_rollup_prompt_as_is():
     assert "Confidence" in prompt
 
 
-def test_build_rollup_prompt_interface():
-    """Verify interface prompt focuses on endpoints/APIs."""
+def test_build_rollup_prompt_as_is_detail():
+    """Verify as-is-detail prompt merges functional spec + API contracts (old 'spec' + 'interface')."""
     domain = _make_domain()
-    prompt = _build_rollup_prompt(domain, "interface", SAMPLE_SUMMARIES, SAMPLE_FLOWS)
+    prompt = _build_rollup_prompt(domain, "as-is-detail", SAMPLE_SUMMARIES, SAMPLE_FLOWS)
 
-    # Interface-specific instructions
+    # Functional-spec half
+    assert "Use Cases" in prompt
+    assert "Business Rules" in prompt
+    # API-contracts half
     assert "Endpoints" in prompt or "APIs" in prompt
-    assert "Request Schema" in prompt or "Request" in prompt
-    assert "Response Schema" in prompt or "Response" in prompt
-    assert "Error Handling" in prompt
+    assert "Request" in prompt
+    assert "Response" in prompt
 
-    # Still has domain info
+    # Domain info preserved
     assert "Domain: orders" in prompt
     assert "POST /orders -> OrderResponse" in prompt  # io_summary from summaries
 
 
-def test_build_rollup_prompt_spec():
-    """Verify spec prompt includes use cases and business rules."""
+def test_build_rollup_prompt_as_is_schema():
+    """Verify as-is-schema prompt covers entities, relationships, constraints (old 'data-model')."""
     domain = _make_domain()
-    prompt = _build_rollup_prompt(domain, "spec", SAMPLE_SUMMARIES, SAMPLE_FLOWS)
-
-    assert "Use Cases" in prompt
-    assert "Business Rules" in prompt
-    assert "Functional Requirements" in prompt
-
-
-def test_build_rollup_prompt_data_model():
-    """Verify data-model prompt includes entity and relationship info."""
-    domain = _make_domain()
-    prompt = _build_rollup_prompt(domain, "data-model", SAMPLE_SUMMARIES, SAMPLE_FLOWS)
+    prompt = _build_rollup_prompt(domain, "as-is-schema", SAMPLE_SUMMARIES, SAMPLE_FLOWS)
 
     assert "Entity Definitions" in prompt or "Entity" in prompt
     assert "Relationships" in prompt
@@ -243,17 +238,17 @@ def test_parse_rollup_case_insensitive():
 
 
 def test_generate_domain_docs_all_types():
-    """Mock LLM, verify 4 RollupResults (one per doc type)."""
+    """Mock LLM, verify one RollupResult per doc type in DOC_TYPES."""
     domain = _make_domain()
     client = _mock_llm_client()
 
     results = generate_domain_docs(domain, SAMPLE_SUMMARIES, SAMPLE_FLOWS, client)
 
-    assert len(results) == 4
-    assert client.invoke.call_count == 4
+    assert len(results) == len(DOC_TYPES)
+    assert client.invoke_with_advisor.call_count == len(DOC_TYPES)
 
     doc_types_generated = {r.doc_type for r in results}
-    assert doc_types_generated == {"as-is", "spec", "interface", "data-model"}
+    assert doc_types_generated == set(DOC_TYPES)
 
     for result in results:
         assert isinstance(result, RollupResult)
@@ -265,7 +260,7 @@ def test_generate_domain_docs_all_types():
         assert "orders" in result.title
 
     # Verify tier3 is used
-    for call in client.invoke.call_args_list:
+    for call in client.invoke_with_advisor.call_args_list:
         assert call[0][0] == "tier3"
 
 
@@ -275,10 +270,10 @@ def test_generate_domain_docs_custom_types():
     client = _mock_llm_client()
 
     results = generate_domain_docs(
-        domain, {}, [], client, doc_types=("as-is", "spec")
+        domain, {}, [], client, doc_types=("as-is", "as-is-detail")
     )
     assert len(results) == 2
-    assert client.invoke.call_count == 2
+    assert client.invoke_with_advisor.call_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +282,7 @@ def test_generate_domain_docs_custom_types():
 
 
 def test_generate_all_docs_multiple_domains():
-    """2 domains -> 8 results."""
+    """2 domains -> 2 * len(DOC_TYPES) results."""
     domain1 = _make_domain("orders")
     domain2 = _make_domain("payments")
     client = _mock_llm_client()
@@ -306,13 +301,14 @@ def test_generate_all_docs_multiple_domains():
         on_progress=lambda c, t: progress_calls.append((c, t)),
     )
 
-    assert len(results) == 8
-    assert client.invoke.call_count == 8
+    expected_count = 2 * len(DOC_TYPES)
+    assert len(results) == expected_count
+    assert client.invoke_with_advisor.call_count == expected_count
 
-    # Progress callbacks: 1..8 out of 8
-    assert len(progress_calls) == 8
-    assert progress_calls[0] == (1, 8)
-    assert progress_calls[-1] == (8, 8)
+    # Progress callbacks: 1..N out of N
+    assert len(progress_calls) == expected_count
+    assert progress_calls[0] == (1, expected_count)
+    assert progress_calls[-1] == (expected_count, expected_count)
 
     # Both domains represented
     domains_seen = {r.domain for r in results}
@@ -324,7 +320,7 @@ def test_generate_all_docs_empty_domains():
     client = _mock_llm_client()
     results = generate_all_docs([], {}, {}, client)
     assert results == []
-    assert client.invoke.call_count == 0
+    assert client.invoke_with_advisor.call_count == 0
 
 
 # ---------------------------------------------------------------------------

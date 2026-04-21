@@ -26,17 +26,21 @@ def test_regenerate_section_replaces_unverified_content():
     ]
 
     mock_client = MagicMock()
-    mock_client.invoke.return_value = MagicMock(
+    mock_response = MagicMock(
         text="The AuthService handles login via session cookies stored in Redis.",
         tokens_in=100, tokens_out=50, model="test",
     )
+    # regenerate_sections dispatches through invoke_with_advisor (post-91880bb);
+    # keep the legacy invoke mock in sync so either surface works.
+    mock_client.invoke.return_value = mock_response
+    mock_client.invoke_with_advisor.return_value = mock_response
 
     result = regenerate_sections(original_md, claims, mock_client, db_path=None)
 
     # The Data Model section should be unchanged
     assert "Users are stored in the users table" in result
     # The LLM was called to re-generate the Authentication section
-    assert mock_client.invoke.called
+    assert mock_client.invoke_with_advisor.called
 
 
 def test_regenerate_sections_no_unverified_claims():
@@ -53,3 +57,4 @@ def test_regenerate_sections_no_unverified_claims():
 
     assert result == original_md
     assert not mock_client.invoke.called
+    assert not mock_client.invoke_with_advisor.called

@@ -26,13 +26,17 @@ from ai_discovery.db import get_conn, init_db
 
 def _mock_llm(text: str, tier: str = "tier1") -> MagicMock:
     client = MagicMock()
-    client.invoke.return_value = LLMResponse(
+    response = LLMResponse(
         text=text,
         tokens_in=100,
         tokens_out=50,
         model="test-model",
         tier=tier,
     )
+    # self_review.py dispatches through invoke_with_advisor (post-91880bb).
+    # Mock both so tests that assert on either surface keep working.
+    client.invoke.return_value = response
+    client.invoke_with_advisor.return_value = response
     return client
 
 
@@ -64,8 +68,8 @@ def test_extract_claims_returns_list():
     assert "OrderService" in claims[0]
     assert "/api/users" in claims[1]
     assert "foreign key" in claims[2]
-    client.invoke.assert_called_once()
-    assert client.invoke.call_args[0][0] == "tier1"
+    client.invoke_with_advisor.assert_called_once()
+    assert client.invoke_with_advisor.call_args[0][0] == "tier1"
 
 
 def test_extract_claims_handles_non_json():
@@ -130,7 +134,7 @@ def test_verify_claim_unverified_no_results():
     assert result.evidence == ""
     assert result.source_file == ""
     # LLM should NOT be called when RAG returns nothing
-    client.invoke.assert_not_called()
+    client.invoke_with_advisor.assert_not_called()
 
 
 def test_verify_claim_contradicted():
@@ -167,7 +171,7 @@ def test_review_document_full_pipeline():
     client = MagicMock()
     # First call: extract_claims -> returns JSON array
     # Subsequent calls: verify_claim -> returns "verified"
-    client.invoke.side_effect = [
+    client.invoke_with_advisor.side_effect = [
         LLMResponse(text=claims_json, tokens_in=100, tokens_out=50, model="m", tier="tier1"),
         LLMResponse(text="verified", tokens_in=50, tokens_out=10, model="m", tier="tier1"),
         LLMResponse(text="unverified", tokens_in=50, tokens_out=10, model="m", tier="tier1"),
@@ -206,7 +210,7 @@ def test_review_document_caps_claims():
         responses.append(
             LLMResponse(text="verified", tokens_in=50, tokens_out=10, model="m", tier="tier1"),
         )
-    client.invoke.side_effect = responses
+    client.invoke_with_advisor.side_effect = responses
 
     rag_results = [
         {
@@ -224,7 +228,7 @@ def test_review_document_caps_claims():
 
     assert len(results) == 3
     # extract (1) + verify (3) = 4 total LLM calls
-    assert client.invoke.call_count == 4
+    assert client.invoke_with_advisor.call_count == 4
 
 
 # ---------------------------------------------------------------------------

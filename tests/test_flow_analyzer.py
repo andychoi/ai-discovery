@@ -64,13 +64,17 @@ def _make_domain(name: str = "orders") -> Domain:
 
 def _mock_llm_response(flows: list[dict], tier: str = "tier2") -> MagicMock:
     client = MagicMock()
-    client.invoke.return_value = LLMResponse(
+    response = LLMResponse(
         text=json.dumps(flows),
         tokens_in=500,
         tokens_out=200,
         model="claude-sonnet",
         tier=tier,
     )
+    # flow_analyzer dispatches through invoke_with_advisor (post-91880bb).
+    # Mock both so tests asserting on either surface keep working.
+    client.invoke.return_value = response
+    client.invoke_with_advisor.return_value = response
     return client
 
 
@@ -130,8 +134,8 @@ def test_analyze_domain_calls_tier2():
     domain = _make_domain()
     client = _mock_llm_response(SAMPLE_FLOWS)
     flows = analyze_domain(domain, {}, client)
-    client.invoke.assert_called_once()
-    call_args = client.invoke.call_args
+    client.invoke_with_advisor.assert_called_once()
+    call_args = client.invoke_with_advisor.call_args
     assert call_args[0][0] == "tier2"  # first positional arg is tier
     assert len(flows) == 2
 
@@ -146,7 +150,7 @@ def test_analyze_domain_with_summaries():
     }
     client = _mock_llm_response(SAMPLE_FLOWS)
     analyze_domain(domain, summaries, client)
-    prompt = client.invoke.call_args[0][1]
+    prompt = client.invoke_with_advisor.call_args[0][1]
     assert "REST endpoint for order creation" in prompt
     assert "Validates stock before creating order" in prompt
 
@@ -165,7 +169,7 @@ def test_analyze_all_domains_processes_each():
     )
     assert "orders" in results
     assert "payments" in results
-    assert client.invoke.call_count == 2
+    assert client.invoke_with_advisor.call_count == 2
     assert progress_calls == [(1, 2), (2, 2)]
 
 
@@ -274,7 +278,8 @@ def _mock_inference_client(steps=None, ipo=None, interfaces=None) -> MagicMock:
     ]})
 
     client = MagicMock()
-    client.invoke.side_effect = [
+    # ScenarioFlowInference dispatches through invoke_with_advisor (post-91880bb).
+    client.invoke_with_advisor.side_effect = [
         LLMResponse(text=steps_payload, tokens_in=100, tokens_out=50, model="sonnet", tier="tier2"),
         LLMResponse(text=ipo_payload, tokens_in=80, tokens_out=40, model="sonnet", tier="tier2"),
         LLMResponse(text=iface_payload, tokens_in=60, tokens_out=30, model="sonnet", tier="tier2"),
@@ -338,7 +343,7 @@ def test_scenario_flow_inference_includes_state_transition_in_prompt():
     inference = ScenarioFlowInference(client)
     inference.infer_flow(scenario, {})
     # The first call (steps) should include the transition in the prompt
-    first_prompt = client.invoke.call_args_list[0][0][1]
+    first_prompt = client.invoke_with_advisor.call_args_list[0][0][1]
     assert "SUBMITTED" in first_prompt
 
 
