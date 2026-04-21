@@ -593,6 +593,7 @@ def run_pipeline(
         mine_cross_entity_transitions,
     )
     from .graph.entity_classifier import classify_entities
+    from .graph.guard_parser import parse_cross_entity_guards
     from .graph.fsm_export import (
         write_cross_entity_links_json,
         write_entity_state_machines_json,
@@ -664,6 +665,13 @@ def run_pipeline(
             console.print(
                 f"  Cross-entity links: [green]{len(cross_links)}[/] sequences → {cross_json_path.name}"
             )
+        # Phase 3.1c: parse guard expressions for cross-entity state refs.
+        # Annotates transition metadata in place; downstream DMN/BPMN
+        # generators can render these as multi-entity rule inputs.
+        with _timed("guard parse"), console.status("[bold cyan]Parsing cross-entity guards..."):
+            guarded = parse_cross_entity_guards(fsms)
+        if guarded:
+            console.print(f"  Cross-entity guards: [green]{guarded}[/] transitions annotated")
         # Phase 4: L1/L2 entity-backbone Mermaid view. First consumer of
         # entity_kind + cross_entity_transitions as a unified artifact.
         from .generators.bpmn_generator import BPMNGenerator
