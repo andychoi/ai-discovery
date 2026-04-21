@@ -706,6 +706,16 @@ def run_pipeline(
             decisions_path.write_text(decisions_md)
             console.print(f"  Entity decisions: → {decisions_path.name}")
 
+        # Phase 3 deliverable: EARS requirement skeletons. Unlike DMN, emits
+        # for every transition with a to_state — each state change is a
+        # behavioral fact worth documenting, not only the guarded ones.
+        from .generators.ears_generator import generate_entity_ears_markdown
+        ears_md = generate_entity_ears_markdown(fsms, conditions)
+        if "No transitions found" not in ears_md:
+            ears_path = output_dir / "entity_ears.md"
+            ears_path.write_text(ears_md)
+            console.print(f"  Entity EARS: → {ears_path.name}")
+
     # ------------------------------------------------------------------
     # 9. Smart chunk
     # ------------------------------------------------------------------
