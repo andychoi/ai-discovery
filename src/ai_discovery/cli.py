@@ -410,6 +410,60 @@ def query(
         conn.close()
 
 
+@app.command()
+def impact(
+    entity: str = typer.Argument(..., help="Entity name or entity_id to investigate."),
+    project_slug: str = typer.Option(..., "--project-slug", "-p", help="Project slug whose artifacts to read."),
+    output: Path = typer.Option(
+        Path("./data/discovery-output"), "--output", "-o",
+        help="Output dir (must match the scan's --output).",
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output-file", "-f",
+        help="Write the impact report to this file. If omitted, prints to stdout.",
+    ),
+) -> None:
+    """Show every code path and cross-entity interaction that touches an entity.
+
+    Reads the canonical backbone artifacts written by `discover scan`:
+    entity_state_machines.json, cross_entity_transitions.json, and
+    entity_conditions.json. Failing to find one of these is almost always
+    a sign the scan didn't reach Phase 3 — re-run with --resume.
+    """
+    from ai_discovery.graph.fsm_export import (
+        load_cross_entity_links_json,
+        load_entity_conditions_json,
+        load_entity_state_machines_json,
+    )
+    from ai_discovery.graph.impact import EntityNotFound, query_entity_impact
+
+    artifacts_dir = output / project_slug
+    fsm_path = artifacts_dir / "entity_state_machines.json"
+    if not fsm_path.exists():
+        console.print(f"[red]No FSM artifact at {fsm_path}. Run `discover scan` first.[/]")
+        raise typer.Exit(1)
+
+    fsms = load_entity_state_machines_json(fsm_path)
+    cross_path = artifacts_dir / "cross_entity_transitions.json"
+    cross_links = load_cross_entity_links_json(cross_path) if cross_path.exists() else []
+    cond_path = artifacts_dir / "entity_conditions.json"
+    conditions = load_entity_conditions_json(cond_path) if cond_path.exists() else []
+
+    try:
+        report = query_entity_impact(entity, fsms, cross_links, conditions)
+    except EntityNotFound as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+
+    if output_file:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(report)
+        console.print(f"[green]Wrote impact report → {output_file}[/]")
+    else:
+        # Plain stdout so the caller can pipe to `less`, `glow`, a file, etc.
+        print(report)
+
+
 @app.command("ingest-docs")
 def ingest_docs(
     docs_dir: Path = typer.Argument(..., help="Path to directory containing markdown files to ingest."),

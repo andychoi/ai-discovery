@@ -164,3 +164,79 @@ def write_entity_conditions_json(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(entity_conditions_to_json(correlations))
     return output_path
+
+
+# ---------------------------------------------------------------------------
+# Loaders — round-trip symmetry for the three canonical artifacts. Impact-
+# query and any future tooling that consumes the written JSON uses these
+# instead of re-deriving the schema.
+# ---------------------------------------------------------------------------
+
+def load_entity_state_machines_json(path: Path) -> list[EntityStateMachine]:
+    payload = json.loads(path.read_text())
+    out: list[EntityStateMachine] = []
+    for d in payload.get("entity_state_machines", []):
+        fsm = EntityStateMachine(
+            entity=d["entity"],
+            entity_id=d.get("entity_id", ""),
+            states=set(d.get("states", [])),
+            fields=set(d.get("fields", [])),
+            source_files=set(d.get("source_files", [])),
+            confidence=d.get("confidence", 1.0),
+            metadata=d.get("metadata", {}),
+        )
+        for td in d.get("transitions", []):
+            fsm.transitions.append(StateTransition(
+                entity=td["entity"],
+                entity_id=td.get("entity_id", ""),
+                field=td.get("field", ""),
+                from_state=td.get("from_state"),
+                to_state=td.get("to_state"),
+                trigger_function=td.get("trigger_function"),
+                guard_expr=td.get("guard_expr"),
+                confidence=td.get("confidence", 1.0),
+                entry_points=td.get("entry_points", []),
+                metadata=td.get("metadata", {}),
+            ))
+        out.append(fsm)
+    return out
+
+
+def load_cross_entity_links_json(path: Path) -> list[CrossEntityTransitionLink]:
+    payload = json.loads(path.read_text())
+    return [
+        CrossEntityTransitionLink(
+            from_entity=d["from_entity"],
+            from_entity_id=d.get("from_entity_id", ""),
+            from_field=d["from_field"],
+            from_state=d.get("from_state"),
+            to_entity=d["to_entity"],
+            to_entity_id=d.get("to_entity_id", ""),
+            to_field=d["to_field"],
+            to_state=d.get("to_state"),
+            support=d["support"],
+            directional_confidence=d["directional_confidence"],
+            metadata=d.get("metadata", {}),
+        )
+        for d in payload.get("cross_entity_transitions", [])
+    ]
+
+
+def load_entity_conditions_json(path: Path) -> list[EntityConditionCorrelation]:
+    payload = json.loads(path.read_text())
+    return [
+        EntityConditionCorrelation(
+            target_entity=d["target_entity"],
+            target_entity_id=d.get("target_entity_id", ""),
+            target_field=d["target_field"],
+            target_to_state=d.get("target_to_state"),
+            context_entity=d["context_entity"],
+            context_entity_id=d.get("context_entity_id", ""),
+            context_field=d["context_field"],
+            context_state=d["context_state"],
+            support=d["support"],
+            consistency=d["consistency"],
+            metadata=d.get("metadata", {}),
+        )
+        for d in payload.get("entity_conditions", [])
+    ]

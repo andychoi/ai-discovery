@@ -13,10 +13,20 @@ from pathlib import Path
 from ai_discovery.graph.fsm_export import (
     entity_state_machines_to_json,
     fsm_to_dict,
+    load_cross_entity_links_json,
+    load_entity_conditions_json,
+    load_entity_state_machines_json,
+    write_cross_entity_links_json,
+    write_entity_conditions_json,
     write_entity_state_machines_json,
 )
 from ai_discovery.graph.fsm_rollup import build_entity_state_machines
-from ai_discovery.graph.models import EntityStateMachine, StateTransition
+from ai_discovery.graph.models import (
+    CrossEntityTransitionLink,
+    EntityConditionCorrelation,
+    EntityStateMachine,
+    StateTransition,
+)
 
 
 def _t(**kw) -> StateTransition:
@@ -139,3 +149,80 @@ def test_confidence_rounded_to_four_places():
     fsm = EntityStateMachine(entity="Order", confidence=0.8333333333)
     out = fsm_to_dict(fsm)
     assert out["confidence"] == 0.8333
+
+
+# --- Round-trip loaders (Phase 3 impact query) ------------------------------
+
+
+def test_fsm_json_round_trip(tmp_path: Path):
+    """Write → load → write yields byte-identical JSON."""
+    fsm = EntityStateMachine(
+        entity="Order", entity_id="mod.Order",
+        states={"draft", "submitted"}, fields={"status"},
+        source_files={"src/order.py"}, confidence=0.875,
+        metadata={"entity_kind": "transactional"},
+        transitions=[StateTransition(
+            entity="Order", entity_id="mod.Order", field="status",
+            from_state="draft", to_state="submitted",
+            trigger_function="mod.Order.submit",
+            guard_expr="self.total > 0", confidence=0.9,
+            entry_points=[{"kind": "API", "qualified_name": "routes.create",
+                           "confidence": 0.9, "hop_count": 1}],
+            metadata={"cross_entity_guards": [
+                {"entity_hint": "order", "field": "status",
+                 "operator": "==", "value": "x", "resolved_entity_id": None}
+            ]},
+        )],
+    )
+    path = tmp_path / "fsms.json"
+    write_entity_state_machines_json([fsm], path)
+
+    loaded = load_entity_state_machines_json(path)
+    assert len(loaded) == 1
+    assert loaded[0].entity == "Order"
+    assert loaded[0].entity_id == "mod.Order"
+    assert loaded[0].states == {"draft", "submitted"}
+    assert loaded[0].metadata["entity_kind"] == "transactional"
+
+    t = loaded[0].transitions[0]
+    assert t.guard_expr == "self.total > 0"
+    assert t.entry_points[0]["kind"] == "API"
+    assert t.metadata["cross_entity_guards"][0]["field"] == "status"
+
+    # Re-export the loaded fsm and compare byte-wise to the original.
+    path2 = tmp_path / "fsms2.json"
+    write_entity_state_machines_json(loaded, path2)
+    assert path.read_text() == path2.read_text()
+
+
+def test_cross_entity_links_round_trip(tmp_path: Path):
+    link = CrossEntityTransitionLink(
+        from_entity="Order", from_entity_id="mod.Order",
+        from_field="status", from_state="submitted",
+        to_entity="Invoice", to_entity_id="mod.Invoice",
+        to_field="status", to_state="pending",
+        support=5, directional_confidence=0.875,
+    )
+    path = tmp_path / "links.json"
+    write_cross_entity_links_json([link], path)
+    loaded = load_cross_entity_links_json(path)
+    assert len(loaded) == 1
+    assert loaded[0].from_entity == "Order" and loaded[0].to_entity == "Invoice"
+    assert loaded[0].support == 5
+
+
+def test_entity_conditions_round_trip(tmp_path: Path):
+    cond = EntityConditionCorrelation(
+        target_entity="Invoice", target_entity_id="mod.Invoice",
+        target_field="status", target_to_state="pending",
+        context_entity="Order", context_entity_id="mod.Order",
+        context_field="status", context_state="submitted",
+        support=7, consistency=0.875,
+    )
+    path = tmp_path / "conds.json"
+    write_entity_conditions_json([cond], path)
+    loaded = load_entity_conditions_json(path)
+    assert len(loaded) == 1
+    assert loaded[0].target_entity == "Invoice"
+    assert loaded[0].context_state == "submitted"
+    assert loaded[0].support == 7
