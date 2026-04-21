@@ -696,6 +696,16 @@ def run_pipeline(
         )
         console.print(f"  Entity backbone: → {backbone_path.name}")
 
+        # Phase 3 deliverable: DMN decision tables on guarded/conditioned
+        # transitions. Consumes guards (3.1c) + conditions (3.1d) as merged
+        # rule inputs; Markdown for PR review (DMN XML export can layer on).
+        from .generators.dmn_generator import generate_entity_decisions_markdown
+        decisions_md = generate_entity_decisions_markdown(fsms, conditions)
+        if "No guarded or conditioned transitions" not in decisions_md:
+            decisions_path = output_dir / "entity_decisions.md"
+            decisions_path.write_text(decisions_md)
+            console.print(f"  Entity decisions: → {decisions_path.name}")
+
     # ------------------------------------------------------------------
     # 9. Smart chunk
     # ------------------------------------------------------------------
