@@ -7,7 +7,7 @@ import tree_sitter_typescript as tsts
 from tree_sitter import Language, Parser, Query, QueryCursor
 
 from ..graph.models import CodeNode
-from .base import LanguageParser
+from .base import LanguageParser, find_enclosing_guard
 
 JS_LANGUAGE = Language(tsjs.language())
 TS_LANGUAGE = Language(tsts.language_typescript())
@@ -54,6 +54,33 @@ try:
 except Exception:
     _CALL_QUERY_JS = None
 
+# Phase 1.1: per-call-site records (with receiver). `(_)` accepts any shape
+# under `object:` so `this.svc.save()` and `a.b.c()` both match, not just the
+# narrow `obj.method()` form captured by _CALL_QUERY_JS.
+try:
+    _CALL_SITE_QUERY_JS = Query(
+        JS_LANGUAGE,
+        """(call_expression
+            function: [
+                (member_expression
+                    object: (_) @site.receiver
+                    property: (property_identifier) @site.name
+                )
+                (identifier) @site.name
+            ]
+        ) @site.call""",
+    )
+except Exception:
+    _CALL_SITE_QUERY_JS = None
+
+try:
+    _IMPORT_QUERY_JS = Query(
+        JS_LANGUAGE,
+        "(import_statement) @import.decl",
+    )
+except Exception:
+    _IMPORT_QUERY_JS = None
+
 _DB_OPERATIONS = frozenset({"save", "insert", "update", "delete", "remove", "execute", "query", "persist", "merge", "commit"})
 _EXTERNAL_CLIENTS = frozenset({"axios", "fetch", "got", "request", "superagent", "prisma", "sequelize", "typeorm", "mongoose", "knex", "pg", "kafka", "amqp"})
 
@@ -90,6 +117,9 @@ class JavaScriptParser(LanguageParser):
         # Collect exports first so we can annotate nodes
         self._collect_exports(root, exported_names)
 
+        # File-level ES6 imports — attached to every node in the file.
+        imports = self._extract_imports(root)
+
         # Track class body ranges to avoid double-counting methods
         class_ranges: set[tuple[int, int]] = set()
 
@@ -99,17 +129,17 @@ class JavaScriptParser(LanguageParser):
             if cls_node is None:
                 continue
             if cls_node.type == "class_declaration":
-                self._process_class(cls_node, file_stem, fp, nodes, class_ranges)
+                self._process_class(cls_node, file_stem, fp, nodes, class_ranges, imports)
 
         # 2. Top-level functions, arrow functions, and variable declarations
         for child in root.children:
             node = self._unwrap_export(child)
             if node is None:
                 continue
-            self._process_top_level(node, file_stem, fp, nodes, class_ranges, root)
+            self._process_top_level(node, file_stem, fp, nodes, class_ranges, root, imports)
 
         # 3. Express endpoints from call expressions
-        self._extract_endpoints(root, file_stem, fp, nodes)
+        self._extract_endpoints(root, file_stem, fp, nodes, imports)
 
         return nodes
 
@@ -122,6 +152,7 @@ class JavaScriptParser(LanguageParser):
         fp: str,
         nodes: list[CodeNode],
         class_ranges: set[tuple[int, int]],
+        imports: list[dict],
     ) -> None:
         name_node = self._find_child(cls_node, "type_identifier") or self._find_child(
             cls_node, "identifier"
@@ -138,6 +169,9 @@ class JavaScriptParser(LanguageParser):
         if heritage and b"Component" in heritage.text:
             node_type = "ui_component"
 
+        class_fields = self._extract_class_fields(cls_node)
+        class_bases = self._extract_bases(cls_node)
+
         nodes.append(
             CodeNode(
                 file_path=fp,
@@ -148,6 +182,9 @@ class JavaScriptParser(LanguageParser):
                 source_code=cls_node.text.decode(),
                 line_start=cls_node.start_point.row + 1,
                 line_end=cls_node.end_point.row + 1,
+                imports=imports,
+                fields=class_fields,
+                bases=class_bases,
             )
         )
 
@@ -161,9 +198,16 @@ class JavaScriptParser(LanguageParser):
                         continue
                     method_name = m_name.text.decode()
                     calls = self._extract_calls(member)
-                    
+                    call_sites = self._extract_call_sites(member)
+                    m_qualified = f"{file_stem}.{class_name}.{method_name}"
+
                     # New: Behavioral signals
-                    transitions = self._extract_state_transitions(member, class_name)
+                    transitions = self._extract_state_transitions(
+                        member,
+                        class_name,
+                        class_qualified=qualified,
+                        enclosing_qualified=m_qualified,
+                    )
                     boundaries = self._detect_boundaries(member)
 
                     nodes.append(
@@ -172,11 +216,13 @@ class JavaScriptParser(LanguageParser):
                             language="javascript",
                             node_type="method",
                             name=method_name,
-                            qualified_name=f"{file_stem}.{class_name}.{method_name}",
+                            qualified_name=m_qualified,
                             source_code=member.text.decode(),
                             line_start=member.start_point.row + 1,
                             line_end=member.end_point.row + 1,
                             calls=calls,
+                            call_sites=call_sites,
+                            imports=imports,
                             framework_hints={
                                 "transitions": transitions,
                                 "boundaries": boundaries
@@ -194,6 +240,7 @@ class JavaScriptParser(LanguageParser):
         nodes: list[CodeNode],
         class_ranges: set[tuple[int, int]],
         root,
+        imports: list[dict],
     ) -> None:
         if node.type == "function_declaration":
             if self._inside_class(node, class_ranges):
@@ -203,10 +250,14 @@ class JavaScriptParser(LanguageParser):
                 return
             func_name = name_node.text.decode()
             calls = self._extract_calls(node)
+            call_sites = self._extract_call_sites(node)
             node_type = "ui_component" if self._returns_jsx(node) else "function"
-            
+            fn_qualified = f"{file_stem}.{func_name}"
+
             # New: Behavioral signals
-            transitions = self._extract_state_transitions(node, "")
+            transitions = self._extract_state_transitions(
+                node, "", enclosing_qualified=fn_qualified,
+            )
             boundaries = self._detect_boundaries(node)
 
             nodes.append(
@@ -215,11 +266,13 @@ class JavaScriptParser(LanguageParser):
                     language="javascript",
                     node_type=node_type,
                     name=func_name,
-                    qualified_name=f"{file_stem}.{func_name}",
+                    qualified_name=fn_qualified,
                     source_code=node.text.decode(),
                     line_start=node.start_point.row + 1,
                     line_end=node.end_point.row + 1,
                     calls=calls,
+                    call_sites=call_sites,
+                    imports=imports,
                     framework_hints={
                         "transitions": transitions,
                         "boundaries": boundaries
@@ -231,7 +284,7 @@ class JavaScriptParser(LanguageParser):
             for decl in node.children:
                 if decl.type == "variable_declarator":
                     self._process_variable_declarator(
-                        decl, node, file_stem, fp, nodes, class_ranges
+                        decl, node, file_stem, fp, nodes, class_ranges, imports
                     )
 
     def _process_variable_declarator(
@@ -242,6 +295,7 @@ class JavaScriptParser(LanguageParser):
         fp: str,
         nodes: list[CodeNode],
         class_ranges: set[tuple[int, int]],
+        imports: list[dict],
     ) -> None:
         name_node = self._find_child(decl, "identifier")
         value_node = self._find_child(decl, "arrow_function") or self._find_child(
@@ -254,10 +308,14 @@ class JavaScriptParser(LanguageParser):
 
         func_name = name_node.text.decode()
         calls = self._extract_calls(value_node)
+        call_sites = self._extract_call_sites(value_node)
         node_type = "ui_component" if self._returns_jsx(value_node) else "function"
-        
+        fn_qualified = f"{file_stem}.{func_name}"
+
         # New: Behavioral signals
-        transitions = self._extract_state_transitions(value_node, "")
+        transitions = self._extract_state_transitions(
+            value_node, "", enclosing_qualified=fn_qualified,
+        )
         boundaries = self._detect_boundaries(value_node)
 
         nodes.append(
@@ -266,11 +324,13 @@ class JavaScriptParser(LanguageParser):
                 language="javascript",
                 node_type=node_type,
                 name=func_name,
-                qualified_name=f"{file_stem}.{func_name}",
+                qualified_name=fn_qualified,
                 source_code=parent_node.text.decode(),
                 line_start=parent_node.start_point.row + 1,
                 line_end=parent_node.end_point.row + 1,
                 calls=calls,
+                call_sites=call_sites,
+                imports=imports,
                 framework_hints={
                     "transitions": transitions,
                     "boundaries": boundaries
@@ -281,13 +341,13 @@ class JavaScriptParser(LanguageParser):
     # ── Express endpoint extraction ──────────────────────────────────
 
     def _extract_endpoints(
-        self, root, file_stem: str, fp: str, nodes: list[CodeNode]
+        self, root, file_stem: str, fp: str, nodes: list[CodeNode], imports: list[dict]
     ) -> None:
         """Find router.get('/path', handler) or app.post('/path', handler) patterns."""
-        self._walk_for_endpoints(root, file_stem, fp, nodes)
+        self._walk_for_endpoints(root, file_stem, fp, nodes, imports)
 
     def _walk_for_endpoints(
-        self, node, file_stem: str, fp: str, nodes: list[CodeNode]
+        self, node, file_stem: str, fp: str, nodes: list[CodeNode], imports: list[dict]
     ) -> None:
         if node.type == "call_expression":
             endpoint = self._parse_endpoint_call(node)
@@ -306,6 +366,8 @@ class JavaScriptParser(LanguageParser):
                         line_start=stmt.start_point.row + 1,
                         line_end=stmt.end_point.row + 1,
                         calls=self._extract_calls(node),
+                        call_sites=self._extract_call_sites(node),
+                        imports=imports,
                         framework_hints={
                             "method": method,
                             "route": route,
@@ -316,7 +378,7 @@ class JavaScriptParser(LanguageParser):
                 return  # Don't recurse into endpoint children
 
         for child in node.children:
-            self._walk_for_endpoints(child, file_stem, fp, nodes)
+            self._walk_for_endpoints(child, file_stem, fp, nodes, imports)
 
     def _parse_endpoint_call(self, call_node) -> tuple[str, str] | None:
         """Check if a call_expression is router.get('/path', ...) or app.post(...)."""
@@ -344,24 +406,146 @@ class JavaScriptParser(LanguageParser):
 
         return None
 
-    def _extract_state_transitions(self, node, class_name: str) -> list[dict]:
-        """Look for assignments like this.status = 'ACTIVE'."""
+    @staticmethod
+    def _extract_bases(cls_node) -> list[str]:
+        """Return base class + implemented interface names (Phase 2.4).
+
+        JS has only `extends` (one parent); TypeScript adds `implements`
+        (many interfaces). Both live under `class_heritage`. We collect
+        identifiers conservatively — call-form bases like `extends mixin(X)`
+        keep only the outermost identifier (`mixin`), which is usually the
+        right thing for the consolidator's inheritance graph.
+        """
+        bases: list[str] = []
+        heritage = JavaScriptParser._find_child(cls_node, "class_heritage")
+        if heritage is None:
+            return bases
+        for child in heritage.children:
+            if child.type in ("identifier", "type_identifier"):
+                bases.append(child.text.decode())
+            elif child.type == "extends_clause":
+                for sub in child.children:
+                    if sub.type in ("identifier", "type_identifier"):
+                        bases.append(sub.text.decode())
+                    elif sub.type == "member_expression":
+                        prop = sub.child_by_field_name("property")
+                        if prop is not None:
+                            bases.append(prop.text.decode())
+                    elif sub.type == "call_expression":
+                        fn = sub.child_by_field_name("function")
+                        if fn is not None and fn.type == "identifier":
+                            bases.append(fn.text.decode())
+            elif child.type == "implements_clause":
+                for sub in child.children:
+                    if sub.type in ("identifier", "type_identifier"):
+                        bases.append(sub.text.decode())
+                    elif sub.type == "generic_type":
+                        ident = JavaScriptParser._find_child(sub, "type_identifier") \
+                            or JavaScriptParser._find_child(sub, "identifier")
+                        if ident is not None:
+                            bases.append(ident.text.decode())
+        return bases
+
+    @staticmethod
+    def _extract_class_fields(cls_node) -> list[str]:
+        """Return names of fields declared on this class (Phase 2.4).
+
+        Captures two shapes:
+          - ES2022 class field syntax: `status = 'CREATED'` or `status;`
+            parses as `field_definition` (JS) / `public_field_definition` (TS)
+            inside `class_body`.
+          - Legacy `this.X = ...` inside the `constructor` method.
+
+        Scoped to the class's own `class_body` so inner classes don't leak.
+        """
+        names: list[str] = []
+        seen: set[str] = set()
+        body = JavaScriptParser._find_child(cls_node, "class_body")
+        if body is None:
+            return names
+
+        for member in body.children:
+            if member.type in ("field_definition", "public_field_definition"):
+                name_node = member.child_by_field_name("name") or member.child_by_field_name("property")
+                if name_node is None:
+                    # Fallback: first property_identifier child
+                    for c in member.children:
+                        if c.type in ("property_identifier", "identifier"):
+                            name_node = c
+                            break
+                if name_node is None:
+                    continue
+                name = name_node.text.decode().lstrip("#")  # strip private `#`
+                if name not in seen:
+                    names.append(name)
+                    seen.add(name)
+            elif member.type == "method_definition":
+                # Only the constructor contributes `this.X` fields.
+                m_name = JavaScriptParser._find_child(member, "property_identifier")
+                if m_name is None or m_name.text.decode() != "constructor":
+                    continue
+                for this_name in JavaScriptParser._walk_this_assignments(member):
+                    if this_name not in seen:
+                        names.append(this_name)
+                        seen.add(this_name)
+        return names
+
+    @staticmethod
+    def _walk_this_assignments(node) -> list[str]:
+        """Collect field names from `this.X = <any>` assignments within node."""
+        found: list[str] = []
+        if node.type == "assignment_expression":
+            left = node.child_by_field_name("left")
+            if left is not None and left.type == "member_expression":
+                obj = left.child_by_field_name("object")
+                prop = left.child_by_field_name("property")
+                if obj is not None and obj.type == "this" and prop is not None:
+                    found.append(prop.text.decode())
+        for child in node.children:
+            found.extend(JavaScriptParser._walk_this_assignments(child))
+        return found
+
+    def _extract_state_transitions(
+        self,
+        node,
+        class_name: str,
+        class_qualified: str | None = None,
+        enclosing_qualified: str | None = None,
+    ) -> list[dict]:
+        """Look for assignments like this.status = 'ACTIVE'.
+
+        `entity_id` uses the class's qualified_name for `this` receivers,
+        `enclosing_function.qualified_name::obj` otherwise — giving a unique
+        trace key across modules even when short names collide.
+        """
         transitions = []
         for match in _matches(_ASSIGNMENT_QUERY_JS, node):
             obj_node = match.get("assign.obj", [None])[0]
             attr_node = match.get("assign.attr", [None])[0]
             val_node = match.get("assign.val", [None])[0]
-            
+
             if attr_node and val_node:
                 obj_text = obj_node.text.decode() if obj_node else "this"
                 attr_text = attr_node.text.decode()
                 val_text = val_node.text.decode().strip("\"'`")
-                
+
                 if any(kw in attr_text.lower() for kw in ("status", "state", "stage", "phase")):
+                    is_self = obj_text == "this"
+                    if is_self:
+                        entity = class_name
+                        entity_id = class_qualified or class_name
+                    else:
+                        entity = obj_text
+                        entity_id = (
+                            f"{enclosing_qualified}::{obj_text}"
+                            if enclosing_qualified else obj_text
+                        )
                     transitions.append({
-                        "entity": class_name if obj_text == "this" else obj_text,
+                        "entity": entity,
+                        "entity_id": entity_id,
                         "field": attr_text,
-                        "value": val_text
+                        "value": val_text,
+                        "guard": find_enclosing_guard(attr_node),
                     })
         return transitions
 
@@ -443,6 +627,97 @@ class JavaScriptParser(LanguageParser):
                         calls.append(prop.text.decode())
         for child in node.children:
             self._walk_calls(child, calls)
+
+    @staticmethod
+    def _extract_call_sites(node) -> list[dict]:
+        """One record per call site with receiver text.
+
+        JS `call_expression` splits into `member_expression` (with `object:`
+        receiver) and bare `identifier` (free-standing call). Receiver captures
+        the raw text of the object expression — so `this.svc.save()` yields
+        receiver=`this.svc`.
+        """
+        sites: list[dict] = []
+        if _CALL_SITE_QUERY_JS is None:
+            return sites
+        for match in _matches(_CALL_SITE_QUERY_JS, node):
+            name_nodes = match.get("site.name", [])
+            if not name_nodes:
+                continue
+            receiver_nodes = match.get("site.receiver", [])
+            sites.append({
+                "name": name_nodes[0].text.decode(),
+                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
+            })
+        return sites
+
+    @staticmethod
+    def _extract_imports(root) -> list[dict]:
+        """Extract ES6 import_statement declarations.
+
+        Encoding matches the resolver's `_build_import_index` precedence
+        (alias → name → first-module-segment for the local binding):
+
+          `import X from 'mod'`          → name=X, alias=None
+            (pragmatic: the local binding name is usually the module's primary
+            export; we record it in `name` so resolver lookups for
+            `mod.X.method` have the right shape)
+          `import { X } from 'mod'`      → name=X, alias=None
+          `import { X as Y } from 'mod'` → name=X, alias=Y
+          `import * as X from 'mod'`     → name=None, alias=X  (namespace)
+          `import 'mod'`                 → no record (side effect only)
+        """
+        out: list[dict] = []
+        if _IMPORT_QUERY_JS is None:
+            return out
+        for match in _matches(_IMPORT_QUERY_JS, root):
+            decl = match["import.decl"][0]
+            module_node = JavaScriptParser._find_child(decl, "string")
+            if module_node is None:
+                continue
+            module = module_node.text.decode().strip("\"'`")
+            clause = JavaScriptParser._find_child(decl, "import_clause")
+            if clause is None:
+                continue  # side-effect-only import
+
+            for child in clause.children:
+                if child.type == "identifier":
+                    # default binding: `import X from 'mod'`
+                    out.append({
+                        "module": module,
+                        "name": child.text.decode(),
+                        "alias": None,
+                    })
+                elif child.type == "namespace_import":
+                    # `import * as X from 'mod'`
+                    ident = JavaScriptParser._find_child(child, "identifier")
+                    if ident is not None:
+                        out.append({
+                            "module": module,
+                            "name": None,
+                            "alias": ident.text.decode(),
+                        })
+                elif child.type == "named_imports":
+                    # `import { X, Y as Z } from 'mod'`
+                    for spec in child.children:
+                        if spec.type != "import_specifier":
+                            continue
+                        name_ident = spec.child_by_field_name("name")
+                        alias_ident = spec.child_by_field_name("alias")
+                        if name_ident is None:
+                            # Fallback: first identifier child
+                            for c in spec.children:
+                                if c.type == "identifier":
+                                    name_ident = c
+                                    break
+                        if name_ident is None:
+                            continue
+                        out.append({
+                            "module": module,
+                            "name": name_ident.text.decode(),
+                            "alias": alias_ident.text.decode() if alias_ident else None,
+                        })
+        return out
 
     def _collect_exports(self, root, exported_names: set[str]) -> None:
         """Collect names that are exported."""

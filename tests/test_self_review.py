@@ -39,7 +39,7 @@ def _mock_llm(text: str, tier: str = "tier1") -> MagicMock:
 def _mock_rag_results(results: list[dict]):
     """Return a patcher for rag.retriever.search."""
     return patch(
-        "app.rag.retriever.search",
+        "ai_discovery.rag.retriever.search",
         return_value=results,
     )
 

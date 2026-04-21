@@ -48,6 +48,12 @@ Practical guides for working on specific areas:
 - **`guides/pipeline/cost-tracking.md`** — Budget configuration, cost monitoring, optimization strategies (reduce tier 2/3, skip phases, batch chunks)
 - **`guides/pipeline/profiling.md`** — Identifying bottlenecks, experiments, benchmarks for small/medium/large codebases
 
+### Entity Identity Consolidation (Phase 2.4+)
+*"Why were `Order` and `OrderEntity` merged into one FSM? Why wasn't `OrderDto`?"*
+
+- **`guides/entity-identity/consolidation-algorithm.md`** — Dual-pass fingerprint algorithm with inheritance awareness, mixin detection, and asymmetric projection handling
+- **`guides/entity-identity/edge-cases.md`** — Survey of programming-style, MVC, and dynamic-DB patterns that stress the fingerprint — with frequency / severity ratings and phase assignments
+
 ---
 
 ## Specifications (Design Records)

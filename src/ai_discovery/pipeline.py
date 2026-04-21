@@ -565,6 +565,52 @@ def run_pipeline(
         slice_builder = ExecutionSliceBuilder(all_nodes, edges)
         scenarios = slice_builder.build_all_scenarios()
 
+    # 8.6 NEW: Link state transitions to entry points (UI/API/Batch/Event)
+    from .graph.entry_point_linker import link_entry_points
+    all_transitions = [
+        n.state_transition
+        for s in scenarios
+        for n in s.nodes
+        if n.state_transition is not None
+    ]
+    if all_transitions:
+        with _timed("entry-point link"), console.status("[bold cyan]Linking state transitions to entry points..."):
+            link_entry_points(all_transitions, all_nodes, edges)
+        linked = sum(1 for t in all_transitions if t.entry_points)
+        console.print(
+            f"  Entry-point links: [green]{linked}/{len(all_transitions)}[/] transitions"
+        )
+
+    # 8.7 NEW (Phase 2.1–2.4): roll transitions up into per-entity FSMs,
+    # consolidate name-variants (Order/OrderEntity/order_reducer → one FSM),
+    # persist to SQLite, export JSON. This is the canonical backbone artifact
+    # — every downstream BPMN/DMN/EARS view is supposed to consume the FSM,
+    # not re-scan scenarios.
+    from .graph.fsm_rollup import build_entity_state_machines
+    from .graph.fsm_identity import consolidate_entities
+    from .graph.fsm_export import write_entity_state_machines_json
+    from .graph.fsm_persistence import persist_entity_state_machines
+
+    node_file_index = {n.qualified_name: n.file_path for n in all_nodes}
+    with _timed("fsm rollup"), console.status("[bold cyan]Aggregating state transitions into entity FSMs..."):
+        raw_fsms = build_entity_state_machines(all_transitions, node_file_index=node_file_index)
+    with _timed("fsm consolidate"), console.status("[bold cyan]Consolidating entity name-variants..."):
+        fsms, projection_links = consolidate_entities(raw_fsms, all_nodes)
+    if fsms:
+        fsm_json_path = output_dir / "entity_state_machines.json"
+        write_entity_state_machines_json(fsms, fsm_json_path)
+        if scan_id is not None:
+            persist_entity_state_machines(db_path, scan_id, fsms)
+        total_transitions = sum(len(f.transitions) for f in fsms)
+        merged_count = len(raw_fsms) - len(fsms)
+        merge_suffix = f", [yellow]{merged_count}[/] merged" if merged_count else ""
+        proj_suffix = f", [dim]{len(projection_links)}[/] projection links" if projection_links else ""
+        console.print(
+            f"  Entity FSMs: [green]{len(fsms)}[/] entities"
+            f"{merge_suffix}{proj_suffix}, "
+            f"[green]{total_transitions}[/] deduped transitions → {fsm_json_path.name}"
+        )
+
     # ------------------------------------------------------------------
     # 9. Smart chunk
     # ------------------------------------------------------------------

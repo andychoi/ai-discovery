@@ -14,8 +14,28 @@ class CodeNode:
     line_start: int
     line_end: int
     calls: list[str] = field(default_factory=list)
+    # Phase 1.1: structured call sites. Each entry: {"name": str, "receiver": str | None}.
+    # The resolver prefers `call_sites` over `calls` when present, since `calls` is
+    # deduped by short name and loses per-site receiver information.
+    call_sites: list[dict] = field(default_factory=list)
+    # Phase 1.1: module imports. Each entry: {"module": str, "name": str | None, "alias": str | None}.
+    # `name` is None for a plain `import X`; set for `from X import Y`.
+    # `alias` is set for `import X as Z` or `from X import Y as Z`.
+    imports: list[dict] = field(default_factory=list)
     annotations: list[str] = field(default_factory=list)
     params: list[str] = field(default_factory=list)
+    # Phase 2.4: class attribute names (instance fields + class-level attrs/
+    # properties). Populated on `class` / `db_model` / `ui_component` nodes only.
+    # Used by `fsm_identity` to merge Order / OrderEntity / Orders into one FSM
+    # via field-set fingerprinting.
+    fields: list[str] = field(default_factory=list)
+    # Phase 2.4: superclass / interface / base-type names. `fsm_identity`
+    # uses this to hard-exclude parent-child merges and to subtract inherited
+    # fields before computing similarity — so Order {id, created_at, status}
+    # and BaseEntity {id, created_at} don't get merged just because BaseEntity
+    # contributed the shared fields. Names are unqualified (e.g. "BaseEntity"),
+    # matching the granularity of other language-agnostic signals.
+    bases: list[str] = field(default_factory=list)
     return_type: str | None = None
     framework_hints: dict = field(default_factory=dict)
     domain: str | None = None
@@ -45,16 +65,31 @@ class CallEdge:
     callee: str
     edge_type: str  # direct_call, interface_impl, di_injection, event_emit, http_call
     confidence: float = 1.0
+    # Phase 1.1: resolver evidence. Keys include: "resolved_by" (stage name),
+    # "receiver" (call-site receiver text), "import" (matched import dict).
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
 class StateTransition:
+    # `entity` is the short display name (e.g. "Order"). It may collide across
+    # modules — the unique dedup key is `entity_id`.
     entity: str
     field: str
+    # Phase 2.4: unique qualified identifier that never collides across modules.
+    # - Class-backed transitions (`self.X`, `this.X`, `cls.X` inside a class):
+    #   the enclosing class's `qualified_name` (e.g. "src.billing.order.Order").
+    # - Classless/duck-typed transitions (`obj.X` where `obj` is a local/param):
+    #   `"{enclosing_function.qualified_name}::{var}"`.
+    # Defaults to `entity` so parser/rollup migration is incremental — once all
+    # parsers populate it, callers should treat the empty default as a bug.
+    entity_id: str = ""
     from_state: str | None = None
     to_state: str | None = None
     trigger_function: str | None = None
     confidence: float = 1.0
+    guard_expr: str | None = None
+    entry_points: list[dict] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
 
 
@@ -107,3 +142,32 @@ class Domain:
     entry_points: list[CodeNode] = field(default_factory=list)
     db_models: list[CodeNode] = field(default_factory=list)
     tech_stack: dict = field(default_factory=dict)
+
+
+@dataclass
+class EntityStateMachine:
+    """Aggregated lifecycle for a single business entity (Phase 2.1).
+
+    Holds every `StateTransition` observed on this entity across the repo, plus
+    convenience aggregates (`states`, `fields`). Entity identity starts as the
+    parser-supplied `entity` name; Phase 2.4 (`fsm_identity.consolidate_entities`)
+    then merges name-variants (`Order` / `OrderEntity` / `Orders`) into one FSM
+    via field-fingerprint matching, recording provenance in `metadata`.
+    """
+    entity: str
+    # Phase 2.4: unique grouping key. Matches each contained transition's
+    # `entity_id`. Rollup groups on this; display uses `entity`. After
+    # consolidation, the canonical `entity` may be a disambiguated form like
+    # "Order (billing)" when two distinct entities share the short name.
+    entity_id: str = ""
+    transitions: list[StateTransition] = field(default_factory=list)
+    states: set[str] = field(default_factory=set)
+    fields: set[str] = field(default_factory=set)
+    source_files: set[str] = field(default_factory=set)
+    confidence: float = 1.0
+    # Phase 2.4 provenance. Populated only on merged FSMs. Keys:
+    #   - "consolidated_from": list[str] — original entity names that merged here
+    #   - "source_node_types": list[str | None] — node_type per consolidated name
+    #   - "merge_rule": str — e.g. "pass1:jaccard_0.93"
+    #   - "projection_links": list[str] — related projection entities (DTOs, etc.)
+    metadata: dict = field(default_factory=dict)

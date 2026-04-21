@@ -7,7 +7,7 @@ import tree_sitter_c_sharp as tscsharp
 from tree_sitter import Language, Parser, Query, QueryCursor
 
 from ..graph.models import CodeNode
-from .base import LanguageParser
+from .base import LanguageParser, find_enclosing_guard
 
 CS_LANGUAGE = Language(tscsharp.language())
 
@@ -26,11 +26,6 @@ _METHOD_QUERY = Query(
 _CONSTRUCTOR_QUERY = Query(
     CS_LANGUAGE,
     "(constructor_declaration name: (identifier) @ctor.name) @ctor.def",
-)
-
-_PROPERTY_QUERY = Query(
-    CS_LANGUAGE,
-    "(property_declaration name: (identifier) @prop.name) @prop.def",
 )
 
 _NAMESPACE_QUERY = Query(
@@ -96,6 +91,29 @@ try:
 except Exception:
     _CALL_QUERY = None
 
+# Phase 1.1: per-call-site records (with receiver). Accepts any receiver shape
+# under `expression:` so `a.b.Method()` and `this.Field.Method()` both match.
+try:
+    _CALL_SITE_QUERY = Query(
+        CS_LANGUAGE,
+        """(invocation_expression
+            function: [
+                (member_access_expression
+                    expression: (_) @site.receiver
+                    name: (identifier) @site.name
+                )
+                (identifier) @site.name
+            ]
+        ) @site.call""",
+    )
+except Exception:
+    _CALL_SITE_QUERY = None
+
+_USING_QUERY = Query(
+    CS_LANGUAGE,
+    "(using_directive) @using.decl",
+)
+
 _DB_OPERATIONS = frozenset({"Add", "Update", "Remove", "SaveChanges", "SaveChangesAsync", "ExecuteSqlRaw", "ExecuteSqlRawAsync", "Attach"})
 _EXTERNAL_CLIENTS = frozenset({"httpClient", "restClient", "kafkaProducer", "bus", "serviceBus", "blobClient", "tableClient"})
 
@@ -132,6 +150,9 @@ class CSharpParser(LanguageParser):
         namespace = self._extract_namespace(root)
         prefix = namespace if namespace else file_stem
 
+        # File-level usings — attached to every node in the file.
+        imports = self._extract_imports(root)
+
         nodes: list[CodeNode] = []
 
         for cls_match in _matches(_CLASS_QUERY, root):
@@ -155,6 +176,9 @@ class CSharpParser(LanguageParser):
             # Constructor DI: extract parameter type names as calls
             ctor_calls = self._extract_constructor_di(cls_node)
 
+            class_fields = self._extract_class_fields(cls_node)
+            class_bases = self._extract_bases(cls_node)
+
             class_code_node = CodeNode(
                 file_path=fp,
                 language="csharp",
@@ -167,11 +191,16 @@ class CSharpParser(LanguageParser):
                 annotations=attr_names,
                 framework_hints=framework_hints,
                 calls=ctor_calls,
+                imports=imports,
+                fields=class_fields,
+                bases=class_bases,
             )
 
-            # For DB models, extract properties as params
+            # For DB models, populate `params` with the same field set — this
+            # preserves the pre-Phase-2.4 shape that downstream db_model
+            # consumers depend on (they look at `params` for column names).
             if is_db_model:
-                class_code_node.params = self._extract_properties(cls_node)
+                class_code_node.params = list(class_fields)
 
             nodes.append(class_code_node)
 
@@ -184,6 +213,7 @@ class CSharpParser(LanguageParser):
                 m_attr_names = [a["name"] for a in m_attrs]
                 params = self._extract_params(m_node)
                 calls = self._extract_calls(m_node)
+                call_sites = self._extract_call_sites(m_node)
                 return_type = self._extract_return_type(m_node)
 
                 # Detect HTTP endpoint
@@ -191,7 +221,12 @@ class CSharpParser(LanguageParser):
                 m_node_type = "endpoint" if endpoint_info else "method"
                 
                 # New: Extract behavioral signals
-                transitions = self._extract_state_transitions(m_node, class_name)
+                transitions = self._extract_state_transitions(
+                    m_node,
+                    class_name,
+                    class_qualified=qualified,
+                    enclosing_qualified=m_qualified,
+                )
                 boundaries = self._detect_boundaries(m_node)
                 
                 m_framework_hints: dict = {
@@ -214,6 +249,8 @@ class CSharpParser(LanguageParser):
                     annotations=m_attr_names,
                     params=params,
                     calls=calls,
+                    call_sites=call_sites,
+                    imports=imports,
                     return_type=return_type,
                     framework_hints=m_framework_hints,
                 ))
@@ -232,24 +269,105 @@ class CSharpParser(LanguageParser):
         return list(set(calls))
 
     @staticmethod
-    def _extract_state_transitions(node, class_name: str) -> list[dict]:
-        """Look for assignments like this.Status = \"Active\"."""
+    def _extract_call_sites(node) -> list[dict]:
+        """One record per call site with receiver text.
+
+        C# `invocation_expression` splits into `member_access_expression`
+        (with receiver) and bare `identifier` (implicit `this`/local).
+        """
+        sites: list[dict] = []
+        if _CALL_SITE_QUERY is None:
+            return sites
+        for match in _matches(_CALL_SITE_QUERY, node):
+            name_nodes = match.get("site.name", [])
+            if not name_nodes:
+                continue
+            receiver_nodes = match.get("site.receiver", [])
+            sites.append({
+                "name": name_nodes[0].text.decode(),
+                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
+            })
+        return sites
+
+    @staticmethod
+    def _extract_imports(root) -> list[dict]:
+        """Extract each `using ...;` directive.
+
+        C# `using X.Y.Z;` makes every type in the namespace short-name
+        accessible — there is no single bound name, so `name=None` marks it
+        as namespace-level (behaves like Python `from X import *`).
+        `using Alias = X.Y.Z;` binds `Alias` locally.
+        """
+        out: list[dict] = []
+        for match in _matches(_USING_QUERY, root):
+            decl = match["using.decl"][0]
+            alias: str | None = None
+            target: str = ""
+            is_static = False
+            for child in decl.children:
+                if child.type == "static" or child.text == b"static":
+                    is_static = True
+                elif child.type == "name_equals":
+                    for c in child.children:
+                        if c.type == "identifier":
+                            alias = c.text.decode()
+                            break
+                elif child.type in ("qualified_name", "identifier", "alias_qualified_name"):
+                    target = child.text.decode()
+            if not target:
+                continue
+            if alias:
+                module, _, name = target.rpartition(".")
+                out.append({"module": module, "name": name or None, "alias": alias, "static": is_static})
+            elif is_static:
+                # `using static X.Y.Z;` makes Z's static members short-name accessible.
+                module, _, name = target.rpartition(".")
+                out.append({"module": module, "name": name, "alias": None, "static": True})
+            else:
+                out.append({"module": target, "name": None, "alias": None, "static": False})
+        return out
+
+    @staticmethod
+    def _extract_state_transitions(
+        node,
+        class_name: str,
+        class_qualified: str | None = None,
+        enclosing_qualified: str | None = None,
+    ) -> list[dict]:
+        """Look for assignments like this.Status = \"Active\".
+
+        `entity_id` disambiguates across modules: the class's qualified_name
+        for `this` receivers, and `enclosing_method.qualified_name::obj` for
+        duck-typed receivers.
+        """
         transitions = []
         for match in _matches(_ASSIGNMENT_QUERY, node):
             obj_node = match.get("assign.obj", [None])[0]
             attr_node = match.get("assign.attr", [None])[0]
             val_node = match.get("assign.val", [None])[0]
-            
+
             if attr_node and val_node:
                 obj_text = obj_node.text.decode() if obj_node else "this"
                 attr_text = attr_node.text.decode()
                 val_text = val_node.text.decode().strip("\"'")
-                
+
                 if any(kw in attr_text.lower() for kw in ("status", "state", "stage", "phase")):
+                    is_self = obj_text == "this"
+                    if is_self:
+                        entity = class_name
+                        entity_id = class_qualified or class_name
+                    else:
+                        entity = obj_text
+                        entity_id = (
+                            f"{enclosing_qualified}::{obj_text}"
+                            if enclosing_qualified else obj_text
+                        )
                     transitions.append({
-                        "entity": class_name if obj_text == "this" else obj_text,
+                        "entity": entity,
+                        "entity_id": entity_id,
                         "field": attr_text,
-                        "value": val_text
+                        "value": val_text,
+                        "guard": find_enclosing_guard(attr_node),
                     })
         return transitions
 
@@ -375,13 +493,90 @@ class CSharpParser(LanguageParser):
         return calls
 
     @staticmethod
-    def _extract_properties(cls_node) -> list[str]:
-        """Extract property names from a class declaration."""
-        props: list[str] = []
-        for match in _matches(_PROPERTY_QUERY, cls_node):
-            name = match["prop.name"][0].text.decode()
-            props.append(name)
-        return props
+    def _extract_bases(cls_node) -> list[str]:
+        """Return base class + interface names for a C# class (Phase 2.4).
+
+        C# groups both the base class and all interfaces into a single
+        `base_list` node — the language grammar doesn't distinguish them
+        syntactically (convention: base class first if present). For the
+        consolidator's purposes this is fine: both are inheritance edges.
+        """
+        bases: list[str] = []
+        for child in cls_node.children:
+            if child.type != "base_list":
+                continue
+            for sub in child.children:
+                if sub.type == "identifier":
+                    bases.append(sub.text.decode())
+                elif sub.type == "qualified_name":
+                    # `System.IDisposable` → record `IDisposable`
+                    last = None
+                    for c in sub.children:
+                        if c.type == "identifier":
+                            last = c
+                    if last is not None:
+                        bases.append(last.text.decode())
+                elif sub.type == "generic_name":
+                    name_child = None
+                    for c in sub.children:
+                        if c.type == "identifier":
+                            name_child = c
+                            break
+                    if name_child is not None:
+                        bases.append(name_child.text.decode())
+        return bases
+
+    @staticmethod
+    def _extract_class_fields(cls_node) -> list[str]:
+        """Return names of both `property_declaration`s and `field_declaration`s
+        declared directly on this class (Phase 2.4).
+
+        Scoped to the direct `declaration_list` child so inner-class members
+        don't pollute the outer class's fingerprint. Properties and fields
+        are unified — both represent entity state and matter equally to FSM
+        identity consolidation.
+        """
+        names: list[str] = []
+        seen: set[str] = set()
+        body = None
+        for child in cls_node.children:
+            if child.type == "declaration_list":
+                body = child
+                break
+        if body is None:
+            return names
+        for member in body.children:
+            if member.type == "property_declaration":
+                name_node = member.child_by_field_name("name")
+                if name_node is not None:
+                    name = name_node.text.decode()
+                    if name not in seen:
+                        names.append(name)
+                        seen.add(name)
+            elif member.type == "field_declaration":
+                # `field_declaration` wraps a `variable_declaration` whose
+                # children are `variable_declarator`s. A single `private int a, b;`
+                # expands to multiple declarators.
+                for sub in member.children:
+                    if sub.type != "variable_declaration":
+                        continue
+                    for decl in sub.children:
+                        if decl.type != "variable_declarator":
+                            continue
+                        name_node = decl.child_by_field_name("name")
+                        if name_node is None:
+                            # Fallback: first identifier child
+                            for c in decl.children:
+                                if c.type == "identifier":
+                                    name_node = c
+                                    break
+                        if name_node is None:
+                            continue
+                        name = name_node.text.decode()
+                        if name not in seen:
+                            names.append(name)
+                            seen.add(name)
+        return names
 
     @staticmethod
     def _detect_endpoint(attrs: list[dict]) -> dict | None:

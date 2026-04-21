@@ -153,7 +153,7 @@ Three custom skills accelerate development in the hard problem areas:
 4. Map AST types (function, method, class, call)
 5. Implement name resolution (Go-specific qualified names)
 6. Test on real code
-7. Measure confidence baseline (target: >= 80% accuracy)
+7. Measure confidence baseline (target: ≥ 80% accuracy)
 8. Register in lang_detector.py
 
 **Reference**: `docs/guides/parsers/extension-checklist.md`
@@ -175,7 +175,7 @@ Three custom skills accelerate development in the hard problem areas:
 ### Corpus Validation
 - Collect 3–5 real repositories per language
 - Manually validate ~10% of resolved calls
-- Measure accuracy (target: >= 85% correct resolution)
+- Measure accuracy (target: ≥ 85% correct resolution)
 - Record baseline for regression testing
 
 **Reference**: `docs/guides/call-graph/test-strategy.md`
@@ -239,10 +239,10 @@ Keep this file as the index; detailed docs live in subdirectories.
 
 | Metric | Target | Why |
 |--------|--------|-----|
-| Call resolution accuracy | >= 85% | Confidence scoring is load-bearing |
-| Low-confidence edge ratio | <= 15% | Too many low-conf edges means bad coverage |
-| Parser accuracy per language | >= 80% | Parsing is phase 6; errors compound downstream |
-| Tier 1 cost per LOC | <= $0.001 | Cost-effective, scalable |
+| Call resolution accuracy | ≥ 85% | Confidence scoring is load-bearing |
+| Low-confidence edge ratio | ≤ 15% | Too many low-conf edges means bad coverage |
+| Parser accuracy per language | ≥ 80% | Parsing is phase 6; errors compound downstream |
+| Tier 1 cost per LOC | ≤ $0.001 | Cost-effective, scalable |
 | Tier 2/3 quality baseline | Opus model | Deep reasoning, high-quality docs |
 
 ---

@@ -146,3 +146,93 @@ const greet = (name) => {
     names = {n.name for n in functions}
     assert "add" in names
     assert "greet" in names
+
+
+# ─── Phase 1.1: imports + call_sites ─────────────────────────────────
+
+
+def test_captures_named_import(parser: JavaScriptParser, tmp_path: Path):
+    f = tmp_path / "handler.js"
+    f.write_text("""\
+import { OrderService } from './svc/orders';
+
+function handle() {
+    OrderService.save(1);
+}
+""")
+    nodes = parser.parse_file(f)
+    fn = next(n for n in nodes if n.name == "handle")
+    assert {"module": "./svc/orders", "name": "OrderService", "alias": None} in fn.imports
+
+
+def test_captures_named_import_with_alias(parser: JavaScriptParser, tmp_path: Path):
+    f = tmp_path / "handler.js"
+    f.write_text("""\
+import { OrderService as OS } from './svc/orders';
+
+function go() {
+    OS.save(1);
+}
+""")
+    nodes = parser.parse_file(f)
+    fn = next(n for n in nodes if n.name == "go")
+    assert {"module": "./svc/orders", "name": "OrderService", "alias": "OS"} in fn.imports
+
+
+def test_captures_default_import(parser: JavaScriptParser, tmp_path: Path):
+    f = tmp_path / "handler.js"
+    f.write_text("""\
+import OrderService from './svc/orders';
+
+function go() {
+    OrderService.save(1);
+}
+""")
+    nodes = parser.parse_file(f)
+    fn = next(n for n in nodes if n.name == "go")
+    assert {"module": "./svc/orders", "name": "OrderService", "alias": None} in fn.imports
+
+
+def test_captures_namespace_import(parser: JavaScriptParser, tmp_path: Path):
+    f = tmp_path / "handler.js"
+    f.write_text("""\
+import * as Orders from './svc/orders';
+
+function go() {
+    Orders.save(1);
+}
+""")
+    nodes = parser.parse_file(f)
+    fn = next(n for n in nodes if n.name == "go")
+    assert {"module": "./svc/orders", "name": None, "alias": "Orders"} in fn.imports
+
+
+def test_side_effect_import_produces_no_record(parser: JavaScriptParser, tmp_path: Path):
+    f = tmp_path / "handler.js"
+    f.write_text("""\
+import './polyfills';
+
+function go() {
+    doThing();
+}
+""")
+    nodes = parser.parse_file(f)
+    fn = next(n for n in nodes if n.name == "go")
+    assert fn.imports == []
+
+
+def test_captures_call_site_receiver(parser: JavaScriptParser, tmp_path: Path):
+    f = tmp_path / "handler.js"
+    f.write_text("""\
+import { OrderService } from './svc/orders';
+
+function handle() {
+    OrderService.save(1);
+    plainCall();
+}
+""")
+    nodes = parser.parse_file(f)
+    fn = next(n for n in nodes if n.name == "handle")
+    sites = {(s["name"], s["receiver"]) for s in fn.call_sites}
+    assert ("save", "OrderService") in sites
+    assert ("plainCall", None) in sites

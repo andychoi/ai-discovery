@@ -208,19 +208,19 @@ def test_full_pipeline(tmp_path):
     from ai_discovery.ai.self_review import ReviewClaim
 
     with (
-        patch("app.ai.llm_client.LLMClient", return_value=mock_llm),
+        patch("ai_discovery.ai.llm_client.LLMClient", return_value=mock_llm),
         patch(
-            "app.rag.embedder.embed_chunks",
+            "ai_discovery.rag.embedder.embed_chunks",
             return_value={"embedded": 0, "dim": 256},
         ),
-        patch("app.rag.retriever.search", return_value=[]),
+        patch("ai_discovery.rag.retriever.search", return_value=[]),
         patch(
-            "app.ai.self_review.review_document",
+            "ai_discovery.ai.self_review.review_document",
             return_value=[
                 ReviewClaim(claim_text="test claim", status="verified"),
             ],
         ),
-        patch("app.ai.self_review.persist_claims"),
+        patch("ai_discovery.ai.self_review.persist_claims"),
     ):
         from ai_discovery.pipeline import run_pipeline
 

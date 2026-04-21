@@ -70,7 +70,7 @@ def test_retry_on_locked_decorator() -> None:
             raise sqlite3.OperationalError("database is locked")
         return "ok"
 
-    with patch("app.db.time.sleep"):  # skip real sleeps
+    with patch("ai_discovery.db.time.sleep"):  # skip real sleeps
         result = flaky()
 
     assert result == "ok"

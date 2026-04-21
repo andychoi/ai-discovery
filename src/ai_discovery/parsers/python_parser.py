@@ -6,7 +6,7 @@ import tree_sitter_python as tspython
 from tree_sitter import Language, Parser, Query, QueryCursor
 
 from ..graph.models import CodeNode
-from .base import LanguageParser
+from .base import LanguageParser, find_enclosing_guard
 
 PY_LANGUAGE = Language(tspython.language())
 
@@ -29,6 +29,31 @@ _CALL_QUERY = Query(
     """[
       (call function: (identifier) @call.name)
       (call function: (attribute attribute: (identifier) @call.name))
+    ]""",
+)
+
+# Same-shape query but also captures the attribute's receiver, for call-site
+# records. Split from `_CALL_QUERY` because the `short-name only` consumers
+# (boundary/state-transition detection) don't need the receiver and benefit
+# from simpler matches.
+_CALL_SITE_QUERY = Query(
+    PY_LANGUAGE,
+    """[
+      (call function: (identifier) @site.name) @site.call
+      (call
+        function: (attribute
+          object: (_) @site.receiver
+          attribute: (identifier) @site.name
+        )
+      ) @site.call
+    ]""",
+)
+
+_IMPORT_QUERY = Query(
+    PY_LANGUAGE,
+    """[
+      (import_statement) @import.plain
+      (import_from_statement) @import.from
     ]""",
 )
 
@@ -57,6 +82,19 @@ _EXTERNAL_CLIENTS = frozenset({"requests", "httpx", "aiohttp", "urllib", "boto3"
 _DECORATOR_QUERY = Query(
     PY_LANGUAGE,
     "(decorator) @dec",
+)
+
+# `self.X = <any>` inside a method body. Unlike `_ASSIGNMENT_QUERY` (which
+# restricts RHS for state-transition detection), this query matches any RHS
+# because field *existence*, not its value, is what Phase 2.4 needs.
+_SELF_FIELD_QUERY = Query(
+    PY_LANGUAGE,
+    """(assignment
+        left: (attribute
+            object: (identifier) @self.obj
+            attribute: (identifier) @self.attr
+        )
+    )""",
 )
 
 
@@ -91,6 +129,10 @@ class PythonParser(LanguageParser):
         file_stem = file_path.stem
         fp = str(file_path)
 
+        # File-level imports — attached to every node in the file so the
+        # resolver can scope calls regardless of which function it's examining.
+        imports = self._extract_imports(root)
+
         nodes: list[CodeNode] = []
 
         # 1. classes + their methods
@@ -104,6 +146,9 @@ class PythonParser(LanguageParser):
             qualified = f"{file_stem}.{class_name}"
             class_ranges.add((cls_node.start_point.row, cls_node.end_point.row))
 
+            class_fields = self._extract_class_fields(cls_node)
+            class_bases = self._extract_bases(cls_node)
+
             nodes.append(CodeNode(
                 file_path=fp,
                 language="python",
@@ -113,6 +158,9 @@ class PythonParser(LanguageParser):
                 source_code=cls_node.text.decode(),
                 line_start=cls_node.start_point.row + 1,
                 line_end=cls_node.end_point.row + 1,
+                imports=imports,
+                fields=class_fields,
+                bases=class_bases,
             ))
 
             # methods inside this class
@@ -123,10 +171,16 @@ class PythonParser(LanguageParser):
                 m_qualified = f"{file_stem}.{class_name}.{method_name}"
                 params = self._extract_params(m_node, skip_self=True)
                 calls = self._extract_calls(m_node)
+                call_sites = self._extract_call_sites(m_node)
                 return_type = self._extract_return_type(m_node)
                 
                 # New: Extract behavioral signals
-                transitions = self._extract_state_transitions(m_node)
+                transitions = self._extract_state_transitions(
+                    m_node,
+                    class_name=class_name,
+                    class_qualified=qualified,
+                    enclosing_qualified=m_qualified,
+                )
                 boundaries = self._detect_boundaries(m_node)
                 is_async = self._is_async_function(m_node)
 
@@ -145,6 +199,8 @@ class PythonParser(LanguageParser):
                     line_end=m_node.end_point.row + 1,
                     params=params,
                     calls=calls,
+                    call_sites=call_sites,
+                    imports=imports,
                     return_type=return_type,
                     framework_hints=f_hints,
                 ))
@@ -161,6 +217,7 @@ class PythonParser(LanguageParser):
             qualified = f"{file_stem}.{func_name}"
             params = self._extract_params(f_node, skip_self=False)
             calls = self._extract_calls(f_node)
+            call_sites = self._extract_call_sites(f_node)
             return_type = self._extract_return_type(f_node)
             decorators = self._extract_decorators(f_node)
             annotations = [d["text"] for d in decorators]
@@ -170,7 +227,12 @@ class PythonParser(LanguageParser):
             node_type = "endpoint" if endpoint_info else "function"
             
             # New: Extract behavioral signals
-            transitions = self._extract_state_transitions(f_node)
+            transitions = self._extract_state_transitions(
+                f_node,
+                class_name=None,
+                class_qualified=None,
+                enclosing_qualified=qualified,
+            )
             boundaries = self._detect_boundaries(f_node)
             is_async = self._is_async_function(f_node)
 
@@ -195,6 +257,8 @@ class PythonParser(LanguageParser):
                 line_end=f_node.end_point.row + 1,
                 params=params,
                 calls=calls,
+                call_sites=call_sites,
+                imports=imports,
                 return_type=return_type,
                 annotations=annotations,
                 framework_hints=framework_hints,
@@ -205,33 +269,52 @@ class PythonParser(LanguageParser):
     # ── helpers ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _extract_state_transitions(node) -> list[dict]:
-        """Look for assignments like self.status = 'ACTIVE'."""
+    def _extract_state_transitions(
+        node,
+        class_name: str | None = None,
+        class_qualified: str | None = None,
+        enclosing_qualified: str | None = None,
+    ) -> list[dict]:
+        """Look for assignments like self.status = 'ACTIVE'.
+
+        When `class_name` is provided and the receiver is `self` (or `cls`),
+        canonicalize `entity` to the enclosing class name and `entity_id` to
+        the class's qualified_name — so rollup can distinguish two classes
+        with the same short name across modules.
+
+        For duck-typed receivers (`obj.status = ...` where `obj` is a local
+        or parameter), `entity_id` becomes `{enclosing_qualified}::{obj}` —
+        scoping the entity to the function where the variable lives. Phase 3
+        type inference may later upgrade these to real class references.
+        """
         transitions = []
-        caps = _captures(_ASSIGNMENT_QUERY, node)
-        
-        objects = caps.get("assign.obj", [])
-        attrs = caps.get("assign.attr", [])
-        values = caps.get("assign.val", [])
-        
-        # matches are grouped by pattern, but captures is a flat dict.
-        # We need to use QueryCursor.matches to keep them paired.
         for match in _matches(_ASSIGNMENT_QUERY, node):
             obj_node = match.get("assign.obj", [None])[0]
             attr_node = match.get("assign.attr", [None])[0]
             val_node = match.get("assign.val", [None])[0]
-            
+
             if obj_node and attr_node and val_node:
                 obj_text = obj_node.text.decode()
                 attr_text = attr_node.text.decode()
                 val_text = val_node.text.decode().strip("\"'")
-                
-                # Check if attribute name is a status-like field
+
                 if any(kw in attr_text.lower() for kw in ("status", "state", "stage", "phase")):
+                    is_self = class_name is not None and obj_text in ("self", "cls")
+                    if is_self:
+                        entity = class_name
+                        entity_id = class_qualified or class_name or ""
+                    else:
+                        entity = obj_text
+                        if enclosing_qualified:
+                            entity_id = f"{enclosing_qualified}::{obj_text}"
+                        else:
+                            entity_id = obj_text
                     transitions.append({
-                        "entity": obj_text,
+                        "entity": entity,
+                        "entity_id": entity_id,
                         "field": attr_text,
-                        "value": val_text
+                        "value": val_text,
+                        "guard": find_enclosing_guard(attr_node),
                     })
         return transitions
 
@@ -302,6 +385,190 @@ class PythonParser(LanguageParser):
         caps = _captures(_CALL_QUERY, node)
         call_names = caps.get("call.name", [])
         return list(dict.fromkeys(n.text.decode() for n in call_names))
+
+    @staticmethod
+    def _extract_call_sites(node) -> list[dict]:
+        """One record per call site, retaining per-site receiver text.
+
+        `_extract_calls` deduplicates by short name and loses which object the
+        call was made on. The resolver needs the receiver to decide between
+        same-named methods (e.g. `order_service.save` vs `customer_service.save`),
+        so we emit the raw receiver source text for later interpretation.
+
+        Unqualified calls (`save(x)`) record `receiver=None`.
+        """
+        sites: list[dict] = []
+        for match in _matches(_CALL_SITE_QUERY, node):
+            name_nodes = match.get("site.name", [])
+            if not name_nodes:
+                continue
+            receiver_nodes = match.get("site.receiver", [])
+            sites.append({
+                "name": name_nodes[0].text.decode(),
+                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
+            })
+        return sites
+
+    @staticmethod
+    def _extract_bases(cls_node) -> list[str]:
+        """Return bare superclass names from `class Foo(Bar, Baz):`.
+
+        Strategy: read the `superclasses` field (an `argument_list`); collect
+        `identifier` and `attribute` children, keeping only the final segment
+        of dotted names (`abc.ABC` → `ABC`). Call-form bases (`type(...)`),
+        keyword args like `metaclass=`, and generic forms (`Foo[Bar]`) are
+        ignored — this is a best-effort signal, not a type system.
+        """
+        bases: list[str] = []
+        supers = cls_node.child_by_field_name("superclasses")
+        if supers is None:
+            return bases
+        for child in supers.children:
+            if child.type == "identifier":
+                bases.append(child.text.decode())
+            elif child.type == "attribute":
+                # Keep the trailing attribute name: `abc.ABC` → `ABC`.
+                last = child.child_by_field_name("attribute")
+                if last is not None:
+                    bases.append(last.text.decode())
+            elif child.type == "subscript":
+                # `Generic[T]` → record `Generic`.
+                value = child.child_by_field_name("value")
+                if value is not None:
+                    bases.append(value.text.decode())
+        return bases
+
+    @staticmethod
+    def _extract_class_fields(cls_node) -> list[str]:
+        """Return the attribute names defined on this class (Phase 2.4).
+
+        Combines two sources so FSM identity consolidation has the same set of
+        fields regardless of whether the codebase uses dataclass-style class
+        attributes or `__init__`-style instance attributes:
+
+          - class-level assignments (`status: str` / `COUNT = 0`)
+          - `self.X = ...` inside `__init__`
+
+        Order is insertion order with dedup; downstream consumers normalize.
+        """
+        names: list[str] = []
+        seen: set[str] = set()
+
+        # Walk the direct class body only — avoid picking up nested class
+        # (e.g. Django `class Meta:`) attributes, which would pollute the
+        # fingerprint for the outer entity.
+        body = None
+        for child in cls_node.children:
+            if child.type == "block":
+                body = child
+                break
+        if body is not None:
+            for stmt in body.children:
+                if stmt.type != "expression_statement":
+                    continue
+                for inner in stmt.children:
+                    if inner.type != "assignment":
+                        continue
+                    left = inner.child_by_field_name("left")
+                    if left is None or left.type != "identifier":
+                        continue
+                    name = left.text.decode()
+                    if name not in seen:
+                        names.append(name)
+                        seen.add(name)
+
+        for name in PythonParser._extract_self_fields(cls_node):
+            if name not in seen:
+                names.append(name)
+                seen.add(name)
+        return names
+
+    @staticmethod
+    def _extract_self_fields(cls_node) -> list[str]:
+        """Return attribute names assigned via `self.X = ...` inside `__init__`.
+
+        We scope to `__init__` rather than every method because later methods
+        often mutate — not define — state. Using only `__init__` keeps the
+        fingerprint stable across code that moves mutation logic around.
+        """
+        names: list[str] = []
+        for m_match in _matches(_FUNCTION_QUERY, cls_node):
+            m_name = m_match["func.name"][0].text.decode()
+            if m_name != "__init__":
+                continue
+            m_node = m_match["func.def"][0]
+            for a_match in _matches(_SELF_FIELD_QUERY, m_node):
+                obj_nodes = a_match.get("self.obj", [])
+                attr_nodes = a_match.get("self.attr", [])
+                if not obj_nodes or not attr_nodes:
+                    continue
+                if obj_nodes[0].text.decode() != "self":
+                    continue
+                names.append(attr_nodes[0].text.decode())
+        return names
+
+    @staticmethod
+    def _extract_imports(root) -> list[dict]:
+        """Return one record per imported name with its module, original name, and alias.
+
+        Handles both `import X [as Z]` and `from M import Y [as Z], W [as Q]`.
+        Emits one dict per imported binding so the resolver can look up by
+        either the local alias (`Z`) or the original short name (`Y`).
+        """
+        out: list[dict] = []
+        for match in _matches(_IMPORT_QUERY, root):
+            plain = match.get("import.plain")
+            from_ = match.get("import.from")
+            if plain:
+                out.extend(PythonParser._parse_import_statement(plain[0]))
+            elif from_:
+                out.extend(PythonParser._parse_import_from_statement(from_[0]))
+        return out
+
+    @staticmethod
+    def _parse_import_statement(node) -> list[dict]:
+        """`import X [as Z], Y [as Q]` — produces one dict per bound name."""
+        results: list[dict] = []
+        for child in node.children:
+            if child.type == "dotted_name":
+                mod = child.text.decode()
+                results.append({"module": mod, "name": None, "alias": None})
+            elif child.type == "aliased_import":
+                name_node = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
+                if name_node is not None:
+                    results.append({
+                        "module": name_node.text.decode(),
+                        "name": None,
+                        "alias": alias_node.text.decode() if alias_node is not None else None,
+                    })
+        return results
+
+    @staticmethod
+    def _parse_import_from_statement(node) -> list[dict]:
+        """`from M import Y [as Z], W [as Q]` — produces one dict per imported name."""
+        module_node = node.child_by_field_name("module_name")
+        if module_node is None:
+            return []
+        module = module_node.text.decode()
+        results: list[dict] = []
+        for name_node in node.children_by_field_name("name"):
+            if name_node.type == "dotted_name":
+                results.append({
+                    "module": module,
+                    "name": name_node.text.decode(),
+                    "alias": None,
+                })
+            elif name_node.type == "aliased_import":
+                inner_name = name_node.child_by_field_name("name")
+                inner_alias = name_node.child_by_field_name("alias")
+                if inner_name is not None:
+                    results.append({
+                        "module": module,
+                        "name": inner_name.text.decode(),
+                        "alias": inner_alias.text.decode() if inner_alias is not None else None,
+                    })
+        return results
 
     @staticmethod
     def _extract_return_type(func_node) -> str | None:

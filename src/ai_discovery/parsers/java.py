@@ -6,7 +6,7 @@ import tree_sitter_java as tsjava
 from tree_sitter import Language, Parser, Query, QueryCursor
 
 from ..graph.models import CodeNode
-from .base import LanguageParser
+from .base import LanguageParser, find_enclosing_guard
 
 JAVA_LANGUAGE = Language(tsjava.language())
 
@@ -48,37 +48,44 @@ _ANNOTATION_WITH_ARGS_QUERY = Query(
     "(annotation name: (identifier) @ann.name arguments: (annotation_argument_list) @ann.args) @ann.def",
 )
 
-try:
-    _ASSIGNMENT_QUERY = Query(
-        JAVA_LANGUAGE,
-        """(assignment
-            left: [
-                (field_access
-                    object: (identifier) @assign.obj
-                    field: (identifier) @assign.attr
-                )
-                (identifier) @assign.attr
-            ]
-            right: [
-                (string_literal) @assign.val
-                (decimal_integer_literal) @assign.val
-                (identifier) @assign.val
-            ]
-        )""",
-    )
-except Exception:
-    _ASSIGNMENT_QUERY = None
+_ASSIGNMENT_QUERY = Query(
+    JAVA_LANGUAGE,
+    """(assignment_expression
+        left: [
+            (field_access
+                object: (_) @assign.obj
+                field: (identifier) @assign.attr
+            )
+            (identifier) @assign.attr
+        ]
+        right: [
+            (string_literal) @assign.val
+            (decimal_integer_literal) @assign.val
+            (identifier) @assign.val
+        ]
+    )""",
+)
 
-try:
-    _CALL_QUERY = Query(
-        JAVA_LANGUAGE,
-        """[
-          (method_invocation name: (identifier) @call.name)
-        ]""",
-    )
-except Exception:
-    # Basic fallback if complex query fails
-    _CALL_QUERY = None
+_CALL_QUERY = Query(
+    JAVA_LANGUAGE,
+    """[
+      (method_invocation name: (identifier) @call.name)
+    ]""",
+)
+
+# Phase 1.1: per-call-site records (with receiver object) for import-scoped resolution.
+_CALL_SITE_QUERY = Query(
+    JAVA_LANGUAGE,
+    """[
+      (method_invocation
+        object: (_) @site.receiver
+        name: (identifier) @site.name
+      ) @site.call
+      (method_invocation
+        name: (identifier) @site.name
+      ) @site.call
+    ]""",
+)
 
 _DB_OPERATIONS = frozenset({"save", "saveAndFlush", "delete", "deleteById", "update", "execute", "persist", "merge"})
 _EXTERNAL_CLIENTS = frozenset({"restTemplate", "webClient", "feign", "httpClient", "okHttpClient", "kafkaTemplate", "jmsTemplate", "sqsClient"})
@@ -86,6 +93,11 @@ _EXTERNAL_CLIENTS = frozenset({"restTemplate", "webClient", "feign", "httpClient
 _PACKAGE_QUERY = Query(
     JAVA_LANGUAGE,
     "(package_declaration (scoped_identifier) @pkg.name)",
+)
+
+_IMPORT_QUERY = Query(
+    JAVA_LANGUAGE,
+    "(import_declaration) @import.decl",
 )
 
 
@@ -121,6 +133,9 @@ class JavaParser(LanguageParser):
         pkg = self._extract_package(root)
         qualifier = pkg if pkg else file_path.stem
 
+        # File-level imports — attached to every node in the file.
+        imports = self._extract_imports(root)
+
         nodes: list[CodeNode] = []
 
         # 1. Classes
@@ -155,6 +170,9 @@ class JavaParser(LanguageParser):
             # DI references from @Autowired constructors
             di_calls = self._extract_autowired_deps(cls_node)
 
+            class_fields = self._extract_class_fields(cls_node)
+            class_bases = self._extract_bases(cls_node)
+
             nodes.append(CodeNode(
                 file_path=fp,
                 language="java",
@@ -166,6 +184,9 @@ class JavaParser(LanguageParser):
                 line_end=cls_node.end_point.row + 1,
                 annotations=ann_names,
                 calls=di_calls,
+                imports=imports,
+                fields=class_fields,
+                bases=class_bases,
                 framework_hints=framework_hints if framework_hints else {},
             ))
 
@@ -180,6 +201,7 @@ class JavaParser(LanguageParser):
                 m_ann_names = [a["name"] for a in m_annotations]
                 params = self._extract_params(m_node)
                 calls = self._extract_calls(m_node)
+                call_sites = self._extract_call_sites(m_node)
                 return_type = self._extract_return_type(m_node)
 
                 # Check for endpoint annotations
@@ -188,7 +210,12 @@ class JavaParser(LanguageParser):
                 is_batch = "Scheduled" in m_ann_names
 
                 # New: Extract behavioral signals
-                transitions = self._extract_state_transitions(m_node, class_name)
+                transitions = self._extract_state_transitions(
+                    m_node,
+                    class_name,
+                    class_qualified=qualified,
+                    enclosing_qualified=m_qualified,
+                )
                 boundaries = self._detect_boundaries(m_node)
 
                 m_hints: dict = {
@@ -215,6 +242,8 @@ class JavaParser(LanguageParser):
                     line_end=m_node.end_point.row + 1,
                     params=params,
                     calls=calls,
+                    call_sites=call_sites,
+                    imports=imports,
                     return_type=return_type,
                     annotations=m_ann_names,
                     framework_hints=m_hints,
@@ -335,11 +364,142 @@ class JavaParser(LanguageParser):
         return list(dict.fromkeys(n.text.decode() for n in call_names))
 
     @staticmethod
+    def _extract_call_sites(node) -> list[dict]:
+        """One record per call site, retaining per-site receiver text.
+
+        Java `method_invocation` has an optional `object` field — absent for
+        implicit-`this` calls, present for `foo.bar()` / `Class.static()`.
+        """
+        sites: list[dict] = []
+        for match in _matches(_CALL_SITE_QUERY, node):
+            name_nodes = match.get("site.name", [])
+            if not name_nodes:
+                continue
+            receiver_nodes = match.get("site.receiver", [])
+            sites.append({
+                "name": name_nodes[0].text.decode(),
+                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
+            })
+        return sites
+
+    @staticmethod
+    def _extract_imports(root) -> list[dict]:
+        """Extract each `import ...;` declaration.
+
+        Java imports bind the trailing segment as the local name: `import
+        com.x.OrderService;` makes `OrderService` available. Wildcard
+        (`import com.x.*;`) leaves no single binding — we record `name=None`
+        and `alias=None` so the resolver can still use the module as a
+        plausibility check.
+        """
+        out: list[dict] = []
+        for match in _matches(_IMPORT_QUERY, root):
+            decl = match["import.decl"][0]
+            is_static = False
+            target_text = ""
+            for child in decl.children:
+                if child.type == "static" or child.text == b"static":
+                    is_static = True
+                elif child.type in ("scoped_identifier", "identifier"):
+                    target_text = child.text.decode()
+                elif child.type == "asterisk":
+                    target_text = (target_text + ".*") if target_text else "*"
+            if not target_text:
+                continue
+            if target_text.endswith(".*"):
+                module = target_text[:-2]
+                out.append({"module": module, "name": None, "alias": None, "static": is_static})
+            elif "." in target_text:
+                module, _, name = target_text.rpartition(".")
+                out.append({"module": module, "name": name, "alias": None, "static": is_static})
+            else:
+                out.append({"module": "", "name": target_text, "alias": None, "static": is_static})
+        return out
+
+    @staticmethod
     def _extract_return_type(method_node) -> str | None:
         type_node = method_node.child_by_field_name("type")
         if type_node:
             return type_node.text.decode()
         return None
+
+    @staticmethod
+    def _extract_bases(cls_node) -> list[str]:
+        """Return superclass + interface names for a Java class (Phase 2.4).
+
+        Java expresses inheritance via two separate sibling nodes under
+        `class_declaration`: `superclass` (at most one) and `super_interfaces`
+        (one list of many). Both contribute to the inheritance graph used by
+        the consolidator — an interface's contract-implied fields are just as
+        much shared ancestry as a superclass's literal fields.
+        """
+        bases: list[str] = []
+        for child in cls_node.children:
+            if child.type == "superclass":
+                for sub in child.children:
+                    if sub.type == "type_identifier":
+                        bases.append(sub.text.decode())
+                    elif sub.type == "generic_type":
+                        ident = JavaParser._find_first_of_type(sub, "type_identifier")
+                        if ident is not None:
+                            bases.append(ident.text.decode())
+                    elif sub.type == "scoped_type_identifier":
+                        # `pkg.Base` — keep trailing segment
+                        last = None
+                        for c in sub.children:
+                            if c.type == "type_identifier":
+                                last = c
+                        if last is not None:
+                            bases.append(last.text.decode())
+            elif child.type == "super_interfaces":
+                for sub in child.children:
+                    if sub.type == "type_list":
+                        for ti in sub.children:
+                            if ti.type == "type_identifier":
+                                bases.append(ti.text.decode())
+                            elif ti.type == "generic_type":
+                                ident = JavaParser._find_first_of_type(ti, "type_identifier")
+                                if ident is not None:
+                                    bases.append(ident.text.decode())
+        return bases
+
+    @staticmethod
+    def _find_first_of_type(node, type_name: str):
+        for child in node.children:
+            if child.type == type_name:
+                return child
+        return None
+
+    @staticmethod
+    def _extract_class_fields(cls_node) -> list[str]:
+        """Return field names declared directly on this class (Phase 2.4).
+
+        Walks the direct `class_body` so nested inner classes' fields aren't
+        mixed in. Each `field_declaration` can list several variable names;
+        we emit one entry per bound name, preserving source order with dedup.
+        """
+        names: list[str] = []
+        seen: set[str] = set()
+        body = None
+        for child in cls_node.children:
+            if child.type == "class_body":
+                body = child
+                break
+        if body is None:
+            return names
+        for member in body.children:
+            if member.type != "field_declaration":
+                continue
+            for child in member.children:
+                if child.type == "variable_declarator":
+                    name_node = child.child_by_field_name("name")
+                    if name_node is None:
+                        continue
+                    name = name_node.text.decode()
+                    if name not in seen:
+                        names.append(name)
+                        seen.add(name)
+        return names
 
     def _extract_autowired_deps(self, cls_node) -> list[str]:
         """Find @Autowired constructor parameters and return their type names."""
@@ -359,25 +519,47 @@ class JavaParser(LanguageParser):
         return deps
 
     @staticmethod
-    def _extract_state_transitions(node, class_name: str) -> list[dict]:
-        """Look for assignments like this.status = 'ACTIVE' or status = 'PAID'."""
+    def _extract_state_transitions(
+        node,
+        class_name: str,
+        class_qualified: str | None = None,
+        enclosing_qualified: str | None = None,
+    ) -> list[dict]:
+        """Look for assignments like this.status = 'ACTIVE' or status = 'PAID'.
+
+        `entity_id` is the class's qualified_name for `this`/bare receivers
+        (so `com.billing.Order` and `com.ecommerce.Order` stay distinct after
+        rollup), and `enclosing_method.qualified_name::obj` for duck-typed
+        receivers.
+        """
         transitions = []
         for match in _matches(_ASSIGNMENT_QUERY, node):
             obj_node = match.get("assign.obj", [None])[0]
             attr_node = match.get("assign.attr", [None])[0]
             val_node = match.get("assign.val", [None])[0]
-            
+
             if attr_node and val_node:
                 obj_text = obj_node.text.decode() if obj_node else "this"
                 attr_text = attr_node.text.decode()
                 val_text = val_node.text.decode().strip("\"'")
-                
-                # Check if attribute name is a status-like field
+
                 if any(kw in attr_text.lower() for kw in ("status", "state", "stage", "phase")):
+                    is_self = obj_text == "this"
+                    if is_self:
+                        entity = class_name
+                        entity_id = class_qualified or class_name
+                    else:
+                        entity = obj_text
+                        entity_id = (
+                            f"{enclosing_qualified}::{obj_text}"
+                            if enclosing_qualified else obj_text
+                        )
                     transitions.append({
-                        "entity": class_name if obj_text == "this" else obj_text,
+                        "entity": entity,
+                        "entity_id": entity_id,
                         "field": attr_text,
-                        "value": val_text
+                        "value": val_text,
+                        "guard": find_enclosing_guard(attr_node),
                     })
         return transitions
 

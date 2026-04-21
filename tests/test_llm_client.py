@@ -10,8 +10,8 @@ from ai_discovery.config import DiscoveryConfig
 # LLMClient imports invoke_bedrock / invoke_ollama as module-level names
 # from ai_discovery.shared.llm_invoke, so patches must target the llm_client module
 # namespace (where the names are bound), not shared.llm_invoke.
-_BEDROCK_TARGET = "app.ai.llm_client.invoke_bedrock"
-_OLLAMA_TARGET = "app.ai.llm_client.invoke_ollama"
+_BEDROCK_TARGET = "ai_discovery.ai.llm_client.invoke_bedrock"
+_OLLAMA_TARGET = "ai_discovery.ai.llm_client.invoke_ollama"
 
 
 def test_invoke_bedrock_tier1():

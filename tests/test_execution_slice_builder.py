@@ -213,3 +213,88 @@ def test_unresolved_execution_node_not_classified_as_external_api():
     builder = ExecutionSliceBuilder([], [])
     exec_node = builder._create_execution_node("missing.symbol", None)
     assert exec_node.type == "UNRESOLVED"
+
+
+def test_node_without_boundary_evidence_is_not_external_api():
+    """A resolved FUNCTION with no boundary hints must not become EXTERNAL_API by default."""
+    node = _node("process")
+    builder = ExecutionSliceBuilder([node], [])
+    exec_node = builder._create_execution_node(node.qualified_name, node)
+    assert exec_node.type == "FUNCTION"
+    assert exec_node.type != "EXTERNAL_API"
+
+
+def test_node_with_external_client_evidence_is_external_api():
+    """When boundary evidence names a known external client, type is EXTERNAL_API."""
+    node = _node(
+        "fetch",
+        boundaries=[{"type": "EXTERNAL_API", "client": "requests", "method": "get"}],
+    )
+    builder = ExecutionSliceBuilder([node], [])
+    exec_node = builder._create_execution_node(node.qualified_name, node)
+    assert exec_node.type == "EXTERNAL_API"
+
+
+# ---------------------------------------------------------------------------
+# Phase 1.4: primary_path is a contiguous walk in execution order
+# ---------------------------------------------------------------------------
+
+
+def test_primary_path_is_contiguous_chain():
+    """A -> B -> C must yield primary_path [A, B, C] with every adjacent pair an edge."""
+    a = _node("a", node_type="endpoint", calls=["b"])
+    b = _node("b", calls=["c"])
+    c = _node("c")
+    edges = build_call_graph([a, b, c])
+    scenario = ExecutionSliceBuilder([a, b, c], edges).build_scenario(a)
+
+    assert scenario.primary_path == ["orders.a", "orders.b", "orders.c"]
+    # Contiguity: every adjacent pair must be a real edge in the scenario.
+    edge_pairs = {(e.from_node, e.to_node) for e in scenario.edges}
+    for src, dst in zip(scenario.primary_path, scenario.primary_path[1:]):
+        assert (src, dst) in edge_pairs
+
+
+def test_primary_path_skips_async_successors():
+    """An ASYNC fire-and-forget sibling must not capture the primary walk."""
+    # "publish_*" callee name triggers ASYNC classification in _infer_edge_type.
+    a = _node("a", node_type="endpoint", calls=["publish_event", "sync_work"])
+    async_target = _node("publish_event")
+    sync_target = _node("sync_work")
+    edges = build_call_graph([a, async_target, sync_target])
+    scenario = ExecutionSliceBuilder([a, async_target, sync_target], edges).build_scenario(a)
+
+    assert scenario.primary_path[0] == "orders.a"
+    assert scenario.primary_path[1] == "orders.sync_work"
+    assert "orders.publish_event" not in scenario.primary_path
+
+
+def test_primary_path_prefers_state_transition_target():
+    """When two successors tie on confidence, the one carrying a state transition wins."""
+    a = _node("a", node_type="endpoint", calls=["plain", "approve"])
+    plain = _node("plain")
+    approve = _node(
+        "approve",
+        transitions=[{"entity": "Order", "field": "status", "value": "approved"}],
+    )
+    edges = build_call_graph([a, plain, approve])
+    scenario = ExecutionSliceBuilder([a, plain, approve], edges).build_scenario(a)
+
+    assert scenario.primary_path[:2] == ["orders.a", "orders.approve"]
+
+
+def test_primary_path_stops_on_cycle():
+    """A cycle A -> B -> A must terminate with each node visited at most once."""
+    a = _node("a", node_type="endpoint", calls=["b"])
+    b = _node("b", calls=["a"])
+    edges = build_call_graph([a, b])
+    scenario = ExecutionSliceBuilder([a, b], edges).build_scenario(a)
+
+    assert scenario.primary_path == ["orders.a", "orders.b"]
+
+
+def test_primary_path_entry_with_no_callees():
+    """An entry with no outgoing edges yields a single-element path."""
+    a = _node("a", node_type="endpoint")
+    scenario = ExecutionSliceBuilder([a], []).build_scenario(a)
+    assert scenario.primary_path == ["orders.a"]

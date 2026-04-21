@@ -9,18 +9,16 @@ from .models import CallEdge, CodeNode, ExecutionEdge, ExecutionNode, Scenario, 
 
 
 def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
-    """Build call graph from CodeNode.calls references.
+    """Build call graph from CodeNode.calls / CodeNode.call_sites references.
 
-    1. Build a name-resolution index: qualified_name -> CodeNode, plus short name -> [CodeNode]
-    2. For each node with calls, try to resolve each call:
-       - Exact match on qualified_name -> confidence=1.0
-       - Same class/module contextual match -> confidence=0.95/0.90
-       - Unique suffix match -> confidence=0.85
-       - Ambiguous short-name match -> confidence=0.6
-       - No match -> record unresolved edge with confidence=0.5
-    3. Return list of CallEdge
+    Resolution stages (first match wins, higher confidence earlier):
+      1. Exact qualified-name match                       → confidence 1.0
+      2. Import-scoped — receiver matches a caller import → confidence 0.95
+      3. Short-name contextual (same class/file/module)   → confidence 0.95 … 0.6
+      4. Unresolved — no match                            → confidence 0.5
+
+    Each edge carries evidence in `metadata["resolved_by"]` (stage name).
     """
-    # Build indices
     qualified_index: dict[str, CodeNode] = {}
     short_name_index: dict[str, list[CodeNode]] = defaultdict(list)
 
@@ -31,24 +29,61 @@ def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
     edges: list[CallEdge] = []
 
     for node in nodes:
-        if not node.calls:
+        # Prefer structured call_sites (Python parser emits these). For other
+        # parsers, synthesize site records from the deduped short-name list so
+        # the stage dispatch below stays uniform.
+        sites = node.call_sites if node.call_sites else [
+            {"name": c, "receiver": None} for c in node.calls
+        ]
+        if not sites:
             continue
 
-        for call_ref in node.calls:
-            # Try exact match on qualified name
-            if call_ref in qualified_index:
-                target = qualified_index[call_ref]
+        import_index = _build_import_index(node)
+
+        for site in sites:
+            call_name = site.get("name")
+            if not call_name:
+                continue
+            receiver = site.get("receiver")
+
+            # Stage 1: exact qualified-name match
+            if call_name in qualified_index:
+                target = qualified_index[call_name]
                 edges.append(
                     CallEdge(
                         caller=node.qualified_name,
                         callee=target.qualified_name,
                         edge_type="direct_call",
                         confidence=1.0,
+                        metadata={"resolved_by": "exact"},
                     )
                 )
                 continue
 
-            resolved = _resolve_contextual_targets(node, call_ref, short_name_index)
+            # Stage 2: import-scoped
+            import_resolved = _resolve_via_import(
+                call_name, receiver, import_index, short_name_index
+            )
+            if import_resolved:
+                target, confidence, import_record = import_resolved
+                if target.qualified_name != node.qualified_name:
+                    edges.append(
+                        CallEdge(
+                            caller=node.qualified_name,
+                            callee=target.qualified_name,
+                            edge_type="direct_call",
+                            confidence=confidence,
+                            metadata={
+                                "resolved_by": "import_scope",
+                                "receiver": receiver,
+                                "import": import_record,
+                            },
+                        )
+                    )
+                    continue
+
+            # Stage 3: short-name contextual
+            resolved = _resolve_contextual_targets(node, call_name, short_name_index)
             if resolved:
                 for target, confidence in resolved:
                     if target.qualified_name == node.qualified_name:
@@ -59,21 +94,118 @@ def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
                             callee=target.qualified_name,
                             edge_type="direct_call",
                             confidence=confidence,
+                            metadata={"resolved_by": "short_name"},
                         )
                     )
                 continue
 
-            # Unresolved / external call
+            # Stage 4: unresolved
             edges.append(
                 CallEdge(
                     caller=node.qualified_name,
-                    callee=call_ref,
+                    callee=call_name,
                     edge_type="direct_call",
                     confidence=0.5,
+                    metadata={"resolved_by": "unresolved"},
                 )
             )
 
     return edges
+
+
+def _build_import_index(caller: CodeNode) -> dict[str, dict]:
+    """Map each local binding name to its import record.
+
+    `from M import Name`          → {"Name": import_record}
+    `from M import Name as Alias` → {"Alias": import_record}
+    `import M`                    → {"M" (or first segment): import_record}
+    `import M.N as Alias`         → {"Alias": import_record}
+    """
+    index: dict[str, dict] = {}
+    for imp in caller.imports:
+        alias = imp.get("alias")
+        name = imp.get("name")
+        module = imp.get("module") or ""
+        if alias:
+            local = alias
+        elif name:
+            local = name
+        else:
+            # Plain `import M.N` binds the first segment (`M`).
+            local = module.split(".")[0] if module else ""
+        if local:
+            index[local] = imp
+    return index
+
+
+def _resolve_via_import(
+    call_name: str,
+    receiver: str | None,
+    import_index: dict[str, dict],
+    short_name_index: dict[str, list[CodeNode]],
+) -> tuple[CodeNode, float, dict] | None:
+    """Stage 2: resolve via the caller's imports.
+
+    Handles the canonical case: `from svc.orders import OrderService` +
+    `OrderService.save(x)` → target is the `save` method owned by the
+    imported class, even though other classes in the repo also expose `save`.
+    """
+    if not receiver:
+        return None
+    head = receiver.split(".")[0]
+    imp = import_index.get(head)
+    if imp is None:
+        return None
+
+    candidates = short_name_index.get(call_name, [])
+    if not candidates:
+        return None
+
+    module = imp.get("module") or ""
+    imported_name = imp.get("name")  # the Y in `from X import Y`
+
+    ranked: list[tuple[CodeNode, float]] = []
+    for cand in candidates:
+        qn = cand.qualified_name
+        if imported_name:
+            # Receiver is a class/object imported from a module.
+            owner_match = (
+                qn.endswith(f".{imported_name}.{call_name}")
+                or qn == f"{imported_name}.{call_name}"
+            )
+            if not owner_match:
+                continue
+            file_conf = 0.95 if _module_matches_file(module, cand.file_path) else 0.85
+            ranked.append((cand, file_conf))
+        else:
+            # Plain `import M` — calling `M.foo()` targets a module-level fn.
+            tail = module.split(".")[-1] if module else ""
+            if qn == f"{module}.{call_name}" or (tail and qn == f"{tail}.{call_name}"):
+                ranked.append((cand, 0.95))
+
+    if not ranked:
+        return None
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    target, confidence = ranked[0]
+    return (target, confidence, imp)
+
+
+def _module_matches_file(module: str, file_path: str) -> bool:
+    """Heuristic: module `svc.orders` matches `.../svc/orders.py` or `.../svc/orders/__init__.py`.
+
+    Tolerates shorter tails (e.g. `orders` matches `.../orders.py`) so the
+    check still helps when callers use short relative imports or when the
+    repo doesn't map packages strictly to directory layout.
+    """
+    if not module:
+        return False
+    parts = module.split(".")
+    posix = file_path.replace("\\", "/")
+    for n in range(len(parts), 0, -1):
+        tail = "/".join(parts[-n:])
+        if posix.endswith(f"/{tail}.py") or posix.endswith(f"/{tail}/__init__.py"):
+            return True
+    return False
 
 
 def _resolve_contextual_targets(
@@ -251,8 +383,6 @@ class ExecutionSliceBuilder:
         ]
         # Track state writes for read-after-write scoring: field -> value
         state_writes: dict[str, str] = {}
-        # Track BFS traversal order for primary_path
-        bfs_order: list[str] = []
 
         while queue:
             node_name, depth, prev_exec = queue.pop(0)
@@ -273,7 +403,6 @@ class ExecutionSliceBuilder:
                     state_writes[t.field] = t.to_state
 
             scenario.nodes.append(exec_node)
-            bfs_order.append(exec_node.id)
 
             if not node:
                 continue
@@ -295,10 +424,7 @@ class ExecutionSliceBuilder:
             if len(callees) > 1:
                 self._detect_alternate_paths(exec_node, callees, scenario)
 
-        # Primary path: preserve BFS order, filter to top-confidence nodes, cap at 15
-        top_by_conf = sorted(scenario.nodes, key=lambda n: n.confidence, reverse=True)[:15]
-        top_ids = set(n.id for n in top_by_conf)
-        scenario.primary_path = [nid for nid in bfs_order if nid in top_ids]
+        scenario.primary_path = self._build_primary_path(entry.qualified_name, scenario)
 
         scenario.external_interfaces = list(set(
             n.name for n in scenario.nodes if n.type in ("DB", "EXTERNAL_API", "QUEUE")
@@ -371,11 +497,16 @@ class ExecutionSliceBuilder:
         transitions = hints.get("transitions", [])
         if transitions:
             t = transitions[0]
+            # Phase 2.4: `entity_id` is the unique trace key; parsers populate
+            # it at emit time. Fall back to `entity` defensively so stale
+            # fixtures still produce a usable (if non-unique) id.
             transition = StateTransition(
                 entity=t["entity"],
+                entity_id=t.get("entity_id") or t["entity"],
                 field=t["field"],
                 to_state=t["value"],
-                trigger_function=node.qualified_name
+                trigger_function=node.qualified_name,
+                guard_expr=t.get("guard"),
             )
 
         return ExecutionNode(
@@ -389,6 +520,72 @@ class ExecutionSliceBuilder:
             domain=node.domain,
             state_transition=transition
         )
+
+    def _build_primary_path(
+        self,
+        entry_id: str,
+        scenario: Scenario,
+        max_length: int = 15,
+    ) -> list[str]:
+        """Walk the dominant sync execution chain from the entry (Phase 1.4).
+
+        DFS along the highest-weight successor at each step:
+          - Skip ASYNC edges (fire-and-forget side effects live off-path).
+          - Rank remaining successors by (semantic signal, edge confidence,
+            earlier source line). Semantic signal rewards targets that carry
+            state transitions or data boundaries — those are the events
+            downstream BPMN/EARS generation actually cares about.
+
+        Stops on: no sync successor, cycle revisit, or max_length reached.
+        The result is guaranteed contiguous (every adjacent pair is a real
+        edge), unlike the previous score-filtered BFS order.
+        """
+        edges_from: dict[str, list[ExecutionEdge]] = defaultdict(list)
+        for e in scenario.edges:
+            if e.edge_type != "ASYNC":
+                edges_from[e.from_node].append(e)
+
+        nodes_by_id = {n.id: n for n in scenario.nodes}
+
+        path: list[str] = []
+        visited: set[str] = set()
+        current = entry_id
+
+        while current and current not in visited and len(path) < max_length:
+            visited.add(current)
+            path.append(current)
+
+            outs = edges_from.get(current, [])
+            if not outs:
+                break
+
+            best = max(
+                outs,
+                key=lambda e: self._main_successor_rank(e, nodes_by_id.get(e.to_node)),
+            )
+            current = best.to_node
+
+        return path
+
+    @staticmethod
+    def _main_successor_rank(
+        edge: ExecutionEdge,
+        target: ExecutionNode | None,
+    ) -> tuple[float, float, int]:
+        """Higher wins. Pulls the walk toward state transitions and boundaries."""
+        signal = 0.0
+        line = 10**6
+        if target is not None:
+            if target.state_transition is not None:
+                signal += 2.0
+            if target.type in ("DB", "QUEUE"):
+                signal += 1.0
+            elif target.type == "EXTERNAL_API":
+                signal += 0.5
+            if target.line_number:
+                line = target.line_number
+        # Negate line so earlier source lines rank higher.
+        return (signal, edge.confidence, -line)
 
     def _detect_alternate_paths(
         self,

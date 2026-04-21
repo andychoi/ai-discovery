@@ -16,7 +16,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -171,6 +171,42 @@ CREATE TABLE IF NOT EXISTS llm_costs (
     est_usd    REAL DEFAULT 0.0,
     UNIQUE(scan_id, tier)
 );
+
+CREATE TABLE IF NOT EXISTS state_transitions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id           INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
+    entity            TEXT NOT NULL,
+    -- Phase 2.4: unique qualified key. Two same-named classes in different
+    -- modules have distinct entity_id (e.g. billing.Order vs ecommerce.Order).
+    entity_id         TEXT NOT NULL DEFAULT '',
+    field             TEXT,
+    from_state        TEXT,
+    to_state          TEXT,
+    trigger_function  TEXT,
+    guard_expr        TEXT,
+    confidence        REAL DEFAULT 1.0,
+    entry_points_json TEXT,
+    metadata_json     TEXT,
+    UNIQUE(scan_id, entity_id, field, from_state, to_state, trigger_function)
+);
+CREATE INDEX IF NOT EXISTS idx_transitions_scan_entity    ON state_transitions(scan_id, entity);
+CREATE INDEX IF NOT EXISTS idx_transitions_scan_entity_id ON state_transitions(scan_id, entity_id);
+CREATE INDEX IF NOT EXISTS idx_transitions_trigger        ON state_transitions(trigger_function);
+
+CREATE TABLE IF NOT EXISTS entity_state_machines (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id           INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
+    entity            TEXT NOT NULL,
+    -- Phase 2.4: unique grouping key matching state_transitions.entity_id.
+    entity_id         TEXT NOT NULL DEFAULT '',
+    states_json       TEXT,
+    fields_json       TEXT,
+    source_files_json TEXT,
+    confidence        REAL DEFAULT 1.0,
+    metadata_json     TEXT,
+    UNIQUE(scan_id, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fsm_scan ON entity_state_machines(scan_id);
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version    INTEGER PRIMARY KEY,
