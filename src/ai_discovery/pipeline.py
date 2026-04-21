@@ -664,6 +664,14 @@ def run_pipeline(
             console.print(
                 f"  Cross-entity links: [green]{len(cross_links)}[/] sequences → {cross_json_path.name}"
             )
+        # Phase 4: L1/L2 entity-backbone Mermaid view. First consumer of
+        # entity_kind + cross_entity_transitions as a unified artifact.
+        from .generators.bpmn_generator import BPMNGenerator
+        backbone_path = output_dir / "entity_backbone.mmd"
+        backbone_path.write_text(
+            BPMNGenerator().generate_entity_backbone_mermaid(fsms, cross_links)
+        )
+        console.print(f"  Entity backbone: → {backbone_path.name}")
 
     # ------------------------------------------------------------------
     # 9. Smart chunk
@@ -887,7 +895,7 @@ def run_pipeline(
         console.print(f"  Documents: [green]{len(rollups)}[/] generated")
 
     # 13.5 NEW: Generate Visual Artifacts (BPMN/Mermaid/PlantUML) and persist
-    from .output.bpmn_generator import BPMNGenerator
+    from .generators.bpmn_generator import BPMNGenerator
     from .ai.flow_analyzer import persist_scenario_flows
 
     with _with_checkpoint(db_path, scan_id, 13.5, "visual_artifacts"):
