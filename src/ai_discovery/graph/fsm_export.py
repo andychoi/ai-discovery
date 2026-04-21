@@ -17,7 +17,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .models import CrossEntityTransitionLink, EntityStateMachine, StateTransition
+from .models import (
+    CrossEntityTransitionLink,
+    EntityConditionCorrelation,
+    EntityStateMachine,
+    StateTransition,
+)
 
 
 def fsm_to_dict(fsm: EntityStateMachine) -> dict[str, Any]:
@@ -119,4 +124,43 @@ def write_cross_entity_links_json(
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(cross_entity_links_to_json(links))
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.1d: entity condition correlations export.
+# ---------------------------------------------------------------------------
+
+def entity_condition_to_dict(c: EntityConditionCorrelation) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "target_entity": c.target_entity,
+        "target_entity_id": c.target_entity_id,
+        "target_field": c.target_field,
+        "target_to_state": c.target_to_state,
+        "context_entity": c.context_entity,
+        "context_entity_id": c.context_entity_id,
+        "context_field": c.context_field,
+        "context_state": c.context_state,
+        "support": c.support,
+        "consistency": round(c.consistency, 4),
+    }
+    if c.metadata:
+        out["metadata"] = c.metadata
+    return out
+
+
+def entity_conditions_to_json(correlations: list[EntityConditionCorrelation]) -> str:
+    payload = {
+        "version": 1,
+        "entity_conditions": [entity_condition_to_dict(c) for c in correlations],
+    }
+    return json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def write_entity_conditions_json(
+    correlations: list[EntityConditionCorrelation],
+    output_path: Path,
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(entity_conditions_to_json(correlations))
     return output_path

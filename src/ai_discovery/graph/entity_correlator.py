@@ -39,7 +39,12 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 
-from .models import CrossEntityTransitionLink, EntityStateMachine, Scenario
+from .models import (
+    CrossEntityTransitionLink,
+    EntityConditionCorrelation,
+    EntityStateMachine,
+    Scenario,
+)
 
 
 # Fields that are almost never denormalized — common bookkeeping that
@@ -232,6 +237,98 @@ def mine_cross_entity_transitions(
         l.to_entity_id, l.to_field, l.to_state or "",
     ))
     return result
+
+
+def mine_entity_conditions(
+    fsms: list[EntityStateMachine],
+    scenarios: list[Scenario],
+    min_support: int = 2,
+    consistency_threshold: float = 0.75,
+) -> list[EntityConditionCorrelation]:
+    """Mine conditional-state correlations from scenario walks.
+
+    For each transition T on entity Y observed in a scenario's primary_path,
+    record every *other* entity X's last-known state at that moment (from
+    X's most recent prior transition in the walk). Aggregate across scenarios:
+    if Y.field→to_state consistently fires while X.field=context_state, emit
+    a correlation. Downstream DMN generators can turn these into multi-entity
+    rule inputs ("WHEN Order.status = submitted, Invoice.status → pending").
+
+    The correlation is emitted when:
+      - The (target_transition, context_entity, context_field, context_state)
+        tuple appears in at least `min_support` scenarios, AND
+      - consistency = support / times_target_fired_with_any_context_value
+        for that (target, context_entity, context_field) is ≥ threshold.
+
+    Unlike `mine_cross_entity_transitions`, which captures *that* A→B is
+    ordered, this captures *what specific context value* predicts the target.
+    """
+    if not scenarios:
+        return []
+
+    entity_name: dict[str, str] = {f.entity_id: f.entity for f in fsms}
+
+    # observation[(target_triple, ctx_entity_id, ctx_field, ctx_state)] = count
+    observation: dict[tuple, int] = defaultdict(int)
+    # base[(target_triple, ctx_entity_id, ctx_field)] = count of target
+    # firings where some context state for that field existed
+    base: dict[tuple, int] = defaultdict(int)
+
+    for scenario in scenarios:
+        # latest_state[(entity_id, field)] = state — most recent to_state per
+        # (entity, field) observed earlier in this scenario walk.
+        latest_state: dict[tuple[str, str], str] = {}
+        # Within-scenario dedup keyed by (target_triple, ctx_entity_id, ctx_field).
+        # A specific context value should count once per scenario toward support.
+        seen_in_scenario: set[tuple] = set()
+        base_seen: set[tuple] = set()
+        for t in _ordered_transitions(scenario):
+            if not t.entity_id:
+                continue
+            target_triple = (t.entity_id, t.field, t.to_state)
+            # Record conditions against every other entity's latest-known state.
+            for (ctx_id, ctx_field), ctx_state in latest_state.items():
+                if ctx_id == t.entity_id:
+                    continue
+                base_key = (target_triple, ctx_id, ctx_field)
+                if base_key not in base_seen:
+                    base[base_key] += 1
+                    base_seen.add(base_key)
+                obs_key = (target_triple, ctx_id, ctx_field, ctx_state)
+                if obs_key not in seen_in_scenario:
+                    observation[obs_key] += 1
+                    seen_in_scenario.add(obs_key)
+            # Now update latest_state with this transition's result so
+            # subsequent targets in the same walk see it.
+            if t.to_state:
+                latest_state[(t.entity_id, t.field)] = t.to_state
+
+    out: list[EntityConditionCorrelation] = []
+    for (target_triple, ctx_id, ctx_field, ctx_state), support in observation.items():
+        if support < min_support:
+            continue
+        base_count = base.get((target_triple, ctx_id, ctx_field), support)
+        consistency = support / base_count if base_count else 1.0
+        if consistency < consistency_threshold:
+            continue
+        tgt_id, tgt_field, tgt_to_state = target_triple
+        out.append(EntityConditionCorrelation(
+            target_entity_id=tgt_id,
+            target_entity=entity_name.get(tgt_id, tgt_id),
+            target_field=tgt_field,
+            target_to_state=tgt_to_state,
+            context_entity_id=ctx_id,
+            context_entity=entity_name.get(ctx_id, ctx_id),
+            context_field=ctx_field,
+            context_state=ctx_state,
+            support=support,
+            consistency=consistency,
+        ))
+    out.sort(key=lambda c: (
+        c.target_entity_id, c.target_field, c.target_to_state or "",
+        c.context_entity_id, c.context_field, c.context_state,
+    ))
+    return out
 
 
 def _ordered_transitions(scenario: Scenario) -> list:

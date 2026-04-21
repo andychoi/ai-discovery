@@ -177,6 +177,36 @@ class EntityStateMachine:
 
 
 @dataclass
+class EntityConditionCorrelation:
+    """Phase 3.1d: when a transition fires on entity Y, what state was entity X
+    known to hold at that moment (from X's most recent transition earlier in
+    the same scenario walk)? When a specific context state consistently
+    precedes the target transition across scenarios, that's evidence the
+    target is *conditioned* on the context — a natural DMN rule input.
+
+    Example: across 5 scenarios, every time `Invoice` transitioned to `pending`,
+    `Order` was in `submitted`. consistency=1.0, support=5 → DMN rule:
+    "WHEN Order.status = submitted, Invoice.status → pending".
+
+    `consistency` = support / (times the target fired while context had any
+    known state for that field). Unlike `CrossEntityTransitionLink`'s
+    `directional_confidence`, consistency measures *which specific context
+    state* predicts the target, not just the direction of causality.
+    """
+    target_entity_id: str
+    target_entity: str
+    target_field: str
+    target_to_state: str | None
+    context_entity_id: str
+    context_entity: str
+    context_field: str
+    context_state: str
+    support: int
+    consistency: float
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
 class CrossEntityTransitionLink:
     """Phase 3.1b: an ordered pair of transitions on two *different* entities
     that scenario walks consistently show co-occurring in the same direction.

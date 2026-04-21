@@ -591,11 +591,13 @@ def run_pipeline(
     from .graph.entity_correlator import (
         detect_denormalization_links,
         mine_cross_entity_transitions,
+        mine_entity_conditions,
     )
     from .graph.entity_classifier import classify_entities
     from .graph.guard_parser import parse_cross_entity_guards
     from .graph.fsm_export import (
         write_cross_entity_links_json,
+        write_entity_conditions_json,
         write_entity_state_machines_json,
     )
     from .graph.fsm_persistence import persist_entity_state_machines
@@ -672,6 +674,19 @@ def run_pipeline(
             guarded = parse_cross_entity_guards(fsms)
         if guarded:
             console.print(f"  Cross-entity guards: [green]{guarded}[/] transitions annotated")
+        # Phase 3.1d: mine entity-condition correlations. When a transition on
+        # entity Y consistently fires while entity X is in a specific state,
+        # that's a DMN rule input ("WHEN Order=submitted, Invoice → pending").
+        # Unlike guards (syntactic, from source text), correlations are
+        # statistical (from scenario walks) — complementary signals.
+        with _timed("condition mining"), console.status("[bold cyan]Mining entity condition correlations..."):
+            conditions = mine_entity_conditions(fsms, scenarios)
+        if conditions:
+            conditions_path = output_dir / "entity_conditions.json"
+            write_entity_conditions_json(conditions, conditions_path)
+            console.print(
+                f"  Entity conditions: [green]{len(conditions)}[/] correlations → {conditions_path.name}"
+            )
         # Phase 4: L1/L2 entity-backbone Mermaid view. First consumer of
         # entity_kind + cross_entity_transitions as a unified artifact.
         from .generators.bpmn_generator import BPMNGenerator
