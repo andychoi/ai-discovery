@@ -464,6 +464,78 @@ def impact(
         print(report)
 
 
+@app.command()
+def federate(
+    artifact_dirs: list[Path] = typer.Argument(
+        ..., help="Per-repo artifact directories produced by `discover scan`.",
+    ),
+    output: Path = typer.Option(
+        ..., "--output", "-o",
+        help="Output directory for federated artifacts.",
+    ),
+    slugs: Optional[str] = typer.Option(
+        None, "--slugs", "-s",
+        help="Comma-separated repo slugs, one per artifact dir. "
+             "Defaults to each dir's basename.",
+    ),
+    jaccard: float = typer.Option(
+        0.7, "--jaccard",
+        help="Field-Jaccard threshold for cross-repo entity merge (0-1).",
+    ),
+) -> None:
+    """Merge per-repo backbone artifacts into a federated view.
+
+    Scans already written their own entity_state_machines.json etc. This
+    command reads those, merges FSMs whose normalized names and field sets
+    match across repos, and writes a federated artifact set that the
+    existing `discover impact` command can consume directly.
+
+    Example:
+      discover scan billing-svc/ -p billing -o ./out
+      discover scan fulfillment-svc/ -p fulfillment -o ./out
+      discover federate ./out/billing ./out/fulfillment -o ./out/federated
+    """
+    from ai_discovery.graph.federation import federate_workspace, write_federation
+
+    slug_list: Optional[list[str]] = None
+    if slugs:
+        slug_list = [s.strip() for s in slugs.split(",") if s.strip()]
+        if len(slug_list) != len(artifact_dirs):
+            console.print(
+                f"[red]--slugs must provide exactly one slug per artifact dir "
+                f"({len(artifact_dirs)} dirs given).[/]"
+            )
+            raise typer.Exit(1)
+
+    for d in artifact_dirs:
+        if not d.is_dir():
+            console.print(f"[red]Not a directory: {d}[/]")
+            raise typer.Exit(1)
+
+    try:
+        federation = federate_workspace(
+            artifact_dirs, repo_slugs=slug_list, jaccard_threshold=jaccard,
+        )
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+
+    paths = write_federation(federation, output)
+    merged_count = sum(
+        1 for f in federation["fsms"]
+        if len(f.metadata.get("source_repos", {})) > 1
+    )
+    console.print(
+        f"[green]Federated[/] {len(artifact_dirs)} repos → "
+        f"[green]{len(federation['fsms'])}[/] entities "
+        f"([yellow]{merged_count}[/] merged across repos), "
+        f"[green]{len(federation['cross_links'])}[/] links, "
+        f"[green]{len(federation['conditions'])}[/] conditions"
+    )
+    for name, path in paths.items():
+        console.print(f"  {name}: {path}")
+
+
 @app.command("ingest-docs")
 def ingest_docs(
     docs_dir: Path = typer.Argument(..., help="Path to directory containing markdown files to ingest."),
