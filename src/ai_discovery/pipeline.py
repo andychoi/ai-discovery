@@ -20,7 +20,16 @@ from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from .config import DiscoveryConfig
 from .db import (
@@ -163,6 +172,30 @@ def _with_checkpoint(
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _count_tier1_targets(chunks: list) -> int:
+    """Number of chunks that Phase 11 (Tier 1) will actually send to the LLM.
+
+    Mirrors the filtering in summarize_chunks: skip structural types and test files.
+    """
+    from .ai.summarizer import _SKIP_TYPES, _is_test_chunk
+
+    return sum(
+        1 for c in chunks
+        if c.chunk_type not in _SKIP_TYPES and not _is_test_chunk(c.file_path)
+    )
+
+
+def _build_rag_chunks(chunks: list, config: DiscoveryConfig) -> list:
+    """Build the RAG chunk set, honoring config.rag filters."""
+    from .ai.chunker import chunk_for_rag
+    from .ai.summarizer import _is_test_chunk
+
+    source = chunks
+    if config.rag.skip_tests:
+        source = [c for c in source if not _is_test_chunk(c.file_path)]
+    return chunk_for_rag(source, config.rag.chunk_size, config.rag.chunk_overlap)
+
+
 def _budget_ok(llm_client, config: DiscoveryConfig, phase_label: str) -> bool:
     """Return True if budget still has room; print warning and return False otherwise.
 
@@ -266,6 +299,14 @@ def run_pipeline(
     # ------------------------------------------------------------------
     scan_id: int | None = None
     skip_phases = skip_phases or []
+    # Validate skip_phases up front — an invalid spec silently no-ops inside
+    # _should_skip_phase, which is surprising enough to be worth catching at
+    # the entry point where the error can reference the offending value.
+    for spec in skip_phases:
+        try:
+            _parse_phase_spec(spec)
+        except ValueError as e:
+            raise ValueError(f"--skip-phase {spec!r}: {e}") from e
     prev_run = _find_previous_run(db_path, repo, resolved.branch, commit_sha=resolved.commit_sha)
 
     if resume and prev_run:
@@ -407,8 +448,19 @@ def run_pipeline(
     if _phase_should_run(6, start_phase, skip_phases):
         with _with_checkpoint(db_path, scan_id, 6, "parse"):
             parsers = [PythonParser(), CSharpParser(), JavaParser(), JavaScriptParser()]
-            all_nodes = []
+            all_nodes: list = []
             parse_errors = 0
+
+            def _parse_one(file_path):
+                """Parse a single file with the first matching parser. Returns
+                (nodes, error_exc) — exc is None on success."""
+                for p in parsers:
+                    if p.can_parse(file_path):
+                        try:
+                            return p.parse_file(file_path), None
+                        except Exception as exc:
+                            return [], (file_path, exc)
+                return [], None
 
             with _timed("parse"), Progress(
                 SpinnerColumn(),
@@ -419,17 +471,30 @@ def run_pipeline(
             ) as progress:
                 files = list(walk_repo(resolved.repo_path, set(lang_stats.keys())))
                 task = progress.add_task("Parsing", total=len(files))
-                for file_path in files:
-                    for p in parsers:
-                        if p.can_parse(file_path):
-                            try:
-                                nodes = p.parse_file(file_path)
-                                all_nodes.extend(nodes)
-                            except Exception as exc:
-                                logger.warning("Parse error: %s: %s", file_path, exc)
-                                parse_errors += 1
-                            break
-                    progress.advance(task)
+
+                # tree-sitter's C-level parse releases the GIL, so threads give
+                # real parallelism here. Bounded by max_concurrent so we don't
+                # starve the main thread or OS file-descriptor limits.
+                from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+
+                workers = max(1, int(config.max_concurrent or 1))
+                with ThreadPoolExecutor(max_workers=workers) as parse_pool:
+                    futures = {parse_pool.submit(_parse_one, f): f for f in files}
+                    for fut in _as_completed(futures):
+                        try:
+                            nodes, err = fut.result()
+                        except Exception as exc:  # shouldn't happen — _parse_one catches
+                            logger.warning("Parse future crashed: %s", exc)
+                            parse_errors += 1
+                            progress.advance(task)
+                            continue
+                        if err is not None:
+                            fpath, exc = err
+                            logger.warning("Parse error: %s: %s", fpath, exc)
+                            parse_errors += 1
+                        else:
+                            all_nodes.extend(nodes)
+                        progress.advance(task)
 
             console.print(
                 f"  Parsed [green]{len(all_nodes)}[/] code nodes from "
@@ -725,15 +790,17 @@ def run_pipeline(
         with _with_checkpoint(db_path, scan_id, 9, "chunk"):
             with _timed("chunk"), console.status("[bold cyan]Chunking code nodes..."):
                 chunks = chunk_code_nodes(all_nodes)
-                rag_chunks = chunk_for_rag(chunks, config.rag.chunk_size, config.rag.chunk_overlap)
+                rag_chunks = _build_rag_chunks(chunks, config)
+            tier1_count = _count_tier1_targets(chunks)
             console.print(
-                f"  Chunks: [green]{len(chunks)}[/] LLM chunks, "
+                f"  Chunks: [green]{len(chunks)}[/] parsed "
+                f"([green]{tier1_count}[/] for Tier 1), "
                 f"[green]{len(rag_chunks)}[/] RAG chunks"
             )
     else:
         console.print("[dim]Phase 9 (chunk): rebuilding (cheap)...[/]")
         chunks = chunk_code_nodes(all_nodes)
-        rag_chunks = chunk_for_rag(chunks, config.rag.chunk_size, config.rag.chunk_overlap)
+        rag_chunks = _build_rag_chunks(chunks, config)
 
     # ------------------------------------------------------------------
     # 10. Embed for RAG
@@ -743,7 +810,9 @@ def run_pipeline(
 
     llm_client = LLMClient(config)
 
-    if _phase_should_run(10, start_phase, skip_phases):
+    if not config.rag.enabled:
+        console.print("[dim]Phase 10 (rag_embed): disabled via config.rag.enabled=false[/]")
+    elif _phase_should_run(10, start_phase, skip_phases):
         with _with_checkpoint(db_path, scan_id, 10, "rag_embed"):
             # Pre-warm small models that stay resident for the whole run.
             # (No-op on Bedrock; on Ollama this pins them with keep_alive=2h so they
@@ -757,9 +826,30 @@ def run_pipeline(
                 console.print(f"[dim]Warming tier1 ({tier1_model})...[/]")
                 llm_client.warm("tier1", "2h")
 
-            with _timed("RAG embed"), console.status("[bold cyan]Embedding chunks for RAG..."):
+            with _timed("RAG embed"):
                 try:
-                    embed_result = embed_chunks(rag_chunks, db_path, llm_client)
+                    workers = max(1, int(config.max_concurrent or 1))
+                    with Progress(
+                        TextColumn("[bold cyan]Embedding RAG chunks"),
+                        BarColumn(),
+                        MofNCompleteColumn(),
+                        TextColumn("•"),
+                        TimeElapsedColumn(),
+                        TextColumn("•"),
+                        TimeRemainingColumn(),
+                        console=console,
+                        transient=True,
+                    ) as progress:
+                        task = progress.add_task("embed", total=len(rag_chunks))
+
+                        def _on_progress(done: int, total: int) -> None:
+                            progress.update(task, completed=done)
+
+                        embed_result = embed_chunks(
+                            rag_chunks, db_path, llm_client,
+                            max_workers=workers,
+                            progress_callback=_on_progress,
+                        )
                     if embed_result.get("resumed"):
                         console.print(
                             f"  RAG embeddings: [green]{embed_result['embedded']}[/] vectors "
@@ -768,7 +858,7 @@ def run_pipeline(
                     else:
                         console.print(
                             f"  RAG embeddings: [green]{embed_result['embedded']}[/] vectors "
-                            f"(dim={embed_result['dim']})"
+                            f"(dim={embed_result['dim']}, workers={workers})"
                         )
                 except Exception as exc:
                     logger.warning("RAG embedding failed (continuing without RAG): %s", exc)
@@ -807,6 +897,8 @@ def run_pipeline(
                     chunks, llm_client, db_path, config.max_concurrent,
                     on_progress=_on_summary_progress,
                     scan_id=scan_id,
+                    skip_rag=True,
+                    skip_tests=True,
                 )
 
             persist_summaries(summaries, scan_id, db_path)
@@ -960,9 +1052,10 @@ def run_pipeline(
     # 13.6 OPTIONAL: Stage 10.5 — Process Mining & Conformance
     # ------------------------------------------------------------------
     mining_results: dict = {}
-    mining_enabled = getattr(config, 'process_mining', None)
-    with _with_checkpoint(db_path, scan_id, 13.6, "process_mining"):
-        if mining_enabled and getattr(mining_enabled, 'enabled', False):
+    mining_cfg = getattr(config, 'process_mining', None)
+    mining_on = bool(mining_cfg and getattr(mining_cfg, 'enabled', False))
+    if mining_on:
+        with _with_checkpoint(db_path, scan_id, 13.6, "process_mining"):
             console.print("[bold cyan]Stage 10.5: Process mining & conformance analysis...[/]")
             with _timed("process mining"), console.status("[bold cyan]Mining scenarios..."):
                 try:
@@ -973,8 +1066,10 @@ def run_pipeline(
                 except Exception as e:
                     logger.error(f"Process mining failed (continuing): {e}")
                     console.print(f"  [yellow]Process mining skipped:[/] {e}")
-        else:
-            console.print("[dim]Stage 10.5: Process mining disabled (set process_mining.enabled=true to enable)[/]")
+    else:
+        # No checkpoint written — disabled runs shouldn't leave a "13.6 complete"
+        # marker that misleads resume logic.
+        console.print("[dim]Stage 10.5: Process mining disabled (set process_mining.enabled=true to enable)[/]")
 
     # Free tier3 (~20 GB) so self-review (tier1) has headroom.
     if config.provider == "ollama":
@@ -997,7 +1092,6 @@ def run_pipeline(
         with _with_checkpoint(db_path, scan_id, 14, "self_review"):
             from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed, TimeoutError as _FuturesTimeout
             from .ai.self_review import review_document, get_review_summary, persist_claims, annotate_document
-            from rich.progress import MofNCompleteColumn
 
             console.print("[bold cyan]Self-review: verifying claims against source...[/]")
 
@@ -1047,77 +1141,91 @@ def run_pipeline(
                     )
                     return rollup, claims, doc_counts
 
-                # Per-doc timeout: 5 min per rollup, hard cap 30 min total
-                _REVIEW_TIMEOUT = max(300, len(rollups) * 60)
+                # Per-doc timeout: each rollup gets 5 minutes of wall-clock.
+                # We use per-future result(timeout=) so one stuck rollup only
+                # kills itself, not the whole phase.
+                _PER_DOC_TIMEOUT = 300
 
                 executor = ThreadPoolExecutor(max_workers=min(config.max_concurrent, len(rollups)))
+                futures = {executor.submit(_review_one, r): r for r in rollups}
                 try:
-                    futures = {executor.submit(_review_one, r): r for r in rollups}
-                    try:
-                        for future in _as_completed(futures, timeout=_REVIEW_TIMEOUT):
-                            try:
-                                rollup, claims, doc_counts = future.result()
-                                summary = get_review_summary(claims)
+                    for future in _as_completed(futures):
+                        rollup_submitted = futures[future]
+                        try:
+                            rollup, claims, doc_counts = future.result(timeout=_PER_DOC_TIMEOUT)
+                        except _FuturesTimeout:
+                            logger.warning(
+                                "Self-review timed out for %s/%s after %ds",
+                                rollup_submitted.domain, rollup_submitted.doc_type, _PER_DOC_TIMEOUT,
+                            )
+                            progress.update(overall, advance=1)
+                            console.print(
+                                f"  [red]✗[/] [dim]{rollup_submitted.domain}[/] › [bold]{rollup_submitted.doc_type}[/]"
+                                f"  [red]timeout after {_PER_DOC_TIMEOUT}s[/]"
+                            )
+                            continue
+                        except Exception as exc:
+                            logger.warning(
+                                "Self-review failed for %s/%s: %s",
+                                rollup_submitted.domain, rollup_submitted.doc_type, exc,
+                            )
+                            progress.update(overall, advance=1)
+                            console.print(
+                                f"  [red]✗[/] [dim]{rollup_submitted.domain}[/] › [bold]{rollup_submitted.doc_type}[/]"
+                                f"  [red]error: {exc}[/]"
+                            )
+                            continue
 
-                                # Focused re-generation for sections with bad claims
-                                if summary["unverified"] + summary["contradicted"] > 0:
-                                    from .ai.self_review import regenerate_sections
-                                    rollup.content_md = regenerate_sections(
-                                        rollup.content_md, claims, llm_client, db_path=db_path,
-                                    )
+                        summary = get_review_summary(claims)
 
-                                rollup.content_md = annotate_document(rollup.content_md, claims)
-                                rollup.unverified_claims = summary["unverified"] + summary["contradicted"]
+                        # Focused re-generation for sections with bad claims
+                        if summary["unverified"] + summary["contradicted"] > 0:
+                            from .ai.self_review import regenerate_sections
+                            rollup.content_md = regenerate_sections(
+                                rollup.content_md, claims, llm_client, db_path=db_path,
+                            )
 
-                                # Update aggregate totals and advance overall bar
-                                for k in _sr_totals:
-                                    _sr_totals[k] += doc_counts.get(k, 0)
-                                progress.update(overall, advance=1, **_sr_totals)
+                        rollup.content_md = annotate_document(rollup.content_md, claims)
+                        rollup.unverified_claims = summary["unverified"] + summary["contradicted"]
 
-                                # One compact line per completed doc
-                                v = doc_counts["verified"]
-                                c = doc_counts["contradicted"]
-                                u = doc_counts["unverified"]
-                                status = "[red]✗[/]" if c else "[green]✓[/]"
-                                console.print(
-                                    f"  {status} [dim]{rollup.domain}[/] › [bold]{rollup.doc_type}[/]"
-                                    f"  [green]{v}✓[/] [red]{c}✗[/] [yellow]{u}⚠[/]"
+                        # Update aggregate totals and advance overall bar
+                        for k in _sr_totals:
+                            _sr_totals[k] += doc_counts.get(k, 0)
+                        progress.update(overall, advance=1, **_sr_totals)
+
+                        # One compact line per completed doc
+                        v = doc_counts["verified"]
+                        c = doc_counts["contradicted"]
+                        u = doc_counts["unverified"]
+                        status = "[red]✗[/]" if c else "[green]✓[/]"
+                        console.print(
+                            f"  {status} [dim]{rollup.domain}[/] › [bold]{rollup.doc_type}[/]"
+                            f"  [green]{v}✓[/] [red]{c}✗[/] [yellow]{u}⚠[/]"
+                        )
+
+                        # DB writes serialized after parallel LLM work
+                        conn = get_conn(db_path)
+                        try:
+                            doc_row = conn.execute(
+                                "SELECT id FROM generated_docs WHERE scan_id = ? AND domain = ? AND doc_type = ?",
+                                (scan_id, rollup.domain, rollup.doc_type),
+                            ).fetchone()
+                            if doc_row:
+                                doc_db_id = doc_row["id"]
+                                conn.execute(
+                                    "UPDATE generated_docs SET unverified_claims = ? WHERE id = ?",
+                                    (rollup.unverified_claims, doc_db_id),
                                 )
-
-                                # DB writes serialized after parallel LLM work
-                                conn = get_conn(db_path)
-                                try:
-                                    doc_row = conn.execute(
-                                        "SELECT id FROM generated_docs WHERE scan_id = ? AND domain = ? AND doc_type = ?",
-                                        (scan_id, rollup.domain, rollup.doc_type),
-                                    ).fetchone()
-                                    if doc_row:
-                                        doc_db_id = doc_row["id"]
-                                        conn.execute(
-                                            "UPDATE generated_docs SET unverified_claims = ? WHERE id = ?",
-                                            (rollup.unverified_claims, doc_db_id),
-                                        )
-                                        conn.commit()
-                                        persist_claims(claims, doc_db_id, db_path)
-                                finally:
-                                    conn.close()
-                            except Exception as exc:
-                                rollup = futures[future]
-                                logger.warning(
-                                    "Self-review failed for %s/%s: %s",
-                                    rollup.domain, rollup.doc_type, exc,
-                                )
-                                progress.update(overall, advance=1)
-                                console.print(
-                                    f"  [red]✗[/] [dim]{rollup.domain}[/] › [bold]{rollup.doc_type}[/]"
-                                    f"  [red]error: {exc}[/]"
-                                )
-                    except _FuturesTimeout:
-                        console.print("[yellow]  Self-review timed out — abandoning remaining verifications.[/]")
-                        for f in futures:
-                            f.cancel()
+                                conn.commit()
+                                persist_claims(claims, doc_db_id, db_path)
+                        finally:
+                            conn.close()
                 finally:
-                    executor.shutdown(wait=False)  # don't block on hung LLM threads
+                    # Wait for in-flight threads to finish and cancel any still
+                    # queued. Abandoning threads (wait=False) would let them keep
+                    # writing to generated_docs/claims after phase 15 starts
+                    # reading those tables — a data-race we refuse to ship.
+                    executor.shutdown(wait=True, cancel_futures=True)
 
             console.print(
                 f"  Self-review complete — "

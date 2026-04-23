@@ -8,6 +8,15 @@ _SKIP_DIRS = frozenset({
     "node_modules", "__pycache__", ".git", "venv", ".venv",
     "migrations", "dist", "build", ".tox", "bin", "obj",
     ".idea", ".vs", ".vscode", "target", "packages",
+    "cdk.out", ".next", ".nuxt", "out", "coverage", "assets",
+    "vendor", "third_party", "third-party",
+    "jspm_packages", "bower_components",
+    "env", ".eggs", ".direnv",
+    ".turbo", ".cache", ".parcel-cache",
+    ".svelte-kit", ".astro", ".vercel", ".netlify",
+    ".gradle", "generated-sources", "generated-src",
+    "publish", "artifacts",
+    ".claude",
 })
 
 _EXT_MAP: dict[str, str] = {

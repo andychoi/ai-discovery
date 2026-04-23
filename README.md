@@ -84,31 +84,39 @@ Code → Parse (Tree-sitter) → Build call graph → Classify domains
 → Chunk intelligently → Embed for RAG → 3-tier LLM → Generate docs
 ```
 
-### 13-Phase Pipeline
+### Pipeline Phases (5–16)
 
-1. **Resolve repo** (clone or validate local)
-2. **Detect languages** (extensions + manifests)
-3. **Parse files** (Tree-sitter AST extraction)
-4. **Classify domains** (namespace/path heuristics)
-5. **Build call graph** (multi-strategy name resolution)
-6. **Build execution slices** (BFS from entry points; optional)
-7. **Chunk & embed** for RAG (method-level splits + sqlite-vec)
-8. **Tier 1 (Haiku)**: Summarize chunks — cheap, concurrent
-9. **Tier 2 (Sonnet)**: Analyze business flows per domain
-10. **Tier 3 (Opus)**: Generate doc rollups
-11. **Self-review**: Verify claims against source via RAG
-12. **Render markdown** with ai-docs frontmatter
-13. **Push to DocHub API** or Gitea (optional)
+| Phase | Name                        | What it does                                               |
+|-------|-----------------------------|------------------------------------------------------------|
+| 5     | `lang_detect`               | Detect languages (extensions + manifests)                  |
+| 6     | `parse`                     | Tree-sitter AST extraction + raw-SQL entity mining         |
+| 7     | `domain_classify`           | Namespace/path heuristics + entity-kind classification     |
+| 8.5   | `execution_slices` *(opt.)* | BFS from entry points                                      |
+| 9     | `chunk`                     | Method-level splits for RAG                                |
+| 10    | `rag_embed`                 | Embeddings → sqlite-vec                                    |
+| 11    | `tier1_summarize`           | Haiku: per-chunk summaries                                 |
+| 12    | `tier2_flow_analysis`       | Sonnet: per-domain business flows                          |
+| 12.5  | `scenario_flow_inference`   | Scenario + cross-entity transitions                        |
+| 13    | `tier3_doc_rollup`          | Sonnet/Opus: final docs                                    |
+| 13.5  | `visual_artifacts`          | BPMN + DMN + EARS + entity-backbone Mermaid generation     |
+| 13.6  | `process_mining` *(opt.)*   | Inductive miner + conformance (via `pm4py`)                |
+| 14    | `self_review`               | Verify claims against source via RAG                       |
+| 15    | `render_markdown`           | Render with ai-docs frontmatter                            |
+| 16    | `finalise`                  | Write artifacts; optional push to DocHub/Gitea             |
+
+Phases 8.5 and 13.6 are opt-in. Half-step numbering (e.g. 13.5, 13.6) marks insertable stages; it lets new phases slot in without renumbering core stages.
 
 ### Why 3 LLM Tiers?
 
-| Tier | Model | Purpose | Cost |
-|------|-------|---------|------|
-| **Tier 1** | Haiku | Fast summaries for every chunk | ~$0.80/M tokens |
-| **Tier 2** | Sonnet | Deeper reasoning per domain | ~$3/M tokens |
-| **Tier 3** | Opus | High-quality final documents | ~$15/M tokens |
+| Tier       | Default model            | Purpose                              |
+|------------|--------------------------|--------------------------------------|
+| **Tier 1** | Haiku                    | Fast per-chunk summaries (concurrent)|
+| **Tier 2** | Sonnet                   | Per-domain flow analysis             |
+| **Tier 3** | Haiku *(dev)* / Sonnet *(prod)* | Final doc rollup; Opus is opt-in via config |
 
-**Typical scan (2000 classes):** $5–15 end-to-end, depending on codebase complexity.
+Tier 3 has two slots — `tier3d` (dev-default, fast/cheap) and `tier3p` (prod-default, deeper). Pass `--prod` at scan time to switch in `tier3p`. Override any slot via `discovery.yaml` to pin Opus where you want it.
+
+**Typical scan (2000 classes):** $5–15 end-to-end on Bedrock, depending on codebase complexity and tier3 selection.
 
 ## Configuration
 
@@ -143,9 +151,10 @@ budget_limit_usd: 50.0
 
 bedrock:
   region: us-east-1
-  tier1: us.anthropic.claude-haiku-4-5-20251001-v1:0
-  tier2: us.anthropic.claude-sonnet-4-6-v1:0
-  tier3: us.anthropic.claude-opus-4-6-v1:0
+  tier1: us.anthropic.claude-haiku-4-5-20251001-v1:0   # cheap: chunk summaries
+  tier2: us.anthropic.claude-sonnet-4-6                # mid: flow analysis
+  tier3d: us.anthropic.claude-haiku-4-5-20251001-v1:0  # dev doc generation (fast/cheap)
+  tier3p: us.anthropic.claude-sonnet-4-6               # prod doc generation (--prod)
 
 output_directory: ./data/discovery-output
 ```
@@ -248,9 +257,9 @@ Phase progress:
   ⊘ Phase 15.0 (render_markdown)
 ```
 
-### Process Mining (Optional Stage 10.5)
+### Process Mining (Optional — Phase 13.6)
 
-Enable in `discovery.yaml`:
+Process mining runs an inductive miner + token-replay conformance over inferred scenarios, via [`pm4py`](https://pm4py.fit.fraunhofer.de/). Disabled by default; enable in `discovery.yaml`:
 
 ```yaml
 process_mining:
@@ -259,11 +268,13 @@ process_mining:
   fitness_threshold: 0.90
 ```
 
-Then run normally — process mining will run after Tier 3.
+Then run normally — Phase 13.6 runs after Tier 3 doc rollup. Skip without uninstalling via `--skip-phases=13.6`.
 
-### Push Options (Optional)
+> **Install note:** `pm4py` is a required dependency (it pulls in `pandas`, `numpy`, `graphviz` bindings) — `pip install -e .` will download it even if you never enable Phase 13.6. If install size is a concern, the miner's imports are module-level today; consider pinning pm4py out of your image until the team extracts it to an optional extra.
 
-Push results to a remote system:
+### `discover ingest` — Push Scan Results
+
+Push scan results (code graph + generated docs) to a remote system:
 
 ```bash
 discover ingest -p myproject --target dochub \
@@ -279,7 +290,7 @@ discover ingest -p myproject --target dochub \
 | `--gitea-url` | Gitea base URL |
 | `--gitea-token` | Gitea API token (or env `DISCOVERY_GITEA_TOKEN`) |
 
-### Query Database
+### `discover query` — Run SQL
 
 Query the discovery database directly:
 
@@ -290,6 +301,52 @@ discover query "SELECT name, node_type, domain FROM code_nodes LIMIT 20"
 # Or specify the database
 sqlite3 ./data/discovery-output/myapp/discovery-myapp.db "SELECT COUNT(*) FROM code_nodes"
 ```
+
+### `discover chat` — RAG Chat REPL
+
+Ask questions against the scanned code + generated docs:
+
+```bash
+discover chat -p myproject            # uses tier1 by default
+discover chat -p myproject --tier2    # deeper answers, higher cost
+```
+
+First run re-indexes generated docs into the RAG store (skip with `--no-index`).
+
+### `discover impact` — Entity Impact Query (Phase 3)
+
+Show every code path and cross-entity interaction that touches a given entity:
+
+```bash
+discover impact Order -p myproject
+discover impact Order -p myproject --output-file impact.md
+```
+
+Reads the canonical backbone artifacts produced by `scan` (`entity_state_machines.json`, `cross_entity_transitions.json`, `entity_conditions.json`). If any are missing, re-run `scan` — Phase 3 didn't complete.
+
+### `discover federate` — Workspace Federation (Phase 4)
+
+Merge per-repo backbone artifacts into a federated view that spans services:
+
+```bash
+discover scan billing-svc/     -p billing     -o ./out
+discover scan fulfillment-svc/ -p fulfillment -o ./out
+discover federate ./out/billing ./out/fulfillment -o ./out/federated
+```
+
+FSMs are merged across repos when their normalized names + field sets exceed `--jaccard` (default `0.7`). The output directory is consumable by `discover impact` directly.
+
+### `discover ingest-docs` — Bulk Markdown Ingestion
+
+Ingest an existing directory of markdown analysis docs into DocHub — auto-classifies each file into one of 15 SDLC doc types (as-is, brd, design, spec, …), generates frontmatter with incrementing doc IDs, extracts cross-refs, and dedupes via TF-IDF cosine similarity:
+
+```bash
+discover ingest-docs ./docs -p myproject --dry-run          # preview
+discover ingest-docs ./docs -p myproject \
+  --push api --api-url http://localhost:8000 --api-key sk-xxx
+```
+
+Stale/duplicate files are ingested with `status=Deprecated` (not skipped). Subsequent runs fetch the next free doc ID to avoid collisions.
 
 ## Installation Methods
 
@@ -372,14 +429,23 @@ python examples/01_local_scan.py
 ## Output
 
 ```
-data/discovery-output/
-├── discovery.db              # SQLite: code nodes, calls, flows, costs, summaries
+data/discovery-output/<project-slug>/
+├── discovery-<slug>.db              # SQLite: code nodes, calls, flows, costs, summaries, embeddings
+├── entity_state_machines.json       # Per-entity FSMs (Phase 3 backbone)
+├── cross_entity_transitions.json    # Cross-entity links (Phase 3.1b/3.1c)
+├── entity_conditions.json           # Entity-guard correlations (Phase 3.1d)
+├── bpmn/                            # BPMN 2.0 XML per scenario (Phase 13.5)
+├── dmn/                             # DMN decision tables (Phase 13.5)
+├── ears/                            # EARS-formatted requirements (Phase 13.5)
+├── mermaid/                         # Entity backbone L1/L2 diagrams
 └── docs/
-    ├── as-is/                # Current state assessments
-    ├── spec/                 # Functional specifications
-    ├── interface/            # API contract documentation
-    └── data-model/           # Entity and schema documentation
+    ├── as-is/                       # Current state assessments
+    ├── spec/                        # Functional specifications
+    ├── interface/                   # API contract documentation
+    └── data-model/                  # Entity and schema documentation
 ```
+
+The JSON backbone artifacts are the canonical output — `discover impact` and `discover federate` read them directly, and downstream tooling (DocHub, custom scripts) should prefer them over the SQLite DB for cross-tool portability.
 
 Each markdown file includes **ai-docs frontmatter** for easy ingestion:
 
@@ -442,18 +508,25 @@ ai-discovery/
 ├── src/ai_discovery/               # Main package
 │   ├── cli.py                      # Typer CLI entry point
 │   ├── pipeline.py                 # Pipeline orchestrator (phases 5–16)
-│   ├── ai/                         # LLM operations (chunker, summarizer, etc.)
-│   ├── graph/                      # Call graph & domain classification
-│   ├── ingest/                     # Code ingestion & parsing
-│   ├── output/                     # Doc generation & pushing
+│   ├── config.py                   # Loader for discovery.yaml + env overrides
+│   ├── db.py                       # SQLite schema + helpers
+│   ├── ai/                         # LLM ops (chunker, summarizer, advisor, process_miner)
+│   ├── extractors/                 # Raw-SQL entity extraction (Phase 2.5)
+│   ├── graph/                      # Call graph, domain/entity classifier, FSM, impact, federation
+│   ├── generators/                 # BPMN / DMN / EARS / doc generators + push (formerly output/)
+│   │   └── templates/              # Jinja2 templates for as-is, spec, interface, data-model
+│   ├── ingest/                     # Code ingestion + markdown classifier/runner
 │   ├── parsers/                    # Language-specific parsing (Python, C#, Java, JS/TS)
-│   ├── rag/                        # Embeddings & retrieval
+│   ├── rag/                        # Embeddings, retrieval, chat REPL
 │   ├── repo/                       # Git operations
+│   ├── shared/                     # LLM routing, invoke, model defaults
 │   └── tests/                      # Unit tests
 ├── docs/                           # Architecture & guides
 ├── examples/                       # Usage examples
 └── pyproject.toml                  # Package configuration
 ```
+
+> Note: the former `output/` package was renamed to `generators/` (commit `76eabfd`) — update any external imports from `ai_discovery.output.*` to `ai_discovery.generators.*`.
 
 ## License
 

@@ -62,4 +62,4 @@ package-dir = {"" = "src"}
 find = {where = ["src"]}
 
 [tool.setuptools.package-data]
-ai_discovery = ["**/*.yaml", "**/*.j2"]
+ai_discovery = ["**/*.yaml", "**/*.j2", "**/*.html", "**/*.css", "**/*.js"]

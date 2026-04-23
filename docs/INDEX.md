@@ -54,6 +54,11 @@ Practical guides for working on specific areas:
 - **`guides/entity-identity/consolidation-algorithm.md`** — Dual-pass fingerprint algorithm with inheritance awareness, mixin detection, and asymmetric projection handling
 - **`guides/entity-identity/edge-cases.md`** — Survey of programming-style, MVC, and dynamic-DB patterns that stress the fingerprint — with frequency / severity ratings and phase assignments
 
+### Exploring Scan Results
+*"I ran `discover scan` — how do I navigate the output and check quality?"*
+
+- **`guides/exploring-results/navigation.md`** — `discover view` web dashboard (quality targets, histogram, weakest-docs, diagrams), plus `chat`/`impact`/`query` commands and first-pass audit recipe
+
 ---
 
 ## Specifications (Design Records)

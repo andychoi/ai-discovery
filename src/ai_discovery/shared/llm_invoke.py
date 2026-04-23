@@ -290,6 +290,37 @@ def embed_ollama(
         raise RuntimeError(f"Ollama embedding failed (model={model}): {e}") from e
 
 
+def embed_ollama_batch(
+    model: str, texts: list[str], base_url: str = "http://localhost:11434",
+    api_key: str = "",
+) -> list[list[float]]:
+    """Batch variant of :func:`embed_ollama`. Ollama's OpenAI-compatible
+    /v1/embeddings endpoint accepts an array under ``input`` and returns one
+    embedding per element, ordered. Cuts per-request overhead ~10–30× on
+    large chunk sets.
+
+    Returns embeddings in the same order as *texts*. Raises on any failure —
+    caller decides whether to fall back to per-text calls."""
+    if not texts:
+        return []
+    try:
+        import os
+        timeout = float(os.environ.get("OLLAMA_EMBED_TIMEOUT", "120"))
+        # Scale timeout by batch size — large batches take longer end-to-end.
+        timeout = max(timeout, 30 + 0.5 * len(texts))
+        payload = {"model": model, "input": texts}
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        resp = httpx.post(f"{base_url}/v1/embeddings", json=payload, timeout=timeout, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()["data"]
+        # Ollama preserves input order and returns ``index`` — use it defensively
+        # in case a future version ever reorders.
+        sorted_data = sorted(data, key=lambda d: d.get("index", 0))
+        return [d["embedding"] for d in sorted_data]
+    except Exception as e:
+        raise RuntimeError(f"Ollama batch embedding failed (model={model}, n={len(texts)}): {e}") from e
+
+
 # ── Ollama keep-alive helpers ──────────────────────────────────────────────
 # The OpenAI-compat endpoints (/v1/chat/completions, /v1/embeddings) silently
 # ignore Ollama's `keep_alive` parameter. To pin or evict a model we have to

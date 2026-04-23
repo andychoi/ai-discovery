@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+{% block title %}{{ diagram_type }}/{{ name }} — {{ slug }}{% endblock %}
+
+{% block head_extra %}
+{% if diagram_type == "mermaid" %}
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: false, theme: "default" });
+    window._mermaid = mermaid;
+  </script>
+{% elif diagram_type == "bpmn" %}
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bpmn-js@17.0.2/dist/assets/diagram-js.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bpmn-js@17.0.2/dist/assets/bpmn-js.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bpmn-js@17.0.2/dist/assets/bpmn-font/css/bpmn.css">
+  <script src="https://cdn.jsdelivr.net/npm/bpmn-js@17.0.2/dist/bpmn-viewer.development.js"></script>
+{% elif diagram_type == "dmn" %}
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/dmn-js@15.1.0/dist/assets/diagram-js.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/dmn-js@15.1.0/dist/assets/dmn-js-shared.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/dmn-js@15.1.0/dist/assets/dmn-js-decision-table.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/dmn-js@15.1.0/dist/assets/dmn-font/css/dmn.css">
+  <script src="https://cdn.jsdelivr.net/npm/dmn-js@15.1.0/dist/dmn-viewer.development.js"></script>
+{% endif %}
+{% endblock %}
+
+{% block main %}
+<section class="panel">
+  <div class="doc-header">
+    <a class="back" href="/">← Dashboard</a>
+    <h1>{{ diagram_type }} / {{ name }}</h1>
+    <a class="raw-link" href="{{ raw_url }}">raw source</a>
+  </div>
+  <div id="canvas" class="diagram-canvas"></div>
+</section>
+
+<script>
+(async () => {
+  const canvas = document.getElementById("canvas");
+  const res = await fetch({{ raw_url|tojson }});
+  if (!res.ok) {
+    canvas.innerHTML = `<p class="error">Failed to load: HTTP ${res.status}</p>`;
+    return;
+  }
+  const source = await res.text();
+  const kind = {{ diagram_type|tojson }};
+
+  try {
+    if (kind === "mermaid") {
+      const { svg } = await window._mermaid.render("diag", source);
+      canvas.innerHTML = svg;
+    } else if (kind === "bpmn") {
+      const viewer = new BpmnJS({ container: "#canvas" });
+      await viewer.importXML(source);
+      viewer.get("canvas").zoom("fit-viewport");
+    } else if (kind === "dmn") {
+      const viewer = new DmnJS({ container: "#canvas" });
+      await viewer.importXML(source);
+    }
+  } catch (err) {
+    canvas.innerHTML = `<pre class="error">${err.message || err}</pre>`;
+  }
+})();
+</script>
+{% endblock %}

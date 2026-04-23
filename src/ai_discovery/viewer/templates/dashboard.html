@@ -1,0 +1,136 @@
+{% extends "layout.html" %}
+{% block title %}Dashboard — {{ slug }}{% endblock %}
+
+{% block main %}
+<section class="panel">
+  <h1>Scan quality — {{ slug }}</h1>
+
+  {% if data.quality %}
+    {% set q = data.quality %}
+    <div class="target-grid">
+      <div class="target {% if q.meets_resolution_target %}pass{% else %}fail{% endif %}">
+        <div class="label">Call resolution (≥85%)</div>
+        <div class="value">{{ "%.1f%%"|format(q.resolution_ratio * 100) }}</div>
+        <div class="sub">{{ q.resolved_edges }} / {{ q.total_edges }} edges at ≥0.85 confidence</div>
+      </div>
+      <div class="target {% if q.meets_low_conf_target %}pass{% else %}fail{% endif %}">
+        <div class="label">Low-confidence ratio (≤15%)</div>
+        <div class="value">{{ "%.1f%%"|format(q.low_conf_ratio * 100) }}</div>
+        <div class="sub">{{ q.low_conf_edges }} edges below 0.65</div>
+      </div>
+      <div class="target neutral">
+        <div class="label">Total call edges</div>
+        <div class="value">{{ "{:,}".format(q.total_edges) }}</div>
+        <div class="sub">in {{ data.db_path }}</div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No call-edge data found in the scan DB.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Confidence histogram</h2>
+  {% if data.histogram %}
+    {% set max_count = data.histogram|map(attribute='count')|max %}
+    <div class="histogram">
+      {% for b in data.histogram %}
+      <div class="row">
+        <div class="label">{{ b.label }}</div>
+        <div class="bar-track">
+          <div class="bar{% if b.lo < 0.65 %} bar-low{% elif b.lo >= 0.85 %} bar-high{% endif %}"
+               style="width: {{ (b.count / max_count * 100) if max_count else 0 }}%"></div>
+        </div>
+        <div class="count">{{ "{:,}".format(b.count) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">No histogram — DB missing or empty.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Weakest docs (highest unverified claims)</h2>
+  {% if data.weakest_docs %}
+    <table class="rows">
+      <thead>
+        <tr>
+          <th>Title</th><th>Bucket</th><th>Domain</th>
+          <th class="num">Unverified</th><th class="num">Confidence</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in data.weakest_docs %}
+        <tr>
+          <td>{{ d.title }}</td>
+          <td>{{ d.bucket or "—" }}</td>
+          <td>{{ d.domain or "—" }}</td>
+          <td class="num">{{ d.unverified_claims }}</td>
+          <td class="num">{% if d.confidence is not none %}{{ "%.2f"|format(d.confidence) }}{% else %}—{% endif %}</td>
+          <td>
+            {% if d.doc_id %}
+              {# Rendered-markdown filename convention: {doc_id}.md under <BUCKET>/ #}
+              {% if d.bucket %}
+                <a href="/doc/{{ d.bucket }}/{{ d.doc_id }}.md">open</a>
+              {% else %}<span class="muted">—</span>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No docs found in <code>generated_docs</code>. Scan may not have reached Phase 15.</p>
+  {% endif %}
+</section>
+
+<section class="panel split">
+  <div>
+    <h2>Artifacts</h2>
+    <table class="rows">
+      <thead><tr><th>Artifact</th><th>Status</th><th>Description</th></tr></thead>
+      <tbody>
+        {% for a in data.artifacts %}
+        <tr>
+          <td><code>{{ a.path.name }}{% if a.file_count is not none %}/{% endif %}</code></td>
+          <td>
+            {% if a.exists %}
+              <span class="badge ok">present{% if a.file_count is not none %} ({{ a.file_count }}){% endif %}</span>
+            {% else %}
+              <span class="badge missing">missing</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ a.description }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>Docs tree</h2>
+    {% if data.doc_tree %}
+      {% for bucket, entries in data.doc_tree.items() %}
+        <h3>{{ bucket }} <span class="muted">({{ entries|length }})</span></h3>
+        <ul class="doc-list">
+          {% for e in entries %}
+          <li>
+            <a href="/doc/{{ e.rel_path }}">{{ e.title }}</a>
+            {% if e.confidence is not none %}
+              <span class="chip chip-conf">conf {{ "%.2f"|format(e.confidence) }}</span>
+            {% endif %}
+            {% if e.unverified_claims %}
+              <span class="chip chip-unv">⚠ {{ e.unverified_claims }}</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No rendered markdown found under docs_root.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

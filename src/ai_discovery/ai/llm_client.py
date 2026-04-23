@@ -26,12 +26,12 @@ except ImportError:
 try:
     from ai_discovery.shared.llm_invoke import (
         invoke_bedrock, invoke_ollama, embed_bedrock, embed_ollama,
-        warm_ollama, unload_ollama,
+        embed_ollama_batch, warm_ollama, unload_ollama,
     )
 except ImportError:
     from ai_discovery.shared.llm_invoke import (
         invoke_bedrock, invoke_ollama, embed_bedrock, embed_ollama,
-        warm_ollama, unload_ollama,
+        embed_ollama_batch, warm_ollama, unload_ollama,
     )
 
 
@@ -358,6 +358,25 @@ class LLMClient:
         base_url, api_key = self._config.get_endpoint()
         model = self._embedding_model_for(self._config.provider)
         return embed_ollama(model, text, base_url, api_key=api_key)
+
+    def get_embeddings(self, texts: list[str]) -> list[list[float]]:
+        """Batch embedding — one HTTP round-trip per batch where the backend
+        supports it. Preserves input order.
+
+        Ollama-compatible backends use the native batch endpoint (10–30× less
+        per-request overhead). Bedrock Titan has no batch API at the model
+        level, so we fall back to per-text calls (caller still benefits from
+        threaded fan-out at the call site)."""
+        if not texts:
+            return []
+        if self._config.rag.embedding_provider == "bedrock":
+            return [
+                embed_bedrock(self._config.rag.bedrock_model, t, self._config.bedrock.region)
+                for t in texts
+            ]
+        base_url, api_key = self._config.get_endpoint()
+        model = self._embedding_model_for(self._config.provider)
+        return embed_ollama_batch(model, texts, base_url, api_key=api_key)
 
     def _embedding_model_for(self, provider: str) -> str:
         """Return the embedding model ID for the active ollama-compatible provider."""

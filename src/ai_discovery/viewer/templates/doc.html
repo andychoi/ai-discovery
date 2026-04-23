@@ -1,0 +1,71 @@
+{% extends "layout.html" %}
+{% block title %}{{ name }} — {{ slug }}{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/index.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: false, theme: "default" });
+  window._mermaid = mermaid;
+</script>
+{% endblock %}
+
+{% block main %}
+<section class="panel">
+  <div class="doc-header">
+    <a class="back" href="/">← Dashboard</a>
+    <h1>{{ bucket }} / {{ name }}</h1>
+    <a class="raw-link" href="{{ raw_url }}">raw .md</a>
+  </div>
+  <article id="rendered" class="markdown-body">
+    <p class="muted">Loading…</p>
+  </article>
+</section>
+
+<script>
+(async () => {
+  const res = await fetch({{ raw_url|tojson }});
+  if (!res.ok) {
+    document.getElementById("rendered").innerHTML =
+      `<p class="error">Failed to load: HTTP ${res.status}</p>`;
+    return;
+  }
+  const text = await res.text();
+
+  // Hand marked a highlighter. Errors in unknown-language blocks are expected
+  // and harmless; swallow them so one bad fence doesn't break the whole doc.
+  marked.setOptions({
+    highlight: (code, lang) => {
+      try {
+        return lang && hljs.getLanguage(lang)
+          ? hljs.highlight(code, { language: lang }).value
+          : hljs.highlightAuto(code).value;
+      } catch { return code; }
+    },
+    gfm: true, breaks: false,
+  });
+
+  const html = marked.parse(text);
+  const el = document.getElementById("rendered");
+  el.innerHTML = html;
+
+  // Mermaid fences come through as <pre><code class="language-mermaid">.
+  const mermaidBlocks = el.querySelectorAll("pre code.language-mermaid");
+  for (const [i, block] of [...mermaidBlocks].entries()) {
+    const id = `mmd-${i}`;
+    const src = block.textContent;
+    const host = document.createElement("div");
+    host.className = "mermaid-host";
+    block.parentElement.replaceWith(host);
+    try {
+      const { svg } = await window._mermaid.render(id, src);
+      host.innerHTML = svg;
+    } catch (err) {
+      host.innerHTML = `<pre class="error">mermaid error: ${err.message}</pre>`;
+    }
+  }
+})();
+</script>
+{% endblock %}

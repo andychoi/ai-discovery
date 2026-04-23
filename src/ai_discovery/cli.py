@@ -536,6 +536,137 @@ def federate(
         console.print(f"  {name}: {path}")
 
 
+@app.command()
+def view(
+    project_slug: str = typer.Option(..., "--project-slug", "-p", help="Project slug whose scan output to serve."),
+    output: Path = typer.Option(
+        Path("./data/discovery-output"), "--output", "-o",
+        help="Output dir (must match the scan's --output).",
+    ),
+    docs_root: Path = typer.Option(
+        Path("./data"), "--docs-root",
+        help="Root containing rendered markdown at {docs_root}/{slug}/<BUCKET>/*.md.",
+    ),
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind host (default: localhost-only)."),
+    port: int = typer.Option(8765, "--port", help="Bind port."),
+    no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open a browser window."),
+) -> None:
+    """Serve a local HTML quality dashboard for a completed `discover scan`.
+
+    Renders markdown, mermaid, BPMN, and DMN diagrams client-side via CDN
+    libraries — requires internet on first load. Server is read-only.
+
+    Examples:
+
+        discover view -p todoapp
+        discover view -p todoapp --port 9000 --no-open
+    """
+    import webbrowser
+
+    from ai_discovery.viewer.server import ViewerContext, make_server
+
+    slug_output = (output / project_slug).resolve()
+    if not slug_output.is_dir():
+        console.print(
+            f"[red]No scan output at {slug_output}.[/] Run `discover scan` first, "
+            f"or check --output/--project-slug."
+        )
+        raise typer.Exit(code=1)
+
+    ctx = ViewerContext(slug=project_slug, output_dir=output, docs_root=docs_root)
+    server = make_server(ctx, host=host, port=port)
+    url = f"http://{host}:{port}/"
+    console.print(f"[bold green]discover view[/] serving {project_slug} at [cyan]{url}[/]")
+    console.print(f"  output_dir={slug_output}")
+    if ctx.slug_docs_root.is_dir():
+        console.print(f"  docs_root={ctx.slug_docs_root}")
+    else:
+        console.print(f"  docs_root=[yellow]{ctx.slug_docs_root}[/] [dim](missing — markdown viewer disabled)[/]")
+    console.print("  [dim]Ctrl+C to stop[/]")
+
+    if not no_open:
+        webbrowser.open(url)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        console.print("\n[dim]Shutting down…[/]")
+    finally:
+        server.server_close()
+
+
+@app.command("test-llm")
+def test_llm(
+    provider: Optional[str] = typer.Option(None, "--provider", help="Override LLM provider (bedrock|ollama|mlx-gemma|mlx-qwen)."),
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to YAML config file."),
+    tier: str = typer.Option("tier1", "--tier", help="Which generation tier to probe (tier1|tier2|tier3d|tier3p)."),
+    skip_gen: bool = typer.Option(False, "--skip-gen", help="Skip text-generation probe."),
+    skip_embedding: bool = typer.Option(False, "--skip-embedding", help="Skip embedding probe."),
+) -> None:
+    """Probe the configured LLM and embedding endpoints.
+
+    Sends one tiny request to the generation tier and one to the embedding
+    endpoint, reports which succeed. Use before `discover scan` to catch
+    connectivity, credential, or model-ID problems in seconds instead of
+    after minutes of pipeline work.
+    """
+    import time
+
+    from ai_discovery.ai.llm_client import LLMClient
+
+    cfg = DiscoveryConfig.load(str(config) if config else None)
+    if provider:
+        cfg.provider = provider
+
+    console.print(f"[bold green]discover test-llm[/] provider={cfg.provider}")
+    if cfg.provider != "bedrock":
+        base_url, _ = cfg.get_endpoint()
+        console.print(f"  endpoint={base_url}")
+    else:
+        console.print(f"  region={cfg.bedrock.region}")
+
+    client = LLMClient(cfg)
+    failures = 0
+
+    if not skip_gen:
+        model = cfg.get_model(tier)
+        console.print(f"\n[bold]Generation[/] tier={tier} model={model}")
+        t0 = time.monotonic()
+        try:
+            resp = client.invoke(tier, "Reply with the single word: ok", max_tokens=8)
+            dt = time.monotonic() - t0
+            console.print(
+                f"  [green]✓[/] {dt:.2f}s  tokens_in={resp.tokens_in} "
+                f"tokens_out={resp.tokens_out}  reply={resp.text.strip()!r}"
+            )
+        except Exception as exc:
+            dt = time.monotonic() - t0
+            console.print(f"  [red]✗[/] {dt:.2f}s  {exc}")
+            failures += 1
+
+    if not skip_embedding:
+        emb_provider = cfg.rag.embedding_provider
+        emb_model = (
+            cfg.rag.bedrock_model if emb_provider == "bedrock"
+            else client._embedding_model_for(cfg.provider)
+        )
+        console.print(f"\n[bold]Embedding[/] provider={emb_provider} model={emb_model}")
+        t0 = time.monotonic()
+        try:
+            vec = client.get_embedding("connection test")
+            dt = time.monotonic() - t0
+            console.print(f"  [green]✓[/] {dt:.2f}s  dim={len(vec)}")
+        except Exception as exc:
+            dt = time.monotonic() - t0
+            console.print(f"  [red]✗[/] {dt:.2f}s  {exc}")
+            failures += 1
+
+    if failures:
+        console.print(f"\n[red]{failures} probe(s) failed.[/]")
+        raise typer.Exit(code=1)
+    console.print("\n[green]All probes passed.[/]")
+
+
 @app.command("ingest-docs")
 def ingest_docs(
     docs_dir: Path = typer.Argument(..., help="Path to directory containing markdown files to ingest."),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import tree_sitter_javascript as tsjs
@@ -9,77 +10,99 @@ from tree_sitter import Language, Parser, Query, QueryCursor
 from ..graph.models import CodeNode
 from .base import LanguageParser, find_enclosing_guard
 
+logger = logging.getLogger(__name__)
+
+# Minification thresholds. A file is considered minified if it's larger than
+# _MIN_SIZE_BYTES AND average line length exceeds _MAX_AVG_LINE_LEN. This
+# catches bundler output (Vite, Webpack) where entire modules collapse onto
+# one line, without flagging hand-written code (typical lines < 120 chars).
+_MIN_SIZE_BYTES = 2048
+_MAX_AVG_LINE_LEN = 200
+
+# Path segments that typically contain generated/bundled code. Matched as
+# directory components so `distinct/` or `vendors.js` don't false-positive.
+_GENERATED_PATH_SEGMENTS = frozenset({"dist", "build", "vendor", ".next", ".nuxt", "out", "bundled"})
+_MINIFIED_SUFFIXES = (".min.js", ".min.mjs", ".min.cjs", ".bundle.js", ".chunk.js")
+
+
+def _is_minified_path(file_path: Path) -> bool:
+    name = file_path.name.lower()
+    if any(name.endswith(sfx) for sfx in _MINIFIED_SUFFIXES):
+        return True
+    parts = {p.lower() for p in file_path.parts}
+    return bool(parts & _GENERATED_PATH_SEGMENTS)
+
+
+def _is_minified(source: bytes) -> bool:
+    if len(source) < _MIN_SIZE_BYTES:
+        return False
+    newlines = source.count(b"\n")
+    avg = len(source) / (newlines + 1)
+    return avg > _MAX_AVG_LINE_LEN
+
 JS_LANGUAGE = Language(tsjs.language())
 TS_LANGUAGE = Language(tsts.language_typescript())
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "options"})
 
-try:
-    _ASSIGNMENT_QUERY_JS = Query(
-        JS_LANGUAGE,
-        """(assignment_expression
-            left: [
-                (member_expression
-                    object: [
-                        (this)
-                        (identifier) @assign.obj
-                    ]
-                    property: (property_identifier) @assign.attr
-                )
-                (identifier) @assign.attr
-            ]
-            right: [
-                (string) @assign.val
-                (number) @assign.val
-                (identifier) @assign.val
-            ]
-        )""",
-    )
-except Exception:
-    _ASSIGNMENT_QUERY_JS = None
+# Queries are compiled at import time. A compile failure here is a real
+# environment problem (tree-sitter version drift, grammar mismatch) — we want
+# the import to fail loudly rather than degrade silently at parse time, where
+# _matches(None, node) would raise a cryptic AttributeError mid-scan.
+_ASSIGNMENT_QUERY_JS = Query(
+    JS_LANGUAGE,
+    """(assignment_expression
+        left: [
+            (member_expression
+                object: [
+                    (this)
+                    (identifier) @assign.obj
+                ]
+                property: (property_identifier) @assign.attr
+            )
+            (identifier) @assign.attr
+        ]
+        right: [
+            (string) @assign.val
+            (number) @assign.val
+            (identifier) @assign.val
+        ]
+    )""",
+)
 
-try:
-    _CALL_QUERY_JS = Query(
-        JS_LANGUAGE,
-        """(call_expression
-            function: [
-                (member_expression
-                    object: (identifier) @call.obj
-                    property: (property_identifier) @call.name
-                )
-                (identifier) @call.name
-            ]
-        )""",
-    )
-except Exception:
-    _CALL_QUERY_JS = None
+_CALL_QUERY_JS = Query(
+    JS_LANGUAGE,
+    """(call_expression
+        function: [
+            (member_expression
+                object: (identifier) @call.obj
+                property: (property_identifier) @call.name
+            )
+            (identifier) @call.name
+        ]
+    )""",
+)
 
 # Phase 1.1: per-call-site records (with receiver). `(_)` accepts any shape
 # under `object:` so `this.svc.save()` and `a.b.c()` both match, not just the
 # narrow `obj.method()` form captured by _CALL_QUERY_JS.
-try:
-    _CALL_SITE_QUERY_JS = Query(
-        JS_LANGUAGE,
-        """(call_expression
-            function: [
-                (member_expression
-                    object: (_) @site.receiver
-                    property: (property_identifier) @site.name
-                )
-                (identifier) @site.name
-            ]
-        ) @site.call""",
-    )
-except Exception:
-    _CALL_SITE_QUERY_JS = None
+_CALL_SITE_QUERY_JS = Query(
+    JS_LANGUAGE,
+    """(call_expression
+        function: [
+            (member_expression
+                object: (_) @site.receiver
+                property: (property_identifier) @site.name
+            )
+            (identifier) @site.name
+        ]
+    ) @site.call""",
+)
 
-try:
-    _IMPORT_QUERY_JS = Query(
-        JS_LANGUAGE,
-        "(import_statement) @import.decl",
-    )
-except Exception:
-    _IMPORT_QUERY_JS = None
+_IMPORT_QUERY_JS = Query(
+    JS_LANGUAGE,
+    "(import_statement) @import.decl",
+)
 
 _DB_OPERATIONS = frozenset({"save", "insert", "update", "delete", "remove", "execute", "query", "persist", "merge", "commit"})
 _EXTERNAL_CLIENTS = frozenset({"axios", "fetch", "got", "request", "superagent", "prisma", "sequelize", "typeorm", "mongoose", "knex", "pg", "kafka", "amqp"})
@@ -103,7 +126,13 @@ class JavaScriptParser(LanguageParser):
     # ── public API ────────────────────────────────────────────────────
 
     def parse_file(self, file_path: Path) -> list[CodeNode]:
+        if _is_minified_path(file_path):
+            logger.debug("Skipping bundled/minified path: %s", file_path)
+            return []
         source = file_path.read_bytes()
+        if _is_minified(source):
+            logger.debug("Skipping minified file: %s", file_path)
+            return []
         lang = TS_LANGUAGE if file_path.suffix in (".ts", ".tsx") else JS_LANGUAGE
         parser = Parser(lang)
         tree = parser.parse(source)

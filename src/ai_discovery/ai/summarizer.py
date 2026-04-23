@@ -21,6 +21,32 @@ _SUMMARIZE_TYPES = frozenset({"class", "method", "endpoint", "function", "batch_
 # Node types that get structural-only summary (no LLM call)
 _SKIP_TYPES = frozenset({"dto", "enum", "constant", "import"})
 
+# Directory names that indicate test code.
+_TEST_DIR_NAMES = frozenset({"tests", "test", "__tests__"})
+
+
+def _is_test_chunk(file_path: str) -> bool:
+    """Return True if *file_path* looks like a test file.
+
+    Tests are parsed (so call edges from tests into production code are kept),
+    but skipped at Tier 1 summarization — their summaries add little value for
+    BPMN/DMN/EARS generation while often being 50%+ of chunk volume.
+    """
+    parts = file_path.replace("\\", "/").split("/")
+    if any(p in _TEST_DIR_NAMES for p in parts[:-1]):
+        return True
+    name = parts[-1]
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    return (
+        stem.startswith("test_")
+        or stem.endswith("_test")
+        or stem.endswith("_tests")
+        or stem.endswith(".test")
+        or stem.endswith(".spec")
+        or stem.endswith("Test")
+        or stem.endswith("Tests")
+    )
+
 
 def _build_prompt(chunk: CodeChunk, rag_context: str = "") -> str:
     """Build Tier 1 summarization prompt."""
@@ -92,16 +118,18 @@ def summarize_chunk(
     llm_client: LLMClient,
     db_path: Path | None = None,
     query_vec: list[float] | None = None,
+    skip_rag: bool = False,
 ) -> dict:
     """Summarize a single chunk using Tier 1 LLM.
 
     Optionally retrieves RAG context from db_path if provided.
     If query_vec is provided, it is forwarded to search() to skip re-embedding.
+    If skip_rag is True, skip RAG retrieval entirely (faster, no grounding context).
     Returns dict with: purpose, business_rules, io_summary, tech_debt_signals,
                        tokens_in, tokens_out, model, tier, qualified_name, raw_response
     """
     rag_context = ""
-    if db_path is not None:
+    if db_path is not None and not skip_rag:
         try:
             from ..rag.retriever import search
 
@@ -139,6 +167,8 @@ def summarize_chunks(
     max_concurrent: int = 10,
     on_progress: Callable | None = None,
     scan_id: int | None = None,
+    skip_rag: bool = False,
+    skip_tests: bool = False,
 ) -> list[dict]:
     """Summarize multiple chunks concurrently using ThreadPoolExecutor.
 
@@ -148,9 +178,15 @@ def summarize_chunks(
     - Pre-embed all qualified names for RAG context to avoid N embedding calls in threads
     - Use max_concurrent workers
     - Call on_progress(completed, total) after each chunk
+    - If skip_rag is True, bypass RAG context retrieval (faster, no grounding);
+      db_path is still used for the resume guard.
+    - If skip_tests is True, bypass LLM summarization for test files (still parsed
+      into the graph; just no Tier 1 summary).
     - Return list of summary dicts
     """
     to_summarize = [c for c in chunks if c.chunk_type not in _SKIP_TYPES]
+    if skip_tests:
+        to_summarize = [c for c in to_summarize if not _is_test_chunk(c.file_path)]
 
     # Dedup by qualified_name
     seen: set[str] = set()
@@ -161,9 +197,10 @@ def summarize_chunks(
             seen.add(c.qualified_name)
     to_summarize = deduped
 
-    # Resume guard: filter out chunks already summarized in the DB
+    # Resume guard: filter out chunks already summarized in the DB. A DB error
+    # here is load-bearing — silently falling through would re-summarize every
+    # chunk on a resume, wasting a full Tier 1 budget. Log and re-raise.
     if scan_id is not None and db_path is not None:
-        existing_qnames: set[str] = set()
         try:
             conn = get_conn(db_path)
             try:
@@ -178,42 +215,43 @@ def summarize_chunks(
             finally:
                 conn.close()
         except Exception:
-            pass
+            logger.exception(
+                "Resume guard DB query failed for scan_id=%s; aborting so the "
+                "caller can decide whether to re-summarize or fix the DB.",
+                scan_id,
+            )
+            raise
 
         to_summarize = [c for c in to_summarize if c.qualified_name not in existing_qnames]
 
         if not to_summarize:
             # All already summarized — load from DB and return
+            conn = get_conn(db_path)
             try:
-                conn = get_conn(db_path)
-                try:
-                    rows = conn.execute(
-                        """SELECT ns.*, cn.qualified_name
-                             FROM node_summaries ns
-                             JOIN code_nodes cn ON cn.id = ns.node_id
-                            WHERE cn.scan_id = ?""",
-                        (scan_id,),
-                    ).fetchall()
-                    return [
-                        {
-                            "purpose": r["purpose"],
-                            "business_rules": r["business_rules"],
-                            "io_summary": r["io_summary"],
-                            "tech_debt_signals": r["tech_debt_signals"],
-                            "tokens_in": r["tokens_in"],
-                            "tokens_out": r["tokens_out"],
-                            "model": r["model_used"],
-                            "tier": r["tier"],
-                            "qualified_name": r["qualified_name"],
-                            "raw_response": r["raw_response"],
-                        }
-                        for r in rows
-                    ]
-                finally:
-                    conn.close()
-            except Exception:
-                logger.debug("Could not load existing summaries from DB")
-                return []
+                rows = conn.execute(
+                    """SELECT ns.*, cn.qualified_name
+                         FROM node_summaries ns
+                         JOIN code_nodes cn ON cn.id = ns.node_id
+                        WHERE cn.scan_id = ?""",
+                    (scan_id,),
+                ).fetchall()
+                return [
+                    {
+                        "purpose": r["purpose"],
+                        "business_rules": r["business_rules"],
+                        "io_summary": r["io_summary"],
+                        "tech_debt_signals": r["tech_debt_signals"],
+                        "tokens_in": r["tokens_in"],
+                        "tokens_out": r["tokens_out"],
+                        "model": r["model_used"],
+                        "tier": r["tier"],
+                        "qualified_name": r["qualified_name"],
+                        "raw_response": r["raw_response"],
+                    }
+                    for r in rows
+                ]
+            finally:
+                conn.close()
 
     total = len(to_summarize)
     results: list[dict] = []
@@ -222,19 +260,23 @@ def summarize_chunks(
     if total == 0:
         return results
 
-    # Pre-embed all qualified names concurrently to avoid N serial API calls before summarization
+    # Pre-embed all qualified names concurrently to avoid N serial API calls before summarization.
+    # Use as_completed so one slow/broken embedding doesn't block the whole phase (executor.map
+    # yields in submission order and waits on the slowest item before any faster ones are usable).
     precomputed_vecs: dict[str, list[float] | None] = {}
-    if db_path is not None:
-        def _embed_one(chunk):
-            try:
-                return chunk.qualified_name, llm_client.get_embedding(chunk.qualified_name)
-            except Exception:
-                logger.debug("Failed to pre-embed %s, will embed on demand", chunk.qualified_name)
-                return chunk.qualified_name, None
-
+    if db_path is not None and not skip_rag:
         with ThreadPoolExecutor(max_workers=max_concurrent) as embed_executor:
-            for qname, vec in embed_executor.map(_embed_one, to_summarize):
-                precomputed_vecs[qname] = vec
+            futures = {
+                embed_executor.submit(llm_client.get_embedding, chunk.qualified_name): chunk.qualified_name
+                for chunk in to_summarize
+            }
+            for fut in as_completed(futures):
+                qname = futures[fut]
+                try:
+                    precomputed_vecs[qname] = fut.result()
+                except Exception:
+                    logger.debug("Failed to pre-embed %s, will embed on demand", qname)
+                    precomputed_vecs[qname] = None
 
     with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
         future_to_chunk = {
@@ -244,6 +286,7 @@ def summarize_chunks(
                 llm_client,
                 db_path,
                 precomputed_vecs.get(chunk.qualified_name),
+                skip_rag,
             ): chunk
             for chunk in to_summarize
         }

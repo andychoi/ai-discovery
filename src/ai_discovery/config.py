@@ -99,6 +99,12 @@ class RagConfig:
     chunk_size: int = 1500
     chunk_overlap: int = 200
     top_k: int = 5
+    # If False, skip Phase 10 entirely. RAG index is only used by `discover chat`
+    # and (optionally) Tier 1 grounding; many scans don't need it.
+    enabled: bool = True
+    # If True, test files are excluded from RAG embedding — they rarely help
+    # when asking questions about production behavior and can drown retrieval.
+    skip_tests: bool = True
 
 
 # ── Process Mining config ────────────────────────────────────────────────────
