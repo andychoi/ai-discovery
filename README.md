@@ -118,6 +118,76 @@ Tier 3 has two slots — `tier3d` (dev-default, fast/cheap) and `tier3p` (prod-d
 
 **Typical scan (2000 classes):** $5–15 end-to-end on Bedrock, depending on codebase complexity and tier3 selection.
 
+## Production-Grade Discovery Workflow
+
+Real-world codebases need more than a one-shot scan. Recommended workflow for production runs:
+
+```
+┌─────────────────────┐    ┌───────────────────────┐    ┌────────────────────────┐
+│ 1. Batch pipeline   │ →  │ 2. /discover-triage   │ →  │ 3. /discover-consistency│
+│    discover scan    │    │    (low-conf rows)    │    │    (cross-doc + gaps)  │
+└─────────────────────┘    └───────────────────────┘    └────────────────────────┘
+   deterministic            reactive, bounded             reactive, bounded
+   tables + LLM prose       agent verifies vs source       agent checks links
+   per-row confidence       emits triage-report.md         emits consistency-report.md
+```
+
+### Step 1 — Batch pipeline (deterministic)
+
+Produces verified-fact tables (endpoints, entities, schema) directly from parser output, with LLM prose synthesis around them. Each row carries per-claim confidence and a source citation (`file:line`).
+
+```bash
+discover scan /path/to/repo -p myapp --config discovery.yaml
+```
+
+Output layout (one folder per project, named after the source repo):
+
+```
+data/output-myapp/
+├── ASIS/{domain}.md           # Current state per domain
+├── ASD/{domain}.md            # As-is detail (use cases, business rules)
+├── ASSC/{domain}.md           # Schema (entities, FKs, constraints)
+├── PF/{domain}-{scenario}.md  # Process flows, grouped by domain
+├── BPMN/{actor}.md            # BPMN per business actor lane
+├── DMN/{entity}.md            # Decision tables per entity
+├── EARS/{entity}.md           # EARS requirements per entity
+└── IMPACT/{entity}.md         # Blast-radius docs per entity
+```
+
+Each row in API and schema tables links back to source via `file:line`, so trust signals are at the row level, not just the doc level.
+
+### Step 2 — Triage low-confidence rows (`/discover-triage`)
+
+After the scan, run the triage skill on rows the pipeline flagged as low-confidence. The skill:
+
+1. Prompts you for the source repo path and discovery output path.
+2. Pulls flagged rows via `discover query` (rows with `confidence < 0.65` and `criticality = high`).
+3. For each flagged row, reads source at the cited `file:line`, verifies the claim, and proposes accept / correct / human-review.
+4. Emits `triage-report.md`. You confirm before any artifact is updated.
+
+Cost-bounded: an agent runs only over flagged rows (typically ~5–15% of all rows), not over the full corpus. CI runs stay cheap; deep review happens on demand.
+
+### Step 3 — Cross-artifact consistency check (`/discover-consistency`)
+
+Once individual rows are triaged, run the consistency skill across the full output. The skill:
+
+1. Builds the link graph from `links_to` frontmatter across ASIS / ASD / ASSC / PF / BPMN / DMN / EARS / IMPACT.
+2. Verifies every endpoint in ASIS appears in a PF doc, every entity in ASSC appears in EARS, every PF scenario references an ASD use case, etc.
+3. For domain-tagged repos (e.g., `tags=[ecommerce]`), flags missing flows expected for that domain (logout, password-reset, refund, payment-webhook) — and **distinguishes code gaps from doc gaps**: if there's no source evidence, it's a code gap to track, not a discovery failure.
+4. Emits `consistency-report.md`. Read-only; no in-place edits.
+
+### When the batch pipeline alone is sufficient
+
+If your repo is **single-language, framework-conventional, no metaprogramming** (e.g., a typical Spring Boot REST app), the batch pipeline alone reaches ~95% accuracy. Steps 2 and 3 are **optional polish**, not required steps.
+
+Use steps 2 and 3 when:
+- Multi-language repos (LLM has more room to misinfer cross-language calls)
+- Repos with reflection / annotations / DSLs the parser doesn't fully model
+- Multi-repo federation runs where cross-service consistency matters
+- Output destined for stakeholder reviews where reader trust must be high
+
+For details, see [`docs/assessments/03-discovery-output-quality-assessment.md`](docs/assessments/03-discovery-output-quality-assessment.md).
+
 ## Configuration
 
 ### Environment Variables
@@ -429,20 +499,19 @@ python examples/01_local_scan.py
 ## Output
 
 ```
-data/discovery-output/<project-slug>/
+data/output-<project-slug>/
 ├── discovery-<slug>.db              # SQLite: code nodes, calls, flows, costs, summaries, embeddings
 ├── entity_state_machines.json       # Per-entity FSMs (Phase 3 backbone)
 ├── cross_entity_transitions.json    # Cross-entity links (Phase 3b/3.1c)
 ├── entity_conditions.json           # Entity-guard correlations (Phase 3d)
-├── bpmn/                            # BPMN 2.0 XML per scenario (Phase 15)
-├── dmn/                             # DMN decision tables (Phase 15)
-├── ears/                            # EARS-formatted requirements (Phase 15)
-├── mermaid/                         # Entity backbone L1/L2 diagrams
-└── docs/
-    ├── as-is/                       # Current state assessments
-    ├── spec/                        # Functional specifications
-    ├── interface/                   # API contract documentation
-    └── data-model/                  # Entity and schema documentation
+├── ASIS/{domain}.md                 # As-is overview per domain
+├── ASD/{domain}.md                  # As-is detail (use cases, business rules)
+├── ASSC/{domain}.md                 # Schema (entities, FKs, constraints)
+├── PF/{domain}-{scenario}.md        # Process flows, domain-grouped filenames
+├── BPMN/{actor}.md                  # BPMN per business-actor lane (Phase 15)
+├── DMN/{entity}.md                  # DMN decision tables per entity (Phase 15)
+├── EARS/{entity}.md                 # EARS requirements per entity (Phase 15)
+└── IMPACT/{entity}.md               # Per-entity blast-radius docs
 ```
 
 The JSON backbone artifacts are the canonical output — `discover impact` and `discover federate` read them directly, and downstream tooling (DocHub, custom scripts) should prefer them over the SQLite DB for cross-tool portability.
@@ -496,10 +565,12 @@ pytest --cov                        # Coverage report
 1. Read [`CLAUDE.md`](CLAUDE.md) for development principles
 2. Check [`docs/INDEX.md`](docs/INDEX.md) for architecture overview
 3. Follow [`docs/guides/`](docs/guides/) for your area of work
-4. Use the three custom skills:
+4. Use the custom skills:
    - `/parser-extension` — Add language support
    - `/call-graph-debug` — Debug call resolution
    - `/pipeline-analyze` — Optimize performance/cost
+   - `/discover-triage` — Verify low-confidence rows in scan output
+   - `/discover-consistency` — Cross-artifact consistency check
 
 ## Package Structure
 

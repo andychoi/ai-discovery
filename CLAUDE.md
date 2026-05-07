@@ -43,7 +43,7 @@ Profile phases to find bottlenecks (Phase 6: parsing? Phase 14: Tier 1? Phase 16
 
 ## Using Skills
 
-Three custom skills accelerate development in the hard problem areas:
+Five custom skills accelerate development. The first three help build the discovery pipeline itself; the last two run *after* a scan to verify and improve its output.
 
 ### `/parser-extension`
 **When**: You want to add Go, Rust, Java, C#, JavaScript, or any other language.
@@ -87,6 +87,34 @@ Three custom skills accelerate development in the hard problem areas:
 5. Measure impact before/after
 
 **Reference**: `docs/guides/pipeline/profiling.md`
+
+---
+
+### `/discover-triage`
+**When**: After a `discover scan` run, before treating its output as authoritative. Verify low-confidence rows against source code.
+
+**What it does**: Reactive, bounded review of flagged rows only:
+1. Prompt user for source repo path + discovery output path (or project slug)
+2. Pull rows where `generated_docs.confidence < 0.65` and `review_claims.status IN ('contradicted','unverified')`
+3. For each flagged row, read source at the cited file:line and verify
+4. Decide accept (RAG miss) / correct (LLM error) / human-review (genuinely ambiguous)
+5. Emit `triage-report.md`; apply corrections only on user confirmation
+
+**Reference**: `docs/guides/output-review/triage-workflow.md`
+
+---
+
+### `/discover-consistency`
+**When**: After triage, or as a periodic audit. Verify cross-artifact links and flag domain-pattern absences.
+
+**What it does**: Read-only consistency check across the output tree:
+1. Prompt user for discovery output path (or project slug)
+2. Build the link graph from `links_to` frontmatter across ASIS / ASD / ASSC / PF / BPMN / DMN / EARS / IMPACT
+3. Check coverage: every endpoint in PF, every entity in EARS + IMPACT, every UC linked to a PF, every gateway in DMN
+4. Flag domain-pattern absences (logout, refund, password-reset for e-commerce; etc.) — distinguishing **code gaps** from **discovery failures** via source grep
+5. Emit `consistency-report.md`; never edits artifacts in place
+
+**Reference**: `docs/guides/output-review/consistency-workflow.md`
 
 ---
 
