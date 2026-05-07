@@ -15,17 +15,18 @@ prod: false
 
 # Ollama configuration
 ollama:
-  base_url: http://localhost:11434
-  tier1: gemma4:e2b           # Fast summarization
-  tier2: gemma4:26b           # Flow analysis
-  tier3d: gemma4:26b          # Dev doc generation
-  tier3p: gemma4:31b          # Prod doc generation
+  base_url: "http://localhost:11434"
+  tier1: "gemma4:e2b"
+  tier2: "gemma4:26b"
+  tier3d: "gemma4:26b"
+  tier3p: "gemma4:31b"
   tier1_num_ctx: 4096
 
 # RAG configuration
 rag:
-  embedding_provider: bedrock
-  ollama_model: nomic-embed-text
+  embedding_provider: ollama
+  bedrock_model: "amazon.titan-embed-text-v2:0"
+  ollama_model: mxbai-embed-large
   chunk_size: 1500
   chunk_overlap: 200
   top_k: 5
@@ -33,10 +34,20 @@ rag:
 # Process Mining Configuration (Stage 10.5) — OPTIONAL
 # Set enabled: true to enable process mining and conformance analysis
 process_mining:
-  enabled: false              # Set to true to enable
-  miner_variant: inductive    # inductive (recommended), dfg, alpha, heuristics
-  fitness_threshold: 0.90     # Quality gate: min acceptable fitness (0-1)
-  precision_threshold: 0.85   # Quality gate: min acceptable precision (0-1)
-  generalization_threshold: 0.80  # Quality gate: min acceptable generalization (0-1)
-  max_traces: 10000           # Max traces per scenario (safety limit)
-  output_reports: true        # Save markdown and JSON reports to disk
+  enabled: false
+  miner_variant: inductive
+  fitness_threshold: 0.9
+  precision_threshold: 0.85
+  generalization_threshold: 0.8
+  max_traces: 10000
+  output_reports: true
+
+# Advisor Configuration (beta) — OPTIONAL
+# Set enabled: true to enable advisor tool integration
+advisor:
+  enabled: false
+  provider: auto
+  model: claude-opus-4-7
+  tiers: ['tier2', 'tier3']
+  max_uses_per_call: 1
+  tier3_executor_override: ""
