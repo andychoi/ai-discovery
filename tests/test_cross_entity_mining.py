@@ -1,4 +1,4 @@
-"""Tests for Phase 3.1b cross-entity transition correlator."""
+"""Tests for Phase 3b cross-entity transition correlator."""
 
 from __future__ import annotations
 

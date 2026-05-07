@@ -1,4 +1,4 @@
-"""Phase 2.2: persist EntityStateMachine + StateTransition to SQLite.
+"""Phase 2b: persist EntityStateMachine + StateTransition to SQLite.
 
 The spec (Part 5, exit criterion 1) requires FSMs to survive the pipeline run
 and be queryable externally — SQL joins on `state_transitions` unlock impact

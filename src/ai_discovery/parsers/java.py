@@ -425,7 +425,7 @@ class JavaParser(LanguageParser):
 
     @staticmethod
     def _extract_bases(cls_node) -> list[str]:
-        """Return superclass + interface names for a Java class (Phase 2.4).
+        """Return superclass + interface names for a Java class (Phase 2d).
 
         Java expresses inheritance via two separate sibling nodes under
         `class_declaration`: `superclass` (at most one) and `super_interfaces`
@@ -472,7 +472,7 @@ class JavaParser(LanguageParser):
 
     @staticmethod
     def _extract_class_fields(cls_node) -> list[str]:
-        """Return field names declared directly on this class (Phase 2.4).
+        """Return field names declared directly on this class (Phase 2d).
 
         Walks the direct `class_body` so nested inner classes' fields aren't
         mixed in. Each `field_declaration` can list several variable names;

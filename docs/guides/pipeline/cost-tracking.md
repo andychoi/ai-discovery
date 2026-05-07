@@ -159,10 +159,10 @@ analyze_top_n_domains: 10
 **Trade-off**: No self-review, or no doc rollup
 
 ```yaml
-# Skip self-review (Phase 14)
+# Skip self-review (Phase 17)
 skip_self_review: true
 
-# Skip Tier 3 doc rollup (Phase 13)
+# Skip Tier 3 doc rollup (Phase 14)
 max_tier: 2  # Only Tier 1 + Tier 2
 ```
 

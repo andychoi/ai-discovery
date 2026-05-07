@@ -1,4 +1,4 @@
-"""Tests for Phase 2.5.2 entity-kind classifier."""
+"""Tests for Phase 2e-2 entity-kind classifier."""
 
 from __future__ import annotations
 

@@ -1,12 +1,15 @@
 ---
 title: State-First Backbone Plan
 date: 2026-04-20
-status: proposed
+status: partially shipped (Phase 0–4 MVP landed 2026-04-21; Phase 5 deferred)
+last_updated: 2026-05-07
 scope: Reverse-engineering output evolution — from per-domain summaries to canonical entity state machines as the organizing artifact
 supersedes_partial: docs/assessments/02-reverse-engineering-implementation-plan.md (reorders its phases)
 ---
 
 # State-First Backbone Plan
+
+> **2026-05-07 status note**: Phase 0, 1, 2 (incl. 2a–2e), 3 (incl. 3a–3d cross-entity passes, BPMN/DMN/EARS generators, `discover impact` query), and Phase 4 federation MVP have shipped. Open: choreography view + contract ingestion (Phase 4 stretch), transitive-chain inference (Phase 3 stretch), and Phase 5 entirely. Sub-phase numbering was migrated from decimal (2.1, 2.5, 2.5.1) to letter-suffix (2a, 2e, 2e-1) on 2026-05-07.
 
 ## Executive Summary
 
@@ -35,7 +38,7 @@ Grouped by the layer they break. Each blocker cites code or a gap-assessment sec
 | A2 | UNRESOLVED vs EXTERNAL_API still partially conflated. `UNRESOLVED` node type exists (`call_graph.py:351`) but default classification paths still pick `EXTERNAL_API` (`call_graph.py:334`). | `graph/call_graph.py:334, 351` | Federated graph inherits the lie — "real external" indistinguishable from "I failed to resolve." |
 | A3 | Broken test suite. Parser deps missing, tests stale. | gap-assessment §8, `app/tests/*` | Cannot refactor resolver or pipeline safely. |
 
-*Previously listed but already fixed*: pipeline ordering (domains classified at Phase 7 before scenarios at Phase 8.5, with `domain_classifier.py:83` mutating `node.domain`). Dropped from plan.
+*Previously listed but already fixed*: pipeline ordering (domains classified at Phase 7 before scenarios at Phase 8, with `domain_classifier.py:83` mutating `node.domain`). Dropped from plan.
 
 ### Tier B — State-first specific (required to build the backbone)
 
@@ -101,28 +104,28 @@ ROI = (downstream artifacts unlocked) / (engineering cost). Prerequisites are st
 
 | Sub-phase | Task | Blockers | Artifact |
 |-----------|------|----------|----------|
-| 2.1 | Per-entity FSM rollup — aggregate transitions across all code paths touching the same entity | B1 | `EntityStateMachine` dataclass: `states`, `transitions`, `fields`, `source_files`, `confidence` |
-| 2.2 | Persist `StateTransition` + `EntityStateMachine` as first-class SQLite tables | B4 | Survives the pipeline run; queryable externally |
-| 2.3 | JSON graph export alongside markdown | D1 | Canonical format; unlocks diffing, review, external tooling |
-| 2.4 | Intra-repo entity identity consolidation — dual-pass class-backed + classless, inheritance-aware | B6 (partial) | `Order` / `OrderEntity` / `Orders` merged into one FSM |
-| 2.5 | Non-class field sources — SQL strings, GraphQL schemas, Mongoose / Django Meta, ORM migrations | B6 (full intra-repo) | Entities discovered from raw SQL + schemaless code |
+| 2a | Per-entity FSM rollup — aggregate transitions across all code paths touching the same entity | B1 | `EntityStateMachine` dataclass: `states`, `transitions`, `fields`, `source_files`, `confidence` |
+| 2b | Persist `StateTransition` + `EntityStateMachine` as first-class SQLite tables | B4 | Survives the pipeline run; queryable externally |
+| 2c | JSON graph export alongside markdown | D1 | Canonical format; unlocks diffing, review, external tooling |
+| 2d | Intra-repo entity identity consolidation — dual-pass class-backed + classless, inheritance-aware | B6 (partial) | `Order` / `OrderEntity` / `Orders` merged into one FSM |
+| 2e | Non-class field sources — SQL strings, GraphQL schemas, Mongoose / Django Meta, ORM migrations | B6 (full intra-repo) | Entities discovered from raw SQL + schemaless code |
 
 **Exit**: Every important business entity has a canonical FSM that can be serialized, diffed, and reviewed. **This is the shippable state-first backbone milestone.**
 
-Detailed breakdown of 2.4 and 2.5 is in `docs/guides/entity-identity/`:
+Detailed breakdown of 2d and 2e is in `docs/guides/entity-identity/`:
 
 - `consolidation-algorithm.md` — the dual-pass algorithm
 - `edge-cases.md` — survey of programming styles, MVC variants, and dynamic DB patterns with scope dispositions
 
-#### Phase 2.4 — Intra-repo consolidation (design B)
+#### Phase 2d — Intra-repo consolidation (design B)
 
-The class-based fingerprint alone misses half the real-world cases (reducers, utilities, SQL-first code). So 2.4 runs a **dual pass** plus a **cross pass**:
+The class-based fingerprint alone misses half the real-world cases (reducers, utilities, SQL-first code). So 2d runs a **dual pass** plus a **cross pass**:
 
 **Identity contract (prerequisite for all three passes)**: every `StateTransition` / `EntityStateMachine` carries both `entity` (short display name) and `entity_id` (unique key — class `qualified_name`, or `enclosing_fn::var` for duck-typed receivers). The rollup groups by `entity_id`, so collisions like `billing.Order` vs `ecommerce.Order` never silently merge. All four parsers, `call_graph.py`, rollup, SQLite persistence, and JSON export flow `entity_id` through unchanged.
 
 1. **Class-backed pass** — FSMs with a backing class CodeNode. Fingerprint = `(bases-adjusted field set, normalized name stem)`. Merge when adjusted Jaccard ≥ 0.9 and field-count ratio ≥ 0.7, or Jaccard ≥ 0.7 + stem similarity ≥ 0.8 + ratio ≥ 0.7. **Projection rule**: low field-count ratio (< 0.5) + high coverage of the smaller set inside the larger (≥ 0.8) → record as projection link, don't merge (handles `OrderDto` ↔ `Order`). Coverage — not Jaccard — gates projection because Jaccard approaches `|smaller|/|larger|` for pure subsets and would reject the intended cases.
 2. **Classless pass** — FSMs with no backing class (reducers, utility functions, duck-typed code). Fingerprint = `(transition-derived field set, normalized name stem)`. Stem normalization includes Redux-era suffixes (`Reducer`, `Slice`, `Saga`) so `orderReducer` + `orderSlice` normalize to a common stem.
-3. **Cross pass** — classless field set ⊆ classful field set + stem match → merge classless into classful (handles "SQL-only touches orders" once 2.5 lands).
+3. **Cross pass** — classless field set ⊆ classful field set + stem match → merge classless into classful (handles "SQL-only touches orders" once 2e lands).
 
 Pre-filters before scoring:
 
@@ -133,13 +136,13 @@ Pre-filters before scoring:
 
 Post-consolidation: if two distinct FSMs end up sharing a short `entity` (e.g. surviving `billing.Order` and `ecommerce.Order`), rewrite `entity` to `Order (billing)` / `Order (ecommerce)` for display. `entity_id` is never mutated, so downstream joins remain stable.
 
-Inheritance-awareness needs parser support for `CodeNode.bases`, added in 2.4.
+Inheritance-awareness needs parser support for `CodeNode.bases`, added in 2d.
 
 **Exit**: On the enterprise fixture, aliased-entity recall ≥ 80% (manually-identified alias pairs that get correctly merged) and false-merge precision ≥ 95% (merges that a human reviewer agrees with).
 
-#### Phase 2.5 — Non-class field sources
+#### Phase 2e — Non-class field sources
 
-The 2.4 fingerprint is class-shaped. Much of real-world code isn't:
+The 2d fingerprint is class-shaped. Much of real-world code isn't:
 
 | Source | Pattern | Implementation |
 |--------|---------|----------------|
@@ -151,13 +154,13 @@ The 2.4 fingerprint is class-shaped. Much of real-world code isn't:
 | Django `forms.ModelForm` / DRF `Serializer` | `class OrderForm: class Meta: model = Order; fields = [...]` | Nested-Meta resolver with cross-reference to model class |
 | Pydantic models | already handled as class fields | (no work) |
 
-Each source feeds into the **pre-rollup** stage: each non-class source produces a **synthetic class-less CodeNode** with `fields` populated. The 2.4 consolidator then does the rest — the classless and cross passes it already runs pick them up.
+Each source feeds into the **pre-rollup** stage: each non-class source produces a **synthetic class-less CodeNode** with `fields` populated. The 2d consolidator then does the rest — the classless and cross passes it already runs pick them up.
 
-**Exit**: On a mixed-style corpus (OO + functional + SQL-first), entity discovery recall ≥ 75% compared to human baseline (vs. ~45% baseline for class-only 2.4).
+**Exit**: On a mixed-style corpus (OO + functional + SQL-first), entity discovery recall ≥ 75% compared to human baseline (vs. ~45% baseline for class-only 2d).
 
 **Deferred further**:
 
-- Immutable-replace transitions (`dataclasses.replace`, Kotlin `.copy()`) — recognizer is a transition-detection concern, not fingerprinting. Phase 2.6 or Phase 3 work.
+- Immutable-replace transitions (`dataclasses.replace`, Kotlin `.copy()`) — recognizer is a transition-detection concern, not fingerprinting. Phase 2f or Phase 3 work.
 - State-pattern recognition (GoF State classes as lifecycle stages) — needs cross-class inference; Phase 3.
 - Redux-reducer spread tracing to recover non-written fields — Phase 3.
 - Stored procs / DB triggers — requires SQL-file parser; Phase 5+.
@@ -300,9 +303,9 @@ Backbone is "done" (Phase 2 exit) when:
 
 ## Part 6: Open Questions
 
-- ~~**Entity identity within a repo**: do we fingerprint by class name + field set, or by ORM table mapping, or both?~~ **Resolved (2026-04-21)**: Phase 2.4 uses class + field + bases fingerprint; Phase 2.5 adds ORM/SQL/schema field sources that feed into the same fingerprint. Full algorithm in `docs/guides/entity-identity/consolidation-algorithm.md`.
+- ~~**Entity identity within a repo**: do we fingerprint by class name + field set, or by ORM table mapping, or both?~~ **Resolved (2026-04-21)**: Phase 2d uses class + field + bases fingerprint; Phase 2e adds ORM/SQL/schema field sources that feed into the same fingerprint. Full algorithm in `docs/guides/entity-identity/consolidation-algorithm.md`.
 - **Guard AST normalization scope**: how much cross-language normalization is worth it vs. keeping raw per-language expressions? (Phase 1.2 decision; suggest: normalize simple binary ops only, retain raw otherwise.)
 - **Execution-order branch semantics**: when a transition is inside `try/except` or equivalent, does the exception path produce an alternate transition? (Phase 1.4 decision.)
-- **FSM confidence aggregation**: how do we combine per-transition confidences into an FSM-level quality score? (Phase 2 decision; current rollup uses simple average — revisit after 2.4 ships.)
+- **FSM confidence aggregation**: how do we combine per-transition confidences into an FSM-level quality score? (Phase 2 decision; current rollup uses simple average — revisit after 2d ships.)
 
 These are called out now so they don't block task kickoff; answers can be deferred to the phase where they matter.

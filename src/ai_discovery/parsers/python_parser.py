@@ -86,7 +86,7 @@ _DECORATOR_QUERY = Query(
 
 # `self.X = <any>` inside a method body. Unlike `_ASSIGNMENT_QUERY` (which
 # restricts RHS for state-transition detection), this query matches any RHS
-# because field *existence*, not its value, is what Phase 2.4 needs.
+# because field *existence*, not its value, is what Phase 2d needs.
 _SELF_FIELD_QUERY = Query(
     PY_LANGUAGE,
     """(assignment
@@ -440,7 +440,7 @@ class PythonParser(LanguageParser):
 
     @staticmethod
     def _extract_class_fields(cls_node) -> list[str]:
-        """Return the attribute names defined on this class (Phase 2.4).
+        """Return the attribute names defined on this class (Phase 2d).
 
         Combines two sources so FSM identity consolidation has the same set of
         fields regardless of whether the codebase uses dataclass-style class

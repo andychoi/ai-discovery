@@ -23,15 +23,18 @@ discover scan \
 # Phase 5 (lang_detect): 2.1s
 # Phase 6 (parse): 45.2s
 # Phase 7 (domain_classify): 1.8s
-# Phase 8.5 (execution_slices): 8.3s
+# Phase 8 (execution_slices): 8.3s
 # Phase 9 (chunk): 25.4s
 # Phase 10 (rag_embed): 40.0s
 # Phase 11 (tier1_summarize): 240s
 # Phase 12 (tier2_flow_analysis): 180s
-# Phase 13 (tier3_doc_rollup): 360s
-# Phase 14 (self_review): 90s
-# Phase 15 (render_markdown): 2.1s
-# Phase 16 (finalise): 0.1s
+# Phase 13 (scenario_flow_inference): 120s
+# Phase 14 (tier3_doc_rollup): 360s
+# Phase 15 (visual_artifacts): 1.2s
+# Phase 16 (process_mining, optional): skipped
+# Phase 17 (self_review): 90s
+# Phase 18 (render_markdown): 2.1s
+# Phase 19 (finalise): 0.1s
 # =====================================
 # Total: ~1060s = 17.7 minutes
 ```

@@ -1,8 +1,8 @@
-"""Phase 3.1: cross-entity analysis passes over the consolidated FSM set.
+"""Phase 3 cross-entity analysis passes over the consolidated FSM set.
 
 This module hosts analyses that only make sense once *all* entities are
-known — things a single-entity classifier can't see. Phase 3.1a (now)
-detects denormalized fields; Phase 3.1b (planned) will add the cross-
+known — things a single-entity classifier can't see. Phase 3a (now)
+detects denormalized fields; Phase 3b (planned) will add the cross-
 entity transition correlator. They share the same iteration plumbing
 over the FSM list, so they live together.
 
@@ -30,7 +30,7 @@ Known limitations (accept for v1, queue for a later pass):
   - No transitive chains: if A copies from B and B copies from C, only
     the direct A→B link is recorded.
   - Same-name collisions across modules aren't disambiguated — the first
-    matching stem wins. Consolidation in Phase 2.4 should have merged
+    matching stem wins. Consolidation in Phase 2d should have merged
     true duplicates before we get here.
 """
 

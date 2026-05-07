@@ -1,4 +1,4 @@
-"""Phase 2.2 tests: persist + load EntityStateMachine in SQLite."""
+"""Phase 2b tests: persist + load EntityStateMachine in SQLite."""
 
 from __future__ import annotations
 

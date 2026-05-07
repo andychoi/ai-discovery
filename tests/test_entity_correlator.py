@@ -1,4 +1,4 @@
-"""Tests for Phase 3.1a cross-entity denormalization detector."""
+"""Tests for Phase 3a cross-entity denormalization detector."""
 
 from __future__ import annotations
 

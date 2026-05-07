@@ -1,4 +1,4 @@
-"""Phase 2.3 tests: JSON export for EntityStateMachine.
+"""Phase 2c tests: JSON export for EntityStateMachine.
 
 The contract under test is: JSON output is stable across runs (spec exit
 criterion 3), every field round-trips (lossless), and sets serialize as

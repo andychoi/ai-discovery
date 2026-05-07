@@ -1,4 +1,4 @@
-"""Phase 2.4 tests: `fsm_identity.consolidate_entities`.
+"""Phase 2d tests: `fsm_identity.consolidate_entities`.
 
 The contract under test:
 - FSMs with the same stem + high-Jaccard field sets merge into one.

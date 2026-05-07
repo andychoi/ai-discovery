@@ -35,12 +35,12 @@ For programmatic use, `GET /api/summary` returns the same dashboard data as JSON
 data/discovery-output/<slug>/          ← canonical (machine-readable)
   discovery-<slug>.db                  SQLite: nodes, calls, flows, confidences, costs
   entity_state_machines.json           Phase 3 FSM backbone
-  cross_entity_transitions.json        Phase 3.1b/3.1c cross-entity links
-  entity_conditions.json               Phase 3.1d guard correlations
+  cross_entity_transitions.json        Phase 3b/3c cross-entity links
+  entity_conditions.json               Phase 3d guard correlations
   entity_backbone.mmd                  Mermaid L1/L2 diagram
   entity_decisions.md                  Decision log
   entity_ears.md                       EARS requirement summary
-  bpmn/  dmn/  ears/                   Phase 13.5 generators (XML / md)
+  bpmn/  dmn/  ears/                   Phase 15 generators (XML / md)
 
 data/<slug>/                           ← human-readable markdown
   ASIS/    as-is — high-level current-state summary
@@ -62,7 +62,7 @@ Work from cheapest signal to deepest inspection. Stop when you've found enough t
 
 ### 1. Frontmatter triage
 
-Every generated markdown carries `discovery_confidence` and `unverified_claims` in its frontmatter — the per-doc quality signals, written by Phase 14 (self-review).
+Every generated markdown carries `discovery_confidence` and `unverified_claims` in its frontmatter — the per-doc quality signals, written by Phase 17 (self-review).
 
 ```bash
 # List docs ranked by unverified-claim count

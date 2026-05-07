@@ -71,19 +71,24 @@ Push options:
 
 ## Pipeline Phases
 
+Canonical phase numbers (5–19) match `_PHASE_SPECS` in `pipeline.py` and the rows persisted to `phase_checkpoints`. See `docs/guides/pipeline/phase-breakdown.md` for the full reference.
+
 ```
-1. Resolve repo (clone or validate local)
-2. Detect languages (extensions + manifests)
-3. Parse files (Tree-sitter AST extraction)
-4. Build call graph + classify domains
-5. Smart chunk (AST-aware, not naive char split)
-6. Embed chunks for RAG (sqlite-vec)
-7. Tier 1: Summarize chunks (Haiku — cheap, concurrent)
-8. Tier 2: Analyze business flows per domain (Sonnet)
-9. Tier 3: Generate doc rollups per domain (Opus)
-10. Render markdown with ai-docs frontmatter (Jinja2)
-11. Self-review: verify claims against source via RAG
-12. Push to DocHub API or Gitea (optional)
+ 5. lang_detect          — detect languages (extensions + manifests)
+ 6. parse                — tree-sitter AST extraction
+ 7. domain_classify      — namespace/path heuristics
+ 8. execution_slices     — BFS scenarios from entry points (optional)
+ 9. chunk                — method-level splits for RAG
+10. rag_embed            — embeddings → sqlite-vec
+11. tier1_summarize      — Haiku per-chunk summaries
+12. tier2_flow_analysis  — Sonnet per-domain flows
+13. scenario_flow_inference  — per-scenario LLM reconstruction
+14. tier3_doc_rollup     — Sonnet/Opus final docs
+15. visual_artifacts     — BPMN + DMN + EARS + Mermaid generation
+16. process_mining       — pm4py inductive miner (optional)
+17. self_review          — RAG-verified claim checking
+18. render_markdown      — Jinja2 render with ai-docs frontmatter
+19. finalise             — write artifacts; optional DocHub/Gitea push
 ```
 
 ## Output

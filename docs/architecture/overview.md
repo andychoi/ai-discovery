@@ -14,48 +14,60 @@ AI-Discovery is a brownfield reverse-engineering engine. Given a source code rep
 
 ## High-Level Data Flow
 
+Pipeline phase numbers in brackets match `_PHASE_SPECS` in `pipeline.py` (canonical). See `guides/pipeline/phase-breakdown.md` for per-phase details.
+
 ```
 Source Repository
        │
        ▼
-  [1] Resolve ──── git clone / local path ──── ResolvedRepo (commit SHA, branch)
+  [1–4] Pre-pipeline ─── DB init, repo resolve, resume/rescan, scan_run create
        │
        ▼
-  [2] Detect Languages ──── extension + manifest scan ──── {python, java, csharp, javascript}
+  [5] Detect Languages ──── extension + manifest scan ──── {python, java, csharp, javascript}
        │
        ▼
-  [3] Parse ──── tree-sitter AST per file ──── CodeNode[]
+  [6] Parse ──── tree-sitter AST per file ──── CodeNode[]
        │           (class, method, endpoint, db_model, batch_job, ui_component)
        │
        ▼
-  [4] Classify Domains ──── namespace / path heuristics ──── Domain[]
+  [7] Classify Domains + Build Call Graph ──── multi-strategy name resolution ──── CallEdge[]
        │
        ▼
-  [5] Build Call Graph ──── multi-strategy name resolution ──── CallEdge[]
+  [8] Build Execution Slices ──── bounded BFS from entry points ──── Scenario[]
+       │              + entity FSM rollup, consolidation (Phase 2a–2e), classification
        │
        ▼
-  [6] Build Execution Slices ──── bounded BFS from entry points ──── Scenario[]
+  [9–10] Chunk + Embed ──── method-level splits + RAG overlap ──── sqlite-vec vectors
        │
        ▼
-  [7] Chunk + Embed ──── method-level splits + RAG overlap ──── sqlite-vec vectors
+ [11] Tier 1 Summarize ──── Haiku / fast model, concurrent ──── node_summaries
        │
        ▼
-  [8] Tier 1 Summarize ──── Haiku / fast model, concurrent ──── node_summaries
+ [12] Tier 2 Flow Analysis ──── Sonnet, per domain ──── business_flows
        │
        ▼
-  [9] Tier 2 Flow Analysis ──── Sonnet, per domain ──── business_flows, scenario_flows
+ [13] Scenario Flow Inference ──── per-scenario LLM reconstruction ──── scenario_flows
        │
        ▼
- [10] Tier 3 Doc Rollup ──── Opus, per domain×doc_type ──── generated_docs (markdown)
+ [14] Tier 3 Doc Rollup ──── Sonnet/Opus, per domain×doc_type ──── generated_docs
        │
        ▼
- [11] Self-Review ──── claim extraction + RAG verify ──── review_claims, annotations
+ [15] Visual Artifacts ──── BPMN + DMN + EARS + Mermaid generation
        │
        ▼
- [12] Render Markdown ──── Jinja2 templates + BPMN/Mermaid ──── data/{slug}/{PREFIX}/*.md
+ [16] Process Mining (optional) ──── pm4py inductive miner + conformance
        │
        ▼
- [13] Ingest (optional) ──── discover ingest ──── DocHub API / Gitea
+ [17] Self-Review ──── claim extraction + RAG verify ──── review_claims, annotations
+       │
+       ▼
+ [18] Render Markdown ──── Jinja2 templates ──── data/{slug}/{PREFIX}/*.md
+       │
+       ▼
+ [19] Finalise ──── totals, scan_runs.status=completed
+       │
+       ▼
+       discover ingest (separate command) ──── DocHub API / Gitea
 ```
 
 ---
@@ -91,12 +103,14 @@ AI-Discovery reconstructs and documents business processes at multiple abstracti
 
 ## LLM Tier Model
 
-| Tier | Model (Bedrock) | Model (Ollama) | Role | Concurrency |
-|------|----------------|----------------|------|------------|
-| Tier 1 | claude-haiku-4-5-20251001 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) | gemma4:e2b (2B) | Chunk summarization | High (max_concurrent) |
-| Tier 2 | claude-sonnet-4-6 (`us.anthropic.claude-sonnet-4-6`) | gemma4:26b (26B) | Flow analysis | Per domain |
-| Tier 3 (dev) | claude-opus-4-6 (`us.anthropic.claude-opus-4-6`) | gemma4:26b | Doc rollup | Configurable |
-| Tier 3 (prod) | claude-opus-4-6 (`us.anthropic.claude-opus-4-6`) | gemma4:31b | Doc rollup | Configurable |
+| Tier | Slot | Bedrock default | Ollama default | Role | Concurrency |
+|------|------|-----------------|----------------|------|------------|
+| Tier 1 | `tier1` | claude-haiku-4-5 | gemma4:e2b (2B) | Chunk summarization | High (`max_concurrent`) |
+| Tier 2 | `tier2` | claude-sonnet-4-6 | gemma4:26b | Flow analysis | Per domain |
+| Tier 3 dev | `tier3d` | claude-haiku-4-5 | gemma4:26b | Doc rollup (fast/cheap) | Configurable |
+| Tier 3 prod | `tier3p` | claude-sonnet-4-6 | gemma4:31b | Doc rollup (deeper) | Configurable |
+
+Tier 3 has two slots — `tier3d` (dev-default, cheap) and `tier3p` (prod-default, deeper). Pass `--prod` at scan time to swap in `tier3p`. Override any slot via `discovery.yaml` to pin Opus where you want it.
 
 Budget guard: each tier checks `total_cost_usd < budget_limit_usd` before running.
 

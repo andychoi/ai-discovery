@@ -1,4 +1,4 @@
-"""Phase 3.1c: parse `StateTransition.guard_expr` for cross-entity state references.
+"""Phase 3c: parse `StateTransition.guard_expr` for cross-entity state references.
 
 A guard like `order.status == 'approved'` attached to an Invoice transition
 means Invoice's lifecycle gates on Order's state. That's a cross-entity

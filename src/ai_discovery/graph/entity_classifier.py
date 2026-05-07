@@ -1,4 +1,4 @@
-"""Phase 2.5.2: classify each EntityStateMachine by its role in the system.
+"""Phase 2e-2: classify each EntityStateMachine by its role in the system.
 
 Every entity is annotated with:
   metadata["entity_kind"]: one of

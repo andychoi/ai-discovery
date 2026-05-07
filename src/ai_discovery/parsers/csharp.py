@@ -197,7 +197,7 @@ class CSharpParser(LanguageParser):
             )
 
             # For DB models, populate `params` with the same field set — this
-            # preserves the pre-Phase-2.4 shape that downstream db_model
+            # preserves the pre-Phase-2d shape that downstream db_model
             # consumers depend on (they look at `params` for column names).
             if is_db_model:
                 class_code_node.params = list(class_fields)
@@ -494,7 +494,7 @@ class CSharpParser(LanguageParser):
 
     @staticmethod
     def _extract_bases(cls_node) -> list[str]:
-        """Return base class + interface names for a C# class (Phase 2.4).
+        """Return base class + interface names for a C# class (Phase 2d).
 
         C# groups both the base class and all interfaces into a single
         `base_list` node — the language grammar doesn't distinguish them
@@ -529,7 +529,7 @@ class CSharpParser(LanguageParser):
     @staticmethod
     def _extract_class_fields(cls_node) -> list[str]:
         """Return names of both `property_declaration`s and `field_declaration`s
-        declared directly on this class (Phase 2.4).
+        declared directly on this class (Phase 2d).
 
         Scoped to the direct `declaration_list` child so inner-class members
         don't pollute the outer class's fingerprint. Properties and fields

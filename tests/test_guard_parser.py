@@ -1,4 +1,4 @@
-"""Tests for Phase 3.1c cross-entity guard parser."""
+"""Tests for Phase 3c cross-entity guard parser."""
 
 from __future__ import annotations
 

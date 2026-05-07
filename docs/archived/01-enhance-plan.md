@@ -1,5 +1,9 @@
 # Enhancement Plan: Behavior Reconstruction for Discovery App
 
+> **Archived 2026-05-07.** This is a pre-implementation planning doc that proposed a "Tier 2.5 / Tier 3.5" LLM-tier scheme that never shipped. The actual implementation followed `docs/specs/2026-04-20-state-first-backbone-plan.md` instead — what this doc called "Tier 2.5" became pipeline phase 13 (`scenario_flow_inference`) and "Tier 3.5" was rolled into phase 15 (`visual_artifacts`). Kept here only for historical reference; do not use as current design guidance.
+
+---
+
 This document outlines the strategic evolution of the **Discovery App** from a static "code-understanding" tool (AST/Call-Graph) into a dynamic "behavior-reconstruction" engine (Scenario-Flow/BPMN).
 
 ---
@@ -31,7 +35,7 @@ Add an **Execution Flow Layer** between the static call-graph and the final roll
 5.  **Smart Chunk & Embed** (Current)
 6.  **Summarize (Tier 1)** (Current)
 7.  **NEW: Flow Inference (Tier 2.5 — Steps 8.5–8.8)**
-    - **Step 8.5: Path Extraction (P1)**: Prune call-graphs into candidate paths.
+    - **Step (legacy 8.5) →: Path Extraction (P1)**: Prune call-graphs into candidate paths.
     - **Step 8.6: Flow Inference (P2)**: Convert paths to business terms via GenAI.
     - **Step 8.7: Data Flow (P3)**: Extract Input-Process-Output (IPO).
     - **Step 8.8: Interface Detection (P4)**: Map external systems (DB, Kafka, HTTP).

@@ -437,7 +437,7 @@ class JavaScriptParser(LanguageParser):
 
     @staticmethod
     def _extract_bases(cls_node) -> list[str]:
-        """Return base class + implemented interface names (Phase 2.4).
+        """Return base class + implemented interface names (Phase 2d).
 
         JS has only `extends` (one parent); TypeScript adds `implements`
         (many interfaces). Both live under `class_heritage`. We collect
@@ -477,7 +477,7 @@ class JavaScriptParser(LanguageParser):
 
     @staticmethod
     def _extract_class_fields(cls_node) -> list[str]:
-        """Return names of fields declared on this class (Phase 2.4).
+        """Return names of fields declared on this class (Phase 2d).
 
         Captures two shapes:
           - ES2022 class field syntax: `status = 'CREATED'` or `status;`

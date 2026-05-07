@@ -1,4 +1,4 @@
-"""Tests for Phase 2.5.1 raw-SQL entity extractor."""
+"""Tests for Phase 2e-1 raw-SQL entity extractor."""
 
 from __future__ import annotations
 

@@ -39,7 +39,7 @@ _STEP_LANE: dict[str, str] = {
 _DEFAULT_LANE = "System"
 
 
-# Mermaid shape delimiters per entity_kind (Phase 2.5.2 taxonomy).
+# Mermaid shape delimiters per entity_kind (Phase 2e-2 taxonomy).
 # `transactional` here is the *no-parsed-transitions* case; with transitions,
 # render as a subgraph of state circles instead.
 _KIND_SHAPE: dict[str, tuple[str, str]] = {
@@ -310,7 +310,7 @@ class BPMNGenerator:
 
         # Map (group_key, state) → state-node id and group_key → entity-node id
         # so cross-entity edges can target the right node. `group_key` uses
-        # `entity_id` when present (canonical after Phase 2.4 consolidation),
+        # `entity_id` when present (canonical after Phase 2d consolidation),
         # falling back to display name.
         state_node_ids: dict[tuple[str, str], str] = {}
         entity_node_ids: dict[str, str] = {}

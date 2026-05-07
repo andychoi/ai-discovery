@@ -1,8 +1,9 @@
 """SQLite database module for the Discovery CLI.
 
 Production-grade connection helpers (WAL, busy_timeout, mmap) and schema
-management.  All pipeline phases write to this DB; Phase 3 runs 10+
-concurrent GenAI callbacks, so WAL mode + retry_on_locked handle contention.
+management.  All pipeline phases write to this DB; Tier 1 summarization
+runs 10+ concurrent LLM callbacks, so WAL mode + retry_on_locked handle
+contention.
 
 Pattern lifted from app/shared/sdlc_db.py.
 """
@@ -16,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -176,7 +177,7 @@ CREATE TABLE IF NOT EXISTS state_transitions (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     scan_id           INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
     entity            TEXT NOT NULL,
-    -- Phase 2.4: unique qualified key. Two same-named classes in different
+    -- Phase 2d: unique qualified key. Two same-named classes in different
     -- modules have distinct entity_id (e.g. billing.Order vs ecommerce.Order).
     entity_id         TEXT NOT NULL DEFAULT '',
     field             TEXT,
@@ -197,7 +198,7 @@ CREATE TABLE IF NOT EXISTS entity_state_machines (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     scan_id           INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
     entity            TEXT NOT NULL,
-    -- Phase 2.4: unique grouping key matching state_transitions.entity_id.
+    -- Phase 2d: unique grouping key matching state_transitions.entity_id.
     entity_id         TEXT NOT NULL DEFAULT '',
     states_json       TEXT,
     fields_json       TEXT,
@@ -323,12 +324,49 @@ def init_db(db_path: Path) -> None:
     """Create all tables if they don't exist.  Idempotent."""
     conn = get_conn(db_path)
     conn.executescript(_SCHEMA_SQL)
+    _migrate_schema(conn)
     conn.execute(
         "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
         (SCHEMA_VERSION, now_iso()),
     )
     conn.commit()
     conn.close()
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Apply forward-only schema migrations on top of the live DB.
+
+    Each migration block is keyed by the SCHEMA_VERSION it brings the DB up
+    to, and is gated on the highest version already recorded in
+    `schema_version`. New DBs start at SCHEMA_VERSION and short-circuit out
+    of every block.
+    """
+    row = conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
+    current = (row["v"] if row else None) or 0
+
+    if current < 5:
+        # Phase numbering migrated from decimal sub-phases (8.5, 12.5, 13.5,
+        # 13.6) to contiguous integers 5..19. Existing rows in
+        # phase_checkpoints carry the old numbers — rewrite them so resume
+        # logic and the checkpoint display continue to work. Order matters:
+        # rewrite from highest old value to lowest so new values can't
+        # collide with rows that haven't been migrated yet.
+        renumber = [
+            (16, 19),    # finalise
+            (15, 18),    # render_markdown
+            (14, 17),    # self_review
+            (13.6, 16),  # process_mining
+            (13.5, 15),  # visual_artifacts
+            (13, 14),    # tier3_doc_rollup
+            (12.5, 13),  # scenario_flow_inference
+            (8.5, 8),    # execution_slices
+        ]
+        for old, new in renumber:
+            conn.execute(
+                "UPDATE phase_checkpoints SET phase_num = ? "
+                "WHERE ABS(phase_num - ?) < 0.01",
+                (new, old),
+            )
 
 
 # ---------------------------------------------------------------------------

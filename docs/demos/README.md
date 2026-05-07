@@ -54,7 +54,7 @@ cat data/todoapp/mining_reports/*.md   # Mining analysis (if enabled)
 ### Skip Process Mining (Faster)
 ```bash
 ./demo.sh --no-mining
-# Skips Phase 13.6 (process mining)
+# Skips Phase 16 (process mining)
 # Time: 1.5-2 hours
 # Output: No mining_reports/
 ```
@@ -62,7 +62,7 @@ cat data/todoapp/mining_reports/*.md   # Mining analysis (if enabled)
 ### Skip Self-Review (Quick Demo)
 ```bash
 ./demo.sh --quick
-# Skips Phase 14 (claim verification)
+# Skips Phase 17 (claim verification)
 # Time: 30-45 minutes
 # Note: Docs may have unverified claims
 ```
@@ -119,12 +119,12 @@ data/todoapp/
 | 5–10 | 10-15m | Lang detect, parse, classify domains, execution slices, chunk, embed |
 | 11 | 10-20m | Tier 1: Summarize chunks (fast model) |
 | 12 | 15-30m | Tier 2: Flow analysis (standard model) |
-| 12.5 | 5-10m | Infer scenario flows from slices |
-| 13 | 10-30m | Tier 3: Doc rollup (deep model) |
-| 13.5 | 5-10m | Generate BPMN, Mermaid, PlantUML |
-| **13.6** | **10-20m** | **Process mining (optional)** |
-| **14** | **30-60m** | **Self-review (optional)** |
-| 15–16 | 5m | Render markdown files, finalise |
+| 13 | 5-10m | Infer scenario flows from slices |
+| 14 | 10-30m | Tier 3: Doc rollup (deep model) |
+| 15 | 5-10m | Generate BPMN, Mermaid, PlantUML |
+| **16** | **10-20m** | **Process mining (optional)** |
+| **17** | **30-60m** | **Self-review (optional)** |
+| 18–19 | 5m | Render markdown files, finalise |
 | **Total** | **2-3h** | **Full discovery** |
 
 ---

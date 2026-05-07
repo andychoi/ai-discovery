@@ -44,11 +44,14 @@ Practical guides for working on specific areas:
 ### Pipeline & Performance
 *"The pipeline is slow. Where's the bottleneck? How do I optimize?"*
 
-- **`guides/pipeline/phase-breakdown.md`** — Details of all pipeline phases (pre-pipeline 1–4, checkpoint phases 5–16), cost per phase, typical timing
+- **`guides/pipeline/phase-breakdown.md`** — Details of all pipeline phases (pre-pipeline 1–4, checkpoint phases 5–19), cost per phase, typical timing
 - **`guides/pipeline/cost-tracking.md`** — Budget configuration, cost monitoring, optimization strategies (reduce tier 2/3, skip phases, batch chunks)
 - **`guides/pipeline/profiling.md`** — Identifying bottlenecks, experiments, benchmarks for small/medium/large codebases
 
-### Entity Identity Consolidation (Phase 2.4+)
+### Entity Identity Consolidation (Phase 2d+)
+
+> Phase numbers in this section refer to the state-first backbone spec (`specs/2026-04-20-state-first-backbone-plan.md`), not pipeline phases. See `guides/pipeline/phase-breakdown.md` for pipeline numbering.
+
 *"Why were `Order` and `OrderEntity` merged into one FSM? Why wasn't `OrderDto`?"*
 
 - **`guides/entity-identity/consolidation-algorithm.md`** — Dual-pass fingerprint algorithm with inheritance awareness, mixin detection, and asymmetric projection handling
@@ -114,7 +117,7 @@ Demo applications and example usage:
 |---|---|---|
 | **A: Call Graph Resolution** | `guides/call-graph/*` | `architecture/decisions.md` (7-level scoring) |
 | **D: Language Parsers** | `guides/parsers/*` | `architecture/components.md` (hard problems) |
-| **Pipeline Performance** | `guides/pipeline/*` | `architecture/overview.md` (phases 5–16) |
+| **Pipeline Performance** | `guides/pipeline/*` | `architecture/overview.md` (phases 5–19) |
 
 ### By Development Phase
 
@@ -193,7 +196,7 @@ Confidence combines multiple signals: depth (how far from entry point?), state t
 ---
 
 ### Pipeline (Logical View)
-From code to docs: resolve repo → parse → classify domains → build call graph → execution slices → chunk & embed → Tier 1/2/3 LLM → self-review → render markdown → ingest. CLI checkpoint phases are numbered 5–16 (plus sub-phases 8.5, 12.5, 13.5, 13.6); see `guides/pipeline/phase-breakdown.md` for the full mapping.
+From code to docs: resolve repo → parse → classify domains → build call graph → execution slices → chunk & embed → Tier 1/2/3 LLM → visual artifacts → self-review → render markdown → ingest. CLI checkpoint phases are numbered 5–19 (all integers, no decimal sub-phases); see `guides/pipeline/phase-breakdown.md` for the full mapping.
 
 **Reference**: `guides/pipeline/phase-breakdown.md`
 
@@ -241,6 +244,7 @@ Legacy documentation kept for historical reference:
 - `archived/PM4PY_INTEGRATION.md` — Old PM4Py docs (migrated to `integrations/`)
 - `archived/PM4PY_MODULES_SUMMARY.md` — Old PM4Py modules reference
 - `archived/todo-production.md` — Old production TODO list
+- `archived/01-enhance-plan.md` — Pre-implementation "Tier 2.5 / Tier 3.5" sketch that diverged from what shipped (see `specs/2026-04-20-state-first-backbone-plan.md` for the implemented design)
 
 ---
 

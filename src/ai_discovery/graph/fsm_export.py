@@ -1,4 +1,4 @@
-"""Phase 2.3: JSON export for EntityStateMachine.
+"""Phase 2c: JSON export for EntityStateMachine.
 
 Serializes the canonical backbone artifact so it survives a pipeline run, can
 be diff-reviewed in PRs, and fed to downstream tooling (BPMN/DMN/EARS
@@ -36,7 +36,7 @@ def fsm_to_dict(fsm: EntityStateMachine) -> dict[str, Any]:
         "confidence": round(fsm.confidence, 4),
         "transitions": [_transition_to_dict(t) for t in _sorted_transitions(fsm.transitions)],
     }
-    # Phase 2.4: include provenance only when set, so pre-consolidation FSMs
+    # Phase 2d: include provenance only when set, so pre-consolidation FSMs
     # continue to serialize byte-identically.
     if fsm.metadata:
         out["metadata"] = fsm.metadata
@@ -89,7 +89,7 @@ def write_entity_state_machines_json(
 
 
 # ---------------------------------------------------------------------------
-# Phase 3.1b: cross-entity transition links export.
+# Phase 3b: cross-entity transition links export.
 # ---------------------------------------------------------------------------
 
 def cross_entity_link_to_dict(link: CrossEntityTransitionLink) -> dict[str, Any]:
@@ -128,7 +128,7 @@ def write_cross_entity_links_json(
 
 
 # ---------------------------------------------------------------------------
-# Phase 3.1d: entity condition correlations export.
+# Phase 3d: entity condition correlations export.
 # ---------------------------------------------------------------------------
 
 def entity_condition_to_dict(c: EntityConditionCorrelation) -> dict[str, Any]:

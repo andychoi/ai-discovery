@@ -1,4 +1,4 @@
-"""Phase 2.4: consolidate name-variant FSMs into one entity.
+"""Phase 2d: consolidate name-variant FSMs into one entity.
 
 Parsers emit FSMs keyed by `entity_id` — unique per class qualified_name or
 per `enclosing_fn::var` for duck-typed receivers. So collisions like
@@ -51,7 +51,7 @@ _GENERIC_ENTITY_NAMES = frozenset({
 
 # Node types whose `fields` contribute to an FSM's shape fingerprint. Regular
 # OO classes anchor Pass 1; `sql_table` / `sql_view` synthetics from Phase
-# 2.5.1 join the same pass so SQL-discovered entities merge with matching
+# 2e-1 join the same pass so SQL-discovered entities merge with matching
 # classful FSMs (`orders` table + `Order` class) instead of orphaning.
 _CLASS_LIKE_NODE_TYPES: frozenset[str] = frozenset(
     {"class", "db_model", "sql_table", "sql_view"}

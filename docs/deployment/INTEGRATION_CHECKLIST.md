@@ -53,7 +53,7 @@
 - [x] `src/ai_discovery/pipeline.py` modifications
   - [x] Add imports (lines 16-17)
   - [x] Add `_mine_processes()` helper (lines 855-894)
-  - [x] Add Phase 13.6 stage in pipeline (lines 594-615)
+  - [x] Add Phase 16 stage in pipeline (lines 594-615)
   - [x] Conditional execution (check `config.process_mining.enabled`)
   - [x] Pass `mining_results` to markdown writer
   - [x] Graceful error handling (non-blocking)
@@ -128,13 +128,13 @@ discover scan ./myrepo -p myproject
 
 ```
 ┌─────────────────────────────────────────┐
-│ Pipeline Stage 13.5: Visual Artifacts   │
+│ Pipeline Stage 15: Visual Artifacts   │
 │ (BPMN, Mermaid, PlantUML, IPO)          │
 └──────────────┬──────────────────────────┘
                │
                ↓
 ┌──────────────────────────────────────────────┐
-│ Pipeline Phase 13.6: Process Mining         │
+│ Pipeline Phase 16: Process Mining         │
 │ ┌────────────────────────────────────────┐  │
 │ │ if config.process_mining.enabled:      │  │
 │ │    mining_results = _mine_processes()  │  │
@@ -236,7 +236,7 @@ discover scan ./test-repo -p test2
 If process mining causes issues:
 
 1. **Disable temporarily**: Set `process_mining.enabled: false`
-2. **Revert code**: Remove Phase 13.6 from pipeline (lines 594-615 in `src/ai_discovery/pipeline.py`)
+2. **Revert code**: Remove Phase 16 from pipeline (lines 594-615 in `src/ai_discovery/pipeline.py`)
 3. **Keep imports**: Imports can stay (no-op if unused)
 4. **Revert files**: Git checkout `src/ai_discovery/pipeline.py` if needed
 

@@ -3,13 +3,13 @@
 Produces a Markdown document of EARS-style requirements — one per transition
 with a known `to_state`. Layout follows the backbone-plan template
 (`WHEN [entry-point], THEN [from→to] IF [guard]`), extended with a `WHILE`
-clause when the transition has mined cross-entity context (Phase 3.1d) so
+clause when the transition has mined cross-entity context (Phase 3d) so
 the canonical EARS keyword stack applies:
 
-  * **WHILE** — state-context precondition (statistical, Phase 3.1d)
+  * **WHILE** — state-context precondition (statistical, Phase 3d)
   * **WHEN**  — triggering event (entry-point from linker, or trigger_function)
   * **THEN**  — the response (state transition)
-  * **IF**    — guard qualifier (syntactic, `guard_expr` + Phase 3.1c)
+  * **IF**    — guard qualifier (syntactic, `guard_expr` + Phase 3c)
 
 These are *skeletons* — confidence-annotated, reviewer-editable. Unlike the
 DMN generator, EARS emits for every transition with a `to_state`, because

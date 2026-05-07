@@ -44,10 +44,10 @@ ai-discovery/
 
 ### What Was Built
 
-**Phase 13.6: Process Mining & Conformance Analysis**
+**Phase 16: Process Mining & Conformance Analysis**
 
 ```
-Pseudo Event Logs (from Phase 13.5)
+Pseudo Event Logs (from Phase 15)
        ↓
 Discovery (Inductive Miner) → Petri Net model
 Conformance (Token Replay) → fitness, precision, generalization metrics
@@ -228,7 +228,7 @@ cat docs/PM4PY_INTEGRATION.md
 - [ ] Run examples: `python examples/process_mining_example.py`
 - [ ] Confirm imports in `src/ai_discovery/pipeline.py` (already wired — see `PM4PY_INTEGRATION_WIRED.md`)
 - [ ] Confirm `_mine_processes()` helper is present (lines 855–894)
-- [ ] Enable Phase 13.6 by setting `process_mining.enabled: true` in `discovery.yaml`
+- [ ] Enable Phase 16 by setting `process_mining.enabled: true` in `discovery.yaml`
 - [ ] Add DB schema (`process_mining_results` table) if persisting results
 - [ ] Verify mining reports appear in scenario markdown
 - [ ] Test with small repository
@@ -305,7 +305,7 @@ cat docs/PM4PY_INTEGRATION.md
 **4. Integrate** (2-3 hours)
    - Read: `docs/PM4PY_INTEGRATION.md`
    - Follow: 5-step integration guide
-   - Wire: Phase 13.6 into pipeline
+   - Wire: Phase 16 into pipeline
 
 **5. Test** (1 hour)
    - Run on small repo
@@ -357,7 +357,7 @@ A: Default fitness threshold 90% (configurable). See `docs/PM4PY_INTEGRATION.md`
 
 ## ✨ Key Takeaways
 
-1. **Process Mining is Phase 13.6** — Inserts between visual artifacts (Phase 13.5) and markdown rendering (Phase 15)
+1. **Process Mining is Phase 16** — Inserts between visual artifacts (Phase 15) and markdown rendering (Phase 15)
 
 2. **Three Key Metrics**:
    - **Fitness**: Does discovered model match observed logs? (default threshold: 90%)

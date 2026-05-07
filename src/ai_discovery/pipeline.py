@@ -42,23 +42,29 @@ from .ai.mining_reporter import MiningReporter
 logger = logging.getLogger(__name__)
 console = Console()
 
-# Phase spec mapping (supports both number and name)
+# Phase spec mapping (supports both number and name).
+# Contiguous integers 5..19 — no decimal sub-phases. Optional and
+# previously-half-step stages (execution_slices, scenario_flow_inference,
+# visual_artifacts, process_mining) get their own integer slot. Inline
+# operations that are not checkpointed (link_entry_points, fsm_rollup_etc)
+# are labelled with letter suffixes (8a, 8b) in code comments only and do
+# not appear in this dict.
 _PHASE_SPECS = {
     5: "lang_detect",
     6: "parse",
     7: "domain_classify",
-    8.5: "execution_slices",
+    8: "execution_slices",
     9: "chunk",
     10: "rag_embed",
     11: "tier1_summarize",
     12: "tier2_flow_analysis",
-    12.5: "scenario_flow_inference",
-    13: "tier3_doc_rollup",
-    13.5: "visual_artifacts",
-    13.6: "process_mining",
-    14: "self_review",
-    15: "render_markdown",
-    16: "finalise",
+    13: "scenario_flow_inference",
+    14: "tier3_doc_rollup",
+    15: "visual_artifacts",
+    16: "process_mining",
+    17: "self_review",
+    18: "render_markdown",
+    19: "finalise",
 }
 _PHASE_NAME_TO_NUM = {v: k for k, v in _PHASE_SPECS.items()}
 
@@ -267,7 +273,7 @@ def run_pipeline(
     Args:
         resume: Continue from last complete phase
         resume_from: Start from a specific phase (phase number or name, e.g. "14", "self_review")
-        skip_phases: List of phases to skip (e.g. ["13.6", "10"])
+        skip_phases: List of phases to skip (e.g. ["16", "10"])
     """
 
     output_dir = Path(output_dir) / project_slug
@@ -618,19 +624,19 @@ def run_pipeline(
         edges = build_call_graph(all_nodes)
         console.print(f"  Loaded [green]{len(domains)}[/] domains, [green]{len(edges)}[/] edges from DB")
 
-    # 8.5 NEW: Build Execution Slices
-    if _phase_should_run(8.5, start_phase, skip_phases):
-        with _with_checkpoint(db_path, scan_id, 8.5, "execution_slices"):
+    # 8: Build Execution Slices
+    if _phase_should_run(8, start_phase, skip_phases):
+        with _with_checkpoint(db_path, scan_id, 8, "execution_slices"):
             with _timed("execution slices"), console.status("[bold cyan]Building execution slices..."):
                 slice_builder = ExecutionSliceBuilder(all_nodes, edges)
                 scenarios = slice_builder.build_all_scenarios()
             console.print(f"  Execution slices: [green]{len(scenarios)}[/] scenarios identified")
     else:
-        console.print("[dim]Phase 8.5 (execution_slices): rebuilding (cheap)...[/]")
+        console.print("[dim]Phase 8 (execution_slices): rebuilding (cheap)...[/]")
         slice_builder = ExecutionSliceBuilder(all_nodes, edges)
         scenarios = slice_builder.build_all_scenarios()
 
-    # 8.6 NEW: Link state transitions to entry points (UI/API/Batch/Event)
+    # 8a (inline): Link state transitions to entry points (UI/API/Batch/Event)
     from .graph.entry_point_linker import link_entry_points
     all_transitions = [
         n.state_transition
@@ -646,7 +652,7 @@ def run_pipeline(
             f"  Entry-point links: [green]{linked}/{len(all_transitions)}[/] transitions"
         )
 
-    # 8.7 NEW (Phase 2.1–2.4): roll transitions up into per-entity FSMs,
+    # 8b (inline, Phase 2a–2d): roll transitions up into per-entity FSMs,
     # consolidate name-variants (Order/OrderEntity/order_reducer → one FSM),
     # persist to SQLite, export JSON. This is the canonical backbone artifact
     # — every downstream BPMN/DMN/EARS view is supposed to consume the FSM,
@@ -668,9 +674,9 @@ def run_pipeline(
     from .graph.fsm_persistence import persist_entity_state_machines
     from .extractors import extract_sql_entities
 
-    # Phase 2.5.1: synthesize classless CodeNodes for tables/views referenced
+    # Phase 2e-1: synthesize classless CodeNodes for tables/views referenced
     # in raw SQL string literals, plus placeholder FSMs for each. The Phase
-    # 2.4 consolidator treats `sql_table` / `sql_view` as class-like, so a
+    # 2d consolidator treats `sql_table` / `sql_view` as class-like, so a
     # synthetic FSM for `orders` (fields from SQL) merges with the classful
     # `Order` FSM (transitions from Python) when stems + fields overlap.
     with _timed("sql extract"), console.status("[bold cyan]Extracting SQL entities..."):
@@ -690,14 +696,14 @@ def run_pipeline(
     raw_fsms = raw_fsms + sql_fsms
     with _timed("fsm consolidate"), console.status("[bold cyan]Consolidating entity name-variants..."):
         fsms, projection_links = consolidate_entities(raw_fsms, nodes_for_consolidation)
-    # Phase 3.1a: detect denormalized field copies across entities so the
+    # Phase 3a: detect denormalized field copies across entities so the
     # classifier's junction rule can see through them.
     with _timed("denorm detect"), console.status("[bold cyan]Detecting denormalized fields..."):
         detect_denormalization_links(fsms)
     denorm_count = sum(1 for f in fsms if f.metadata.get("denormalized_fields"))
     if denorm_count:
         console.print(f"  Denormalized fields: [green]{denorm_count}[/] entities annotated")
-    # Phase 2.5.2: annotate each FSM with entity_kind so downstream generators
+    # Phase 2e-2: annotate each FSM with entity_kind so downstream generators
     # can branch on role (transactional vs. master vs. key vs. summary / …).
     with _timed("fsm classify"), console.status("[bold cyan]Classifying entity kinds..."):
         classify_entities(fsms)
@@ -722,7 +728,7 @@ def run_pipeline(
         if kind_counts:
             parts = ", ".join(f"[green]{n}[/] {k}" for k, n in sorted(kind_counts.items()))
             console.print(f"  Entity kinds: {parts}")
-        # Phase 3.1b: cross-entity transition sequence mining. Drives BPMN
+        # Phase 3b: cross-entity transition sequence mining. Drives BPMN
         # cross-lane sequence flows and impact analysis.
         with _timed("cross-entity mining"), console.status("[bold cyan]Mining cross-entity transition sequences..."):
             cross_links = mine_cross_entity_transitions(fsms, scenarios)
@@ -732,14 +738,14 @@ def run_pipeline(
             console.print(
                 f"  Cross-entity links: [green]{len(cross_links)}[/] sequences → {cross_json_path.name}"
             )
-        # Phase 3.1c: parse guard expressions for cross-entity state refs.
+        # Phase 3c: parse guard expressions for cross-entity state refs.
         # Annotates transition metadata in place; downstream DMN/BPMN
         # generators can render these as multi-entity rule inputs.
         with _timed("guard parse"), console.status("[bold cyan]Parsing cross-entity guards..."):
             guarded = parse_cross_entity_guards(fsms)
         if guarded:
             console.print(f"  Cross-entity guards: [green]{guarded}[/] transitions annotated")
-        # Phase 3.1d: mine entity-condition correlations. When a transition on
+        # Phase 3d: mine entity-condition correlations. When a transition on
         # entity Y consistently fires while entity X is in a specific state,
         # that's a DMN rule input ("WHEN Order=submitted, Invoice → pending").
         # Unlike guards (syntactic, from source text), correlations are
@@ -762,7 +768,7 @@ def run_pipeline(
         console.print(f"  Entity backbone: → {backbone_path.name}")
 
         # Phase 3 deliverable: DMN decision tables on guarded/conditioned
-        # transitions. Consumes guards (3.1c) + conditions (3.1d) as merged
+        # transitions. Consumes guards (3c) + conditions (3d) as merged
         # rule inputs; Markdown for PR review (DMN XML export can layer on).
         from .generators.dmn_generator import generate_entity_decisions_markdown
         decisions_md = generate_entity_decisions_markdown(fsms, conditions)
@@ -948,17 +954,17 @@ def run_pipeline(
             persist_flows(flows_by_domain, scan_id, db_path, model_used=tier2_model)
             console.print(f"  Flows: [green]{total_flows}[/] across {len(flows_by_domain)} domains")
 
-    # 12.5 NEW: Scenario Flow Inference
+    # 13: Scenario Flow Inference
     from .ai.flow_analyzer import ScenarioFlowInference
-    if _phase_should_run(12.5, start_phase, skip_phases):
-        with _with_checkpoint(db_path, scan_id, 12.5, "scenario_flow_inference"):
-            console.print("[bold cyan]Tier 2.5: Reconstructing scenario flows...[/]")
+    if _phase_should_run(13, start_phase, skip_phases):
+        with _with_checkpoint(db_path, scan_id, 13, "scenario_flow_inference"):
+            console.print("[bold cyan]Phase 13: Reconstructing scenario flows...[/]")
             scenario_flows = []
             flow_inference = ScenarioFlowInference(llm_client)
 
             with _timed("scenario inference"), Progress(
                 SpinnerColumn(),
-                TextColumn("[bold]Tier 2.5 flows"),
+                TextColumn("[bold]Scenario flow inference"),
                 BarColumn(),
                 TaskProgressColumn(),
                 console=console,
@@ -973,7 +979,7 @@ def run_pipeline(
                     progress.advance(task)
             console.print(f"  Scenario flows: [green]{len(scenario_flows)}[/] reconstructed")
     else:
-        console.print("[dim]Phase 12.5 (scenario_flow_inference): rebuilding (cheap)...[/]")
+        console.print("[dim]Phase 13 (scenario_flow_inference): rebuilding (cheap)...[/]")
         scenario_flows = []
         flow_inference = ScenarioFlowInference(llm_client)
         for scenario in scenarios:
@@ -990,7 +996,7 @@ def run_pipeline(
         llm_client.unload("tier2")
 
     # ------------------------------------------------------------------
-    # 13. Tier 3: Doc rollup
+    # 14. Tier 3: Doc rollup
     # ------------------------------------------------------------------
     if not _budget_ok(llm_client, config, "Tier 3 doc rollup"):
         _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
@@ -998,7 +1004,7 @@ def run_pipeline(
 
     from .ai.rollup import generate_all_docs, persist_rollups, DOC_TYPES
 
-    with _with_checkpoint(db_path, scan_id, 13, "tier3_doc_rollup"):
+    with _with_checkpoint(db_path, scan_id, 14, "tier3_doc_rollup"):
         if config.provider == "ollama":
             tier3_model = config.get_model("tier3")
             console.print(f"[dim]Warming tier3 ({tier3_model})...[/]")
@@ -1029,13 +1035,13 @@ def run_pipeline(
         persist_rollups(rollups, scan_id, db_path, project_slug)
         console.print(f"  Documents: [green]{len(rollups)}[/] generated")
 
-    # 13.5 NEW: Generate Visual Artifacts (BPMN/Mermaid/PlantUML) and persist
+    # 15: Generate Visual Artifacts (BPMN/Mermaid/PlantUML) and persist
     from .generators.bpmn_generator import BPMNGenerator
     from .ai.flow_analyzer import persist_scenario_flows
 
-    with _with_checkpoint(db_path, scan_id, 13.5, "visual_artifacts"):
+    with _with_checkpoint(db_path, scan_id, 15, "visual_artifacts"):
         bpmn_gen = BPMNGenerator()
-        console.print("[bold cyan]Step 13.5: Generating visual artifacts...[/]")
+        console.print("[bold cyan]Phase 15: Generating visual artifacts...[/]")
 
         scenario_artifacts: dict[str, dict] = {}
         for flow in scenario_flows:
@@ -1049,14 +1055,14 @@ def run_pipeline(
         console.print(f"  Visual artifacts: [green]{len(scenario_artifacts)}[/] scenarios persisted")
 
     # ------------------------------------------------------------------
-    # 13.6 OPTIONAL: Stage 10.5 — Process Mining & Conformance
+    # 16 OPTIONAL: Process Mining & Conformance
     # ------------------------------------------------------------------
     mining_results: dict = {}
     mining_cfg = getattr(config, 'process_mining', None)
     mining_on = bool(mining_cfg and getattr(mining_cfg, 'enabled', False))
     if mining_on:
-        with _with_checkpoint(db_path, scan_id, 13.6, "process_mining"):
-            console.print("[bold cyan]Stage 10.5: Process mining & conformance analysis...[/]")
+        with _with_checkpoint(db_path, scan_id, 16, "process_mining"):
+            console.print("[bold cyan]Phase 16: Process mining & conformance analysis...[/]")
             with _timed("process mining"), console.status("[bold cyan]Mining scenarios..."):
                 try:
                     mining_results = _mine_processes(scenario_flows, output_dir)
@@ -1067,9 +1073,9 @@ def run_pipeline(
                     logger.error(f"Process mining failed (continuing): {e}")
                     console.print(f"  [yellow]Process mining skipped:[/] {e}")
     else:
-        # No checkpoint written — disabled runs shouldn't leave a "13.6 complete"
+        # No checkpoint written — disabled runs shouldn't leave a "16 complete"
         # marker that misleads resume logic.
-        console.print("[dim]Stage 10.5: Process mining disabled (set process_mining.enabled=true to enable)[/]")
+        console.print("[dim]Phase 16: Process mining disabled (set process_mining.enabled=true to enable)[/]")
 
     # Free tier3 (~20 GB) so self-review (tier1) has headroom.
     if config.provider == "ollama":
@@ -1080,16 +1086,16 @@ def run_pipeline(
     _finalise_scan(scan_id, db_path, "llm_complete")
 
     # ------------------------------------------------------------------
-    # 14. Self-review (before write so annotations appear in output files)
+    # 17. Self-review (before write so annotations appear in output files)
     # ------------------------------------------------------------------
     if not _budget_ok(llm_client, config, "self-review"):
         console.print("[yellow]Skipping self-review due to budget limit.[/]")
-        record_phase_complete(db_path, scan_id, 14, "self_review", {"skipped": "budget"})
+        record_phase_complete(db_path, scan_id, 17, "self_review", {"skipped": "budget"})
     elif not rollups:
         console.print("[yellow]Skipping self-review — no rollup documents were generated.[/]")
-        record_phase_complete(db_path, scan_id, 14, "self_review", {"skipped": "no_rollups"})
+        record_phase_complete(db_path, scan_id, 17, "self_review", {"skipped": "no_rollups"})
     else:
-        with _with_checkpoint(db_path, scan_id, 14, "self_review"):
+        with _with_checkpoint(db_path, scan_id, 17, "self_review"):
             from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed, TimeoutError as _FuturesTimeout
             from .ai.self_review import review_document, get_review_summary, persist_claims, annotate_document
 
@@ -1223,7 +1229,7 @@ def run_pipeline(
                 finally:
                     # Wait for in-flight threads to finish and cancel any still
                     # queued. Abandoning threads (wait=False) would let them keep
-                    # writing to generated_docs/claims after phase 15 starts
+                    # writing to generated_docs/claims after phase 18 starts
                     # reading those tables — a data-race we refuse to ship.
                     executor.shutdown(wait=True, cancel_futures=True)
 
@@ -1235,9 +1241,9 @@ def run_pipeline(
             )
 
     # ------------------------------------------------------------------
-    # 15. Render markdown files (after self-review so annotations are included)
+    # 18. Render markdown files (after self-review so annotations are included)
     # ------------------------------------------------------------------
-    with _with_checkpoint(db_path, scan_id, 15, "render_markdown"):
+    with _with_checkpoint(db_path, scan_id, 18, "render_markdown"):
         from .generators.doc_generator import write_docs
 
         # Compute cross-domain call graph for Layer 2 graph links
@@ -1286,9 +1292,9 @@ def run_pipeline(
             conn.close()
 
     # ------------------------------------------------------------------
-    # 16. Finalise (offline-only — no push)
+    # 19. Finalise (offline-only — no push)
     # ------------------------------------------------------------------
-    with _with_checkpoint(db_path, scan_id, 16, "finalise"):
+    with _with_checkpoint(db_path, scan_id, 19, "finalise"):
         _finalise_scan(scan_id, db_path, "completed", llm_client)
 
         # Print summary
@@ -1316,9 +1322,9 @@ def run_pipeline(
         # Instructions for resume
         last_complete = get_last_complete_phase(db_path, scan_id)
         if last_complete is not None:
-            next_phase = last_complete + 0.1 if last_complete == int(last_complete) else int(last_complete) + 1
-            next_phase_name = _PHASE_SPECS.get(next_phase, "unknown")
-            console.print(f"  [dim]To resume from a specific phase: discover scan repo --resume --resume-from={next_phase}[/]")
+            next_phase = _next_phase(last_complete)
+            if next_phase is not None:
+                console.print(f"  [dim]To resume from a specific phase: discover scan repo --resume --resume-from={int(next_phase)}[/]")
         console.print()
 
 
@@ -1334,7 +1340,10 @@ def _display_checkpoint_status(db_path: Path, scan_id: int) -> None:
         status = cp["status"]
         symbol = "✓" if status == "complete" else ("✗" if status == "failed" else "⊘")
         color = "green" if status == "complete" else ("red" if status == "failed" else "yellow")
-        console.print(f"  [{color}]{symbol}[/] Phase {phase_num:>4} ({phase_name})")
+        # SQLite REAL column always returns a float — cast back to int for display
+        # since all current phases are whole numbers.
+        phase_display = int(phase_num) if phase_num == int(phase_num) else phase_num
+        console.print(f"  [{color}]{symbol}[/] Phase {phase_display:>4} ({phase_name})")
         if status == "failed" and cp.get("error_msg"):
             console.print(f"      Error: {cp['error_msg']}")
 

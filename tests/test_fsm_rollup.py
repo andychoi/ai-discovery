@@ -1,4 +1,4 @@
-"""Phase 2.1 tests: per-entity FSM rollup.
+"""Phase 2a tests: per-entity FSM rollup.
 
 Uses hand-built StateTransitions so the rollup's contract is exercised
 independently of the parser/call-graph pipeline that feeds it in practice.

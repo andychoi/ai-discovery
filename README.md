@@ -47,7 +47,7 @@ This creates `discovery.yaml` with:
 - LLM provider selection (bedrock, ollama, mlx-gemma, mlx-qwen)
 - Model tier defaults (tier1, tier2, tier3d/tier3p)
 - RAG chunk settings
-- Optional process mining (Phase 13.6) config
+- Optional process mining (Phase 16) config
 - Optional advisor tool (beta) config
 
 **Customize as needed, then:**
@@ -84,27 +84,27 @@ Code → Parse (Tree-sitter) → Build call graph → Classify domains
 → Chunk intelligently → Embed for RAG → 3-tier LLM → Generate docs
 ```
 
-### Pipeline Phases (5–16)
+### Pipeline Phases (5–19)
 
 | Phase | Name                        | What it does                                               |
 |-------|-----------------------------|------------------------------------------------------------|
 | 5     | `lang_detect`               | Detect languages (extensions + manifests)                  |
 | 6     | `parse`                     | Tree-sitter AST extraction + raw-SQL entity mining         |
 | 7     | `domain_classify`           | Namespace/path heuristics + entity-kind classification     |
-| 8.5   | `execution_slices` *(opt.)* | BFS from entry points                                      |
+| 8     | `execution_slices` *(opt.)* | BFS from entry points                                      |
 | 9     | `chunk`                     | Method-level splits for RAG                                |
 | 10    | `rag_embed`                 | Embeddings → sqlite-vec                                    |
 | 11    | `tier1_summarize`           | Haiku: per-chunk summaries                                 |
 | 12    | `tier2_flow_analysis`       | Sonnet: per-domain business flows                          |
-| 12.5  | `scenario_flow_inference`   | Scenario + cross-entity transitions                        |
-| 13    | `tier3_doc_rollup`          | Sonnet/Opus: final docs                                    |
-| 13.5  | `visual_artifacts`          | BPMN + DMN + EARS + entity-backbone Mermaid generation     |
-| 13.6  | `process_mining` *(opt.)*   | Inductive miner + conformance (via `pm4py`)                |
-| 14    | `self_review`               | Verify claims against source via RAG                       |
-| 15    | `render_markdown`           | Render with ai-docs frontmatter                            |
-| 16    | `finalise`                  | Write artifacts; optional push to DocHub/Gitea             |
+| 13    | `scenario_flow_inference`   | Scenario + cross-entity transitions                        |
+| 14    | `tier3_doc_rollup`          | Sonnet/Opus: final docs                                    |
+| 15    | `visual_artifacts`          | BPMN + DMN + EARS + entity-backbone Mermaid generation     |
+| 16    | `process_mining` *(opt.)*   | Inductive miner + conformance (via `pm4py`)                |
+| 17    | `self_review`               | Verify claims against source via RAG                       |
+| 18    | `render_markdown`           | Render with ai-docs frontmatter                            |
+| 19    | `finalise`                  | Write artifacts; optional push to DocHub/Gitea             |
 
-Phases 8.5 and 13.6 are opt-in. Half-step numbering (e.g. 13.5, 13.6) marks insertable stages; it lets new phases slot in without renumbering core stages.
+Phases 8 and 16 are opt-in. All phase numbers are integers — there are no decimal sub-phases. Phase numbers were re-issued (2026-05-07) so optional / inserted stages get their own integer slot instead of decimal half-steps; CLI flags accept the phase name (`--skip-phases=process_mining`) as a stable alternative.
 
 ### Why 3 LLM Tiers?
 
@@ -202,8 +202,8 @@ discover scan REPO -p PROJECT_SLUG [OPTIONS]
 | `--provider` | LLM provider: `bedrock` \| `ollama` | (from env) |
 | `--budget` | Budget limit in USD | (from env) |
 | `--resume` | Resume from last complete phase | (disabled) |
-| `--resume-from` | Jump to specific phase (e.g., `14`, `self_review`) | (resume from last) |
-| `--skip-phases` | Skip phases (comma-separated, e.g., `13.6,10`) | (none) |
+| `--resume-from` | Jump to specific phase (e.g., `17`, `self_review`) | (resume from last) |
+| `--skip-phases` | Skip phases (comma-separated, e.g., `16,10`) | (none) |
 | `--rescan` | Force full rescan, ignore cache | (disabled) |
 
 **Resume Examples:**
@@ -212,32 +212,32 @@ discover scan REPO -p PROJECT_SLUG [OPTIONS]
 # Resume from where it left off
 discover scan repo -p myapp --resume
 
-# Jump to phase 14 (self-review)
-discover scan repo -p myapp --resume --resume-from=14
+# Jump to phase 17 (self-review)
+discover scan repo -p myapp --resume --resume-from=17
 
-# Skip optional phase 13.6 (process mining)
-discover scan repo -p myapp --skip-phases=13.6
+# Skip optional phase 16 (process mining)
+discover scan repo -p myapp --skip-phases=16
 
 # Resume and skip process mining
-discover scan repo -p myapp --resume --skip-phases=13.6
+discover scan repo -p myapp --resume --skip-phases=16
 ```
 
 **Phase Numbers:**
 - 5: Language detection
 - 6: Parse files
 - 7: Domain classification
-- 8.5: Execution slices
+- 8: Execution slices (optional)
 - 9: Chunk code
 - 10: RAG embedding
 - 11: Tier 1 summarization
 - 12: Tier 2 flow analysis
-- 12.5: Scenario flow inference
-- 13: Tier 3 doc rollup
-- 13.5: Visual artifacts (BPMN/Mermaid)
-- 13.6: Process mining (optional)
-- 14: Self-review
-- 15: Render markdown
-- 16: Finalize
+- 13: Scenario flow inference
+- 14: Tier 3 doc rollup
+- 15: Visual artifacts (BPMN/Mermaid/DMN/EARS)
+- 16: Process mining (optional)
+- 17: Self-review
+- 18: Render markdown
+- 19: Finalise
 
 ### Monitoring & Debugging
 
@@ -250,14 +250,14 @@ discover scan repo -p myapp --resume
 Output shows phase progress:
 ```
 Phase progress:
-  ✓ Phase  5.0 (lang_detect)
-  ✓ Phase  6.0 (parse)
-  ✓ Phase  7.0 (domain_classify)
-  ⊘ Phase 14.0 (self_review)    [interrupted]
-  ⊘ Phase 15.0 (render_markdown)
+  ✓ Phase  5 (lang_detect)
+  ✓ Phase  6 (parse)
+  ✓ Phase  7 (domain_classify)
+  ⊘ Phase 17 (self_review)    [interrupted]
+  ⊘ Phase 18 (render_markdown)
 ```
 
-### Process Mining (Optional — Phase 13.6)
+### Process Mining (Optional — Phase 16)
 
 Process mining runs an inductive miner + token-replay conformance over inferred scenarios, via [`pm4py`](https://pm4py.fit.fraunhofer.de/). Disabled by default; enable in `discovery.yaml`:
 
@@ -268,9 +268,9 @@ process_mining:
   fitness_threshold: 0.90
 ```
 
-Then run normally — Phase 13.6 runs after Tier 3 doc rollup. Skip without uninstalling via `--skip-phases=13.6`.
+Then run normally — Phase 16 runs after Tier 3 doc rollup. Skip without uninstalling via `--skip-phases=16`.
 
-> **Install note:** `pm4py` is a required dependency (it pulls in `pandas`, `numpy`, `graphviz` bindings) — `pip install -e .` will download it even if you never enable Phase 13.6. If install size is a concern, the miner's imports are module-level today; consider pinning pm4py out of your image until the team extracts it to an optional extra.
+> **Install note:** `pm4py` is a required dependency (it pulls in `pandas`, `numpy`, `graphviz` bindings) — `pip install -e .` will download it even if you never enable Phase 16. If install size is a concern, the miner's imports are module-level today; consider pinning pm4py out of your image until the team extracts it to an optional extra.
 
 ### `discover ingest` — Push Scan Results
 
@@ -432,11 +432,11 @@ python examples/01_local_scan.py
 data/discovery-output/<project-slug>/
 ├── discovery-<slug>.db              # SQLite: code nodes, calls, flows, costs, summaries, embeddings
 ├── entity_state_machines.json       # Per-entity FSMs (Phase 3 backbone)
-├── cross_entity_transitions.json    # Cross-entity links (Phase 3.1b/3.1c)
-├── entity_conditions.json           # Entity-guard correlations (Phase 3.1d)
-├── bpmn/                            # BPMN 2.0 XML per scenario (Phase 13.5)
-├── dmn/                             # DMN decision tables (Phase 13.5)
-├── ears/                            # EARS-formatted requirements (Phase 13.5)
+├── cross_entity_transitions.json    # Cross-entity links (Phase 3b/3.1c)
+├── entity_conditions.json           # Entity-guard correlations (Phase 3d)
+├── bpmn/                            # BPMN 2.0 XML per scenario (Phase 15)
+├── dmn/                             # DMN decision tables (Phase 15)
+├── ears/                            # EARS-formatted requirements (Phase 15)
 ├── mermaid/                         # Entity backbone L1/L2 diagrams
 └── docs/
     ├── as-is/                       # Current state assessments
@@ -511,7 +511,7 @@ ai-discovery/
 │   ├── config.py                   # Loader for discovery.yaml + env overrides
 │   ├── db.py                       # SQLite schema + helpers
 │   ├── ai/                         # LLM ops (chunker, summarizer, advisor, process_miner)
-│   ├── extractors/                 # Raw-SQL entity extraction (Phase 2.5)
+│   ├── extractors/                 # Raw-SQL entity extraction (Phase 2e)
 │   ├── graph/                      # Call graph, domain/entity classifier, FSM, impact, federation
 │   ├── generators/                 # BPMN / DMN / EARS / doc generators + push (formerly output/)
 │   │   └── templates/              # Jinja2 templates for as-is, spec, interface, data-model

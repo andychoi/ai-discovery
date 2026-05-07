@@ -24,8 +24,8 @@ MAX_LOW_CONF_RATIO = 0.15
 _ARTIFACTS: tuple[tuple[str, str, str], ...] = (
     ("db", "discovery-{slug}.db", "SQLite — nodes, edges, docs, costs"),
     ("fsms", "entity_state_machines.json", "Phase 3 FSM backbone"),
-    ("cross_links", "cross_entity_transitions.json", "Phase 3.1b/3.1c cross-entity links"),
-    ("conditions", "entity_conditions.json", "Phase 3.1d guard correlations"),
+    ("cross_links", "cross_entity_transitions.json", "Phase 3b/3.1c cross-entity links"),
+    ("conditions", "entity_conditions.json", "Phase 3d guard correlations"),
     ("backbone_mmd", "entity_backbone.mmd", "Mermaid L1/L2 diagram"),
     ("decisions_md", "entity_decisions.md", "Decision log"),
     ("ears_md", "entity_ears.md", "EARS requirement summary"),

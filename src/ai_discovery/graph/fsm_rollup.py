@@ -1,7 +1,7 @@
-"""Phase 2.1: aggregate per-function StateTransitions into per-entity FSMs.
+"""Phase 2a: aggregate per-function StateTransitions into per-entity FSMs.
 
 Every transition observed in the repo is evidence of one entity's lifecycle.
-The rollup groups those observations by `entity_id` (Phase 2.4: a unique
+The rollup groups those observations by `entity_id` (Phase 2d: a unique
 qualified key — class qualified_name, or `enclosing_fn::var` for classless
 receivers) and yields an `EntityStateMachine` per logical entity — the
 canonical artifact the spec's state-first backbone hangs off. Downstream
@@ -59,12 +59,12 @@ def build_entity_state_machines(
 
 
 def build_fsms_from_sql_nodes(sql_nodes: list[CodeNode]) -> list[EntityStateMachine]:
-    """Synthesize placeholder FSMs for SQL-derived entities (Phase 2.5.1).
+    """Synthesize placeholder FSMs for SQL-derived entities (Phase 2e-1).
 
     SQL extractors find tables and views but not transitions — without a
     placeholder FSM, those entities never participate in consolidation. This
     emits one FSM per synthetic node with `fields` populated and an empty
-    `transitions` list. The Phase 2.4 consolidator's Pass 1 treats `sql_table`
+    `transitions` list. The Phase 2d consolidator's Pass 1 treats `sql_table`
     and `sql_view` as class-like (see `fsm_identity._CLASS_LIKE_NODE_TYPES`),
     so when a class-backed FSM exists with overlapping fields and a matching
     stem, the two merge — and the real class's transitions carry through.

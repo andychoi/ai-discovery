@@ -7,14 +7,14 @@ Status: ✅ **READY FOR INTEGRATION**
 
 ## Executive Summary
 
-A complete, production-ready PM4Py integration for AI-Discovery has been implemented. This adds **Phase 13.6: Process Mining & Conformance Analysis** to the reverse-engineering pipeline.
+A complete, production-ready PM4Py integration for AI-Discovery has been implemented. This adds **Phase 16: Process Mining & Conformance Analysis** to the reverse-engineering pipeline.
 
 ### What You Get
 
 ```
-Pseudo Event Logs (from Phase 13.5)
+Pseudo Event Logs (from Phase 15)
          ↓
-[Phase 13.6: Process Mining]
+[Phase 16: Process Mining]
   ├─ Discover: Inductive Miner → Petri Net model
   ├─ Conform: Token Replay → fitness (0-1), precision (0-1), generalization (0-1)
   ├─ Analyze: Bottlenecks, edge frequencies, cycle time
@@ -142,7 +142,7 @@ python examples/process_mining_example.py
 ```
                     Pseudo Event Logs (JSON)
                             ↓
-                    Phase 13.6: Process Mining
+                    Phase 16: Process Mining
                             ↓
         ┌───────────────────┼───────────────────┐
         ↓                   ↓                   ↓
@@ -176,7 +176,7 @@ from .ai.process_miner import mine_scenarios
 from .ai.mining_reporter import MiningReporter
 ```
 
-### Step 2: Define Phase 13.6 function
+### Step 2: Define Phase 16 function
 
 ```python
 def _mine_processes(scenarios, scenario_flows, output_dir):
@@ -197,7 +197,7 @@ def discover_scan(...):
     # ... Stage 10: BPMN ...
     scenario_flows = _generate_bpmn_artifacts(...)
     
-    # NEW: Phase 13.6
+    # NEW: Phase 16
     mining_results = _mine_processes(scenarios, scenario_flows, output_dir)
     
     # ... Stage 12: Rendering (include mining_results) ...
@@ -374,7 +374,7 @@ process_mining:
 ```
 
 **If threshold fails**:
-- Phase 13.6 continues (non-blocking)
+- Phase 16 continues (non-blocking)
 - `fitness_passed = false` in DB
 - ⚠️ FAIL badge in markdown report
 - Recommendations included for manual review
@@ -436,7 +436,7 @@ process_mining:
 Pipeline wiring is **complete** (see `docs/integrations/PM4PY_INTEGRATION_WIRED.md`):
 
 1. ✅ Imports wired in `src/ai_discovery/pipeline.py`
-2. ✅ Phase 13.6 (`process_mining`) wired into pipeline
+2. ✅ Phase 16 (`process_mining`) wired into pipeline
 3. ✅ Markdown rendering includes mining reports
 4. ✅ Config section in `discovery.yaml` (opt-in via `process_mining.enabled: true`)
 5. ✅ Runnable examples validated
@@ -525,7 +525,7 @@ You now have a **production-ready, well-documented PM4Py integration** that:
 ✅ Provides working examples  
 ✅ Requires minimal effort to wire into the main pipeline  
 
-**Next action**: Follow `docs/PM4PY_INTEGRATION.md` to integrate Phase 13.6 into your pipeline.
+**Next action**: Follow `docs/PM4PY_INTEGRATION.md` to integrate Phase 16 into your pipeline.
 
 Questions? See the FAQs in `PM4PY_INTEGRATION.md` or run the examples.
 

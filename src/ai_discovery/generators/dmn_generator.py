@@ -6,9 +6,9 @@ output per table). Each row is a transition; inputs are:
 
   * **from**        — the required starting state
   * **guard**       — syntactic predicates parsed from source (`guard_expr`
-                      plus Phase 3.1c cross-entity references)
+                      plus Phase 3c cross-entity references)
   * **context**     — statistical conditions mined from scenario walks
-                      (Phase 3.1d `EntityConditionCorrelation`)
+                      (Phase 3d `EntityConditionCorrelation`)
 
 Transitions with *neither* a guard nor a mined condition are omitted: they
 represent state changes the code performs unconditionally, which aren't DMN

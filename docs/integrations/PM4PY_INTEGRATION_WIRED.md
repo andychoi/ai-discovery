@@ -1,6 +1,6 @@
 # PM4Py Integration: WIRED TO PIPELINE ✅
 
-**Status**: Phase 13.6 fully integrated into `src/ai_discovery/pipeline.py`  
+**Status**: Phase 16 fully integrated into `src/ai_discovery/pipeline.py`  
 **Date**: 2026-04-17  
 **Config**: `discovery.yaml` (process_mining section)
 
@@ -28,22 +28,22 @@ from .ai.mining_reporter import MiningReporter
 ### 2. **Helper Function** (`src/ai_discovery/pipeline.py`, lines 855-894)
 ```python
 def _mine_processes(scenario_flows, output_dir) -> dict:
-    """Phase 13.6: Process mining (optional)."""
+    """Phase 16: Process mining (optional)."""
     # Extract pseudo logs
     # Mine scenarios
     # Save reports
     # Return dict[scenario_id] → MiningResult
 ```
 
-### 3. **Pipeline Phase 13.6** (`src/ai_discovery/pipeline.py`, lines 594-615)
+### 3. **Pipeline Phase 16** (`src/ai_discovery/pipeline.py`, lines 594-615)
 ```python
-# OPTIONAL: Phase 13.6 — Process Mining & Conformance
+# OPTIONAL: Phase 16 — Process Mining & Conformance
 mining_results = {}
 mining_enabled = getattr(config, 'process_mining', None)
 if mining_enabled and getattr(mining_enabled, 'enabled', False):
     mining_results = _mine_processes(scenario_flows, output_dir)
 else:
-    console.print("[dim]Phase 13.6: Process mining disabled...[/]")
+    console.print("[dim]Phase 16: Process mining disabled...[/]")
 ```
 
 ### 4. **Markdown Rendering** (`src/ai_discovery/output/doc_generator.py`, lines 178-260)
@@ -102,9 +102,9 @@ process_mining:
 ## Flow Diagram
 
 ```
-Phase 13.5: Visual artifacts (BPMN, Mermaid, PlantUML, IPO)
+Phase 15: Visual artifacts (BPMN, Mermaid, PlantUML, IPO)
        ↓
-Phase 13.6: Process Mining (OPTIONAL)
+Phase 16: Process Mining (OPTIONAL)
        ├─ Check: config.process_mining.enabled?
        │  ├─ true  → _mine_processes() → mining_results
        │  └─ false → mining_results = {}
@@ -149,7 +149,7 @@ process_mining:
 ```bash
 discover scan ./myrepo -p myproject
 # Logs:
-# [bold cyan]Phase 13.6: Process mining & conformance analysis...[/]
+# [bold cyan]Phase 16: Process mining & conformance analysis...[/]
 # [dim]⏱  process mining: 2.3s[/]
 # Process mining: [green]5[/] scenarios analysed
 ```

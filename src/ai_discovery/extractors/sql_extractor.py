@@ -1,10 +1,10 @@
-"""Raw-SQL entity extractor (Phase 2.5.1).
+"""Raw-SQL entity extractor (Phase 2e-1).
 
 Scans parsed CodeNode source for SQL statement literals and emits one
 synthetic classless CodeNode per distinct table, with `fields` populated
 from the union of columns observed across all statements.
 
-These synthetic nodes flow into the Phase 2.4 consolidator unchanged:
+These synthetic nodes flow into the Phase 2d consolidator unchanged:
 the classless pass merges `sql::orders` (fields={id, status, total}) into
 `Order` / `OrderEntity` if the field set overlaps and stems match; otherwise
 it emits a standalone FSM so SQL-first codebases still surface entities.
@@ -355,7 +355,7 @@ def _to_code_node(entry: _TableAccumulator) -> CodeNode:
 
     Views get `node_type="sql_view"` and `qualified_name="sqlview::<name>"`
     so downstream consumers can distinguish them from base tables. Both feed
-    the consolidator identically — the Phase 2.4 projection rule links a
+    the consolidator identically — the Phase 2d projection rule links a
     view onto its base table when field coverage is high enough.
     """
     if entry.kind == "view":

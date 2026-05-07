@@ -1,6 +1,6 @@
 # Entity Identity Consolidation — Algorithm
 
-**Phase**: 2.4 (intra-repo) with extension points for 2.5 (non-class field sources) and Phase 4 (cross-repo).
+**Phase**: 2d (intra-repo) with extension points for 2e (non-class field sources) and Phase 4 (cross-repo).
 
 **Problem**: the same logical business entity appears under multiple class names (`Order`, `OrderEntity`, `Orders`), across layers (domain `Order`, JPA `OrderJpaEntity`, DTO `OrderResponse`), or without any class at all (Redux reducers, SQL-first code, utility functions). Meanwhile, the *inverse* problem exists too — the short name `Order` can appear in two unrelated modules (`billing.Order` vs `ecommerce.Order`) and these must **not** be merged.
 
@@ -103,7 +103,7 @@ For each classful FSM `A` and classless FSM `B`:
 - if `stem_similarity(A, B) >= 0.8` AND `classless_fields[B] ⊆ adjusted_fields[A]`:
   - merge `B` into `A`
 
-This handles the "raw SQL code touches the orders table, and a separate `Order` class exists" case (relevant once Phase 2.5 lands).
+This handles the "raw SQL code touches the orders table, and a separate `Order` class exists" case (relevant once Phase 2e lands).
 
 ---
 
@@ -151,16 +151,16 @@ This makes every merge auditable. A reviewer can regenerate both the pre- and po
 
 See `edge-cases.md` for the full matrix. Highlights:
 
-- Immutable-replace transitions (Phase 2.6 or 3, in transition detection)
+- Immutable-replace transitions (Phase 2f or 3, in transition detection)
 - GoF State pattern classes (Phase 3)
 - Dynamic column access (`setattr`) — **acceptable limit**
 - Stored procedures (Phase 5+)
 
 ---
 
-## Extension points for Phase 2.5
+## Extension points for Phase 2e
 
-The algorithm is fingerprint-agnostic. Phase 2.5 adds new **sources** of `CodeNode.fields` (and synthetic classless nodes) but doesn't change the passes. Specifically:
+The algorithm is fingerprint-agnostic. Phase 2e adds new **sources** of `CodeNode.fields` (and synthetic classless nodes) but doesn't change the passes. Specifically:
 
 - Raw SQL → synthetic class node with `name=table_name`, `fields=column_list`, `node_type="sql_table"`
 - GraphQL schema → synthetic class node with `name=type_name`, `fields=graphql_fields`, `node_type="graphql_type"`
@@ -172,4 +172,4 @@ Pass 1 picks them up automatically. Pass 3 handles the cross case.
 
 ## Extension points for Phase 4 (cross-repo)
 
-Same algorithm, different inputs: `nodes` is unioned across scanned repos; entities merged across language boundaries via `stem_similarity` + `adjusted_fields` overlap. Additional signal: endpoint naming (`POST /orders` in repo A ↔ `consumes orders.created` in repo B). Out of scope for 2.4.
+Same algorithm, different inputs: `nodes` is unioned across scanned repos; entities merged across language boundaries via `stem_similarity` + `adjusted_fields` overlap. Additional signal: endpoint naming (`POST /orders` in repo A ↔ `consumes orders.created` in repo B). Out of scope for 2d.

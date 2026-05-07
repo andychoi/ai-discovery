@@ -1,4 +1,4 @@
-"""Tests for Phase 3.1d entity condition correlator."""
+"""Tests for Phase 3d entity condition correlator."""
 
 from __future__ import annotations
 

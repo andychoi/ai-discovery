@@ -497,7 +497,7 @@ class ExecutionSliceBuilder:
         transitions = hints.get("transitions", [])
         if transitions:
             t = transitions[0]
-            # Phase 2.4: `entity_id` is the unique trace key; parsers populate
+            # Phase 2d: `entity_id` is the unique trace key; parsers populate
             # it at emit time. Fall back to `entity` defensively so stale
             # fixtures still produce a usable (if non-unique) id.
             transition = StateTransition(

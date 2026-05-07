@@ -1,6 +1,6 @@
 # Pipeline Phases: Detailed Breakdown
 
-Reference guide for all AI-Discovery pipeline phases: pre-pipeline setup (phases 1–4) and checkpoint phases (5–16, including optional sub-phases 8.5, 12.5, 13.5, 13.6).
+Reference guide for all AI-Discovery pipeline phases: pre-pipeline setup (phases 1–4) and checkpoint phases (5–19). All phase numbers are integers — there are no decimal sub-phases. Optional / skippable stages (`execution_slices`, `process_mining`) get their own integer slot.
 
 ---
 
@@ -31,6 +31,7 @@ If `--resume` flag: loads previous scan state, skips already-parsed files.
 If `--rescan` flag: deletes previous scan, starts fresh.  
 If same commit SHA: skips phases 5–7 (parsing), resumes at phase 9 (chunk).
 
+
 ### Phase 4: Create Scan Run
 **Input**: Scan metadata (repo, branch, config)  
 **Output**: `scan_id` (unique identifier for this scan)  
@@ -40,7 +41,7 @@ Creates entry in `scan_runs` table. Records start time, status, config. Later up
 
 ---
 
-## Checkpoint Phases (5–16)
+## Checkpoint Phases (5–19)
 
 ### Phase 5: Language Detection
 **Input**: Repository files  
@@ -98,9 +99,9 @@ Call graph building (multi-strategy 7-level confidence scoring) is integrated in
 
 ---
 
-## Phases 8.5–10: Execution Slicing & Embedding
+## Phases 8–10: Execution Slicing & Embedding
 
-### Phase 8.5: Build Execution Slices (Optional)
+### Phase 8: Build Execution Slices (Optional)
 **Input**: `CodeNode[]`, `CallEdge[]`, entry points  
 **Output**: `Scenario[]` (execution scenarios from each entry point)  
 **Time**: 5–20s
@@ -135,7 +136,7 @@ Resume-aware: skips already-embedded chunks.
 
 ---
 
-## Phases 11–13: LLM Pipeline (Tiered)
+## Phases 11–14: LLM Pipeline (Tiered)
 
 ### Phase 11: Tier 1 Summarize
 **Input**: `CodeChunk[]`  
@@ -166,7 +167,14 @@ Per-domain analysis:
 Uses Claude Sonnet or Ollama gemma4:26b.  
 Stores in `business_flows` and `scenario_flows` tables.
 
-### Phase 13: Tier 3 Doc Rollup
+### Phase 13: Scenario Flow Inference
+**Input**: `Scenario[]` + `node_summaries`  
+**Output**: `scenario_flows` (per-scenario inferred business flow)  
+**Time**: 5–15 min
+
+Per-scenario LLM pass that turns each execution slice into a business-readable flow with IPO and alternate paths. Uses the Tier 2 model. Skippable; if absent the visual artifacts phase falls back to the empty-list rebuild path.
+
+### Phase 14: Tier 3 Doc Rollup
 **Input**: `domain[]` + `business_flows` + `scenario_flows`  
 **Output**: `generated_docs` (markdown content, BPMN, diagrams)  
 **Time**: 10–60 min (Opus model, per-domain×doc_type)
@@ -182,9 +190,23 @@ Stores in `generated_docs` table.
 
 ---
 
-## Phases 14–16: Verification & Output
+## Phases 15–19: Artifact Generation, Verification & Output
 
-### Phase 14: Self-Review
+### Phase 15: Visual Artifacts
+**Input**: `scenario_flows`  
+**Output**: BPMN 2.0 XML, Mermaid sequences, PlantUML, IPO markdown per scenario  
+**Time**: 1–10s
+
+Generates diagram artifacts from the inferred flows. Persists scenario+artifact rows so render and ingest can locate them. Always runs (no `enabled` flag).
+
+### Phase 16: Process Mining (Optional)
+**Input**: `scenario_flows`  
+**Output**: pm4py inductive-miner Petri nets + conformance metrics per scenario  
+**Time**: 10–20 min when enabled
+
+Runs only when `process_mining.enabled: true` in `discovery.yaml`. When disabled, no checkpoint is written — resume logic skips it cleanly. Skip via `--skip-phases=16`.
+
+### Phase 17: Self-Review
 **Input**: `generated_docs`  
 **Output**: `review_claims` (verified/unverified/contradicted)  
 **Time**: 5–20 min
@@ -197,7 +219,7 @@ Claim extraction + RAG verification:
 Stores findings in `review_claims` table.  
 High unverified rate (>20%) triggers human review flag.
 
-### Phase 15: Render Markdown
+### Phase 18: Render Markdown
 **Input**: `generated_docs` + artifacts (BPMN, Mermaid, IPO tables)  
 **Output**: `.md` files on disk  
 **Time**: 1–5s
@@ -217,7 +239,7 @@ data/{slug}/
     └── scenario_create_order_1.json
 ```
 
-### Phase 16: Finalize
+### Phase 19: Finalize
 **Input**: Scan metadata  
 **Output**: Updated `scan_runs` row  
 **Time**: < 1s
@@ -233,13 +255,16 @@ Records end time.
 | Phase | Typical Duration | Cost | Bottleneck |
 |-------|---|---|---|
 | 1–4 (Pre-pipeline) | 10–100s | ~$0 | Cloning large repos |
-| 5–8 (Parse & Graph) | 30–300s | ~$0 | Call resolution complexity |
+| 5–8 (Parse, Graph, Slices) | 30–300s | ~$0 | Call resolution complexity |
 | 9–10 (Chunk & Embed) | 30–120s | ~$0.05 | Embedding API quota |
 | 11 (Tier 1) | 2–10 min | ~$0.50 | High volume; LLM concurrency limit |
 | 12 (Tier 2) | 5–30 min | ~$2–5 | Reasoning; per-domain |
-| 13 (Tier 3) | 10–60 min | ~$5–10 | Deep reasoning; per-doc-type |
-| 14 (Review) | 5–20 min | ~$1–2 | Verification prompts |
-| 15–16 (Output) | 1–5s | ~$0 | Template rendering |
+| 13 (Scenario flow inference) | 5–15 min | ~$1–2 | Per-scenario reasoning |
+| 14 (Tier 3) | 10–60 min | ~$5–10 | Deep reasoning; per-doc-type |
+| 15 (Visual artifacts) | 1–10s | ~$0 | Template rendering |
+| 16 (Process mining, opt.) | 10–20 min | ~$0 | pm4py inductive miner |
+| 17 (Self-review) | 5–20 min | ~$1–2 | Verification prompts |
+| 18–19 (Render & finalise) | 1–5s | ~$0 | Template rendering |
 
 **Total typical cost**: $10–25 per medium codebase (5K–50K LOC).
 
@@ -254,7 +279,7 @@ Records end time.
 
 ### Cost Tuning
 - Use Haiku for Tier 2 (cheaper, less detailed)
-- Skip self-review (Phase 14)
+- Skip self-review (Phase 17)
 - Limit domains analyzed (analyze only top-N by LOC)
 
 ### Quality Tuning
