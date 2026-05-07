@@ -50,8 +50,23 @@ class TestMakeScenarioFilename:
             == "cart-addtocart.md"
         )
 
+    def test_strips_upstream_scenario_prefix_and_trailing_counter(self):
+        # Real upstream scenario_ids look like `scenario_addToCart_42` →
+        # slugifies to `scenario-addtocart-42`. The on-disk filename should
+        # drop both the `scenario-` prefix and the trailing entry-point
+        # counter that adds noise and collides across scenarios.
+        assert (
+            _make_scenario_filename("sena", "scenario_addToCart_42", 1)
+            == "sena-addtocart.md"
+        )
+        assert (
+            _make_scenario_filename("cart", "scenario-updateCartItem-54", 5)
+            == "cart-updatecartitem.md"
+        )
+
     def test_uses_index_fallback_when_scenario_id_blank(self):
-        assert _make_scenario_filename("cart", "", 7) == "cart-flow-007.md"
+        # `flow-` prefix gets stripped, leaving the zero-padded index.
+        assert _make_scenario_filename("cart", "", 7) == "cart-007.md"
 
     def test_no_domain_means_no_prefix(self):
         assert _make_scenario_filename(None, "signin", 1) == "signin.md"

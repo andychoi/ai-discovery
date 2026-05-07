@@ -84,8 +84,19 @@ def _make_scenario_filename(domain: str | None, scenario_id: str, fallback_index
     Domain-grouping puts related scenarios next to each other alphabetically
     (`cart-addtocart.md`, `cart-deletecartitem.md`, …). The folder `PF/`
     already implies process-flow; no `-process-flow` suffix.
+
+    Strips upstream-only prefixes (`scenario-`, `flow-`) and trailing numeric
+    counters from scenario_id, mirroring the normalization in
+    `_is_bootstrap_scenario`. The counters are entry-point indices that
+    leak through naming; they collide across scenarios (signin-42 and
+    addtocart-42 both got 42 in the legacy output) and add no information.
     """
-    scenario_slug = _slugify(scenario_id) or f"flow-{fallback_index:03d}"
+    raw_slug = _slugify(scenario_id) or f"flow-{fallback_index:03d}"
+    scenario_slug = raw_slug
+    for prefix in ("scenario-", "flow-"):
+        if scenario_slug.startswith(prefix):
+            scenario_slug = scenario_slug[len(prefix):]
+    scenario_slug = re.sub(r"-\d+$", "", scenario_slug) or raw_slug
     domain_slug = _slugify(domain or "")
     if domain_slug:
         return f"{domain_slug}-{scenario_slug}.md"
