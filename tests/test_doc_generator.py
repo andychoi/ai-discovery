@@ -102,7 +102,9 @@ class TestWriteDocs:
         assert file_path.exists()
         # Folder uses the DocHub type prefix (ASIS), not the doc_type string.
         assert file_path.parent.name == "ASIS"
-        assert file_path.name == "myproj-auth-service-as-is.md"
+        # Track 3: filename is the domain only — folder names the type, root
+        # folder names the project. doc_id (in frontmatter) keeps full form.
+        assert file_path.name == "auth-service.md"
 
     def test_all_doc_types(self, tmp_path: Path):
         rollups = [

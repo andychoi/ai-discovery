@@ -75,6 +75,83 @@ _DOC_TYPE_QUERIES = {
 }
 
 
+def _build_verified_api_table(domain: Domain) -> tuple[str, int] | None:
+    """Build a deterministic markdown table of HTTP endpoints from parser-extracted
+    framework_hints. Returns (markdown, row_count) or None when the domain
+    exposes no endpoints.
+
+    Track 1 (verified-facts injection): the parser already extracts
+    `route` + `method` accurately on endpoint nodes; we surface them as a
+    non-overridable table so the LLM cannot rewrite paths from REST priors.
+
+    The row count flows into Track 4's confidence blending — every row here
+    counts as verified (confidence 1.0) when computing doc-level confidence.
+    """
+    rows: list[tuple[str, str, str, str]] = []
+    for node in sorted(domain.nodes, key=lambda n: n.qualified_name):
+        if node.node_type != "endpoint":
+            continue
+        hints = node.framework_hints or {}
+        method = hints.get("method") or hints.get("http_method")
+        route = hints.get("route") or hints.get("path")
+        if method and route:
+            src = f"{node.file_path}:{node.line_start}"
+            rows.append((node.qualified_name, str(method), str(route), src))
+    if not rows:
+        return None
+
+    lines = [
+        "## API Surface (verified)",
+        "",
+        "*Extracted directly from source AST annotations. HTTP verbs and paths are authoritative.*",
+        "",
+        "| Handler | HTTP | Path | Source | Conf |",
+        "|---|---|---|---|---|",
+    ]
+    for qn, method, route, src in rows:
+        lines.append(f"| `{qn}` | {method} | `{route}` | `{src}` | ✓ 1.00 |")
+    lines.append("")
+    return "\n".join(lines), len(rows)
+
+
+def _build_verified_schema_table(domain: Domain) -> tuple[str, int] | None:
+    """Build a deterministic markdown block of entities + fields from parser
+    output. Returns (markdown, total_field_count) or None when the domain
+    has no db_model nodes with fields.
+
+    Track 1: same rationale as the API table — entity names, field lists,
+    and base-class relationships are AST-extracted; the LLM should not
+    rephrase them or invent missing fields. Track 4: each entity counts as
+    one verified row in confidence blending (not one per field, since the
+    LLM-claim review extracts entity-level claims, not field-level).
+    """
+    entries: list[tuple[str, str, list[str], list[str], str]] = []
+    for node in sorted(domain.db_models, key=lambda n: n.qualified_name):
+        if not node.fields:
+            continue
+        src = f"{node.file_path}:{node.line_start}"
+        entries.append((node.qualified_name, node.name, list(node.fields), list(node.bases or []), src))
+    if not entries:
+        return None
+
+    lines = [
+        "## Entity Schema (verified)",
+        "",
+        "*Extracted directly from source AST. Entity names and field lists are authoritative.*",
+        "",
+    ]
+    for qn, name, fields, bases, src in entries:
+        extends = f" — extends `{', '.join(bases)}`" if bases else ""
+        lines.append(f"### `{name}` &nbsp;<sub>✓ 1.00</sub>")
+        lines.append(f"Source: `{src}`{extends}")
+        lines.append("")
+        lines.append("**Fields:**")
+        for f in fields:
+            lines.append(f"- `{f}`")
+        lines.append("")
+    return "\n".join(lines), len(entries)
+
+
 def _retrieve_tier3_context(
     domain_name: str,
     doc_type: str,
@@ -119,11 +196,15 @@ class RollupResult:
     doc_type: str
     title: str
     content_md: str
-    confidence: float  # 0.0-1.0, from LLM self-assessment
+    confidence: float  # 0.0-1.0, from LLM self-assessment, decayed by self-review
     tokens_in: int
     tokens_out: int
     model: str
     unverified_claims: int = 0  # set by self-review step before writing markdown
+    # Track 4: count of rows injected from AST-verified tables (endpoints,
+    # entities). These are deterministic ground truth — counted as verified
+    # when blending with prose-claim review verdicts to compute doc confidence.
+    verified_row_count: int = 0
 
 
 def _build_rollup_prompt(
@@ -268,6 +349,25 @@ def _build_rollup_prompt(
         lines.append(rag_context)
         lines.append("")
 
+    # Verified facts (Track 1): AST-extracted endpoints and entities.
+    # These are deterministic ground truth — the LLM must not rewrite them.
+    api_result = _build_verified_api_table(domain)
+    schema_result = _build_verified_schema_table(domain)
+    if api_result or schema_result:
+        lines.append("## VERIFIED FACTS (do not modify)")
+        lines.append(
+            "The following are extracted directly from source AST. They will be "
+            "injected verbatim into the final document. Do NOT include duplicate "
+            "API or entity tables in your output. You may reference these facts in "
+            "prose, but always reproduce HTTP verbs, paths, entity names, and "
+            "field names exactly as shown — never infer alternatives.\n"
+        )
+        if api_result:
+            lines.append(api_result[0])
+        if schema_result:
+            lines.append(schema_result[0])
+        lines.append("")
+
     # Doc-type-specific instructions
     lines.append("## Task")
     lines.append(_DOC_INSTRUCTIONS[doc_type])
@@ -281,6 +381,32 @@ def _build_rollup_prompt(
     )
 
     return "\n".join(lines)
+
+
+def blend_confidence(verified_row_count: int, review_summary: dict) -> float:
+    """Track 4: compute doc-level confidence from AST-verified rows + review verdicts.
+
+    AST-verified rows (endpoints, entity field lists) count as confidence 1.0
+    each — they're deterministic. Prose-claim review contributes per the
+    verified/unverified/contradicted split: verified=1.0, unverified=0.5,
+    contradicted=0.0.
+
+    Returns a value in [0.0, 1.0]. If there's nothing to score (no AST rows
+    AND no claims extracted), returns 1.0 by convention — matching
+    `get_review_summary` for empty inputs.
+    """
+    n_ast = max(0, int(verified_row_count or 0))
+    verified = int(review_summary.get("verified", 0))
+    unverified = int(review_summary.get("unverified", 0))
+    contradicted = int(review_summary.get("contradicted", 0))
+    n_prose = verified + unverified + contradicted
+
+    total = n_ast + n_prose
+    if total == 0:
+        return 1.0
+
+    score = (n_ast * 1.0) + (verified * 1.0) + (unverified * 0.5) + (contradicted * 0.0)
+    return round(score / total, 2)
 
 
 def _parse_rollup(text: str, domain_name: str, doc_type: str) -> tuple[str, float]:
@@ -332,6 +458,26 @@ def _generate_single_doc(
         )
     )
     content_md, confidence = _parse_rollup(response.text, domain.name, doc_type)
+
+    # Track 1: prepend AST-verified facts to LLM output. Doc-type aware so each
+    # doc gets the table that matches its purpose; `as-is` gets both as a quick
+    # reference block at the top.
+    # Track 4: count verified rows so confidence can be blended later.
+    verified_blocks: list[str] = []
+    verified_row_count = 0
+    if doc_type in ("as-is", "as-is-detail"):
+        api_result = _build_verified_api_table(domain)
+        if api_result:
+            verified_blocks.append(api_result[0])
+            verified_row_count += api_result[1]
+    if doc_type in ("as-is", "as-is-schema"):
+        schema_result = _build_verified_schema_table(domain)
+        if schema_result:
+            verified_blocks.append(schema_result[0])
+            verified_row_count += schema_result[1]
+    if verified_blocks:
+        content_md = "\n\n".join(verified_blocks) + "\n\n" + content_md
+
     label = _DOC_TYPE_LABELS.get(doc_type, doc_type)
     title = f"{domain.name} \u2014 {label}"
     logger.info(
@@ -347,6 +493,7 @@ def _generate_single_doc(
         tokens_in=response.tokens_in,
         tokens_out=response.tokens_out,
         model=response.model,
+        verified_row_count=verified_row_count,
     )
 
 
@@ -390,7 +537,7 @@ def _load_rollups_from_db(scan_id: int, db_path: Path) -> list[RollupResult]:
     try:
         rows = conn.execute(
             "SELECT domain, doc_type, title, content_md, confidence, "
-            "unverified_claims FROM generated_docs WHERE scan_id = ?",
+            "unverified_claims, verified_row_count FROM generated_docs WHERE scan_id = ?",
             (scan_id,),
         ).fetchall()
         return [
@@ -404,6 +551,7 @@ def _load_rollups_from_db(scan_id: int, db_path: Path) -> list[RollupResult]:
                 tokens_out=0,
                 model="(resumed)",
                 unverified_claims=r["unverified_claims"] or 0,
+                verified_row_count=r["verified_row_count"] or 0,
             )
             for r in rows
         ]
@@ -516,8 +664,9 @@ def persist_rollups(
             conn.execute(
                 """INSERT OR REPLACE INTO generated_docs
                    (scan_id, domain, doc_type, doc_id, title, content_md,
-                    confidence, unverified_claims, push_status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    confidence, unverified_claims, verified_row_count,
+                    push_status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     scan_id,
                     rollup.domain,
@@ -527,6 +676,7 @@ def persist_rollups(
                     rollup.content_md,
                     rollup.confidence,
                     0,
+                    rollup.verified_row_count,
                     "local",
                     now_iso(),
                 ),

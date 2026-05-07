@@ -17,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -113,18 +113,19 @@ CREATE TABLE IF NOT EXISTS business_flows (
 CREATE INDEX IF NOT EXISTS idx_flows_domain ON business_flows(domain);
 
 CREATE TABLE IF NOT EXISTS generated_docs (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    scan_id           INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
-    domain            TEXT,
-    doc_type          TEXT NOT NULL,
-    doc_id            TEXT,
-    title             TEXT,
-    content_md        TEXT,
-    confidence        REAL,
-    unverified_claims INTEGER DEFAULT 0,
-    push_status       TEXT DEFAULT 'local',
-    push_url          TEXT,
-    created_at        TEXT NOT NULL,
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id             INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
+    domain              TEXT,
+    doc_type            TEXT NOT NULL,
+    doc_id              TEXT,
+    title               TEXT,
+    content_md          TEXT,
+    confidence          REAL,
+    unverified_claims   INTEGER DEFAULT 0,
+    verified_row_count  INTEGER DEFAULT 0,
+    push_status         TEXT DEFAULT 'local',
+    push_url            TEXT,
+    created_at          TEXT NOT NULL,
     UNIQUE(scan_id, domain, doc_type)
 );
 CREATE INDEX IF NOT EXISTS idx_docs_scan ON generated_docs(scan_id);
@@ -366,6 +367,18 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
                 "UPDATE phase_checkpoints SET phase_num = ? "
                 "WHERE ABS(phase_num - ?) < 0.01",
                 (new, old),
+            )
+
+    if current < 6:
+        # Track 4: per-claim confidence + AST-row counting.
+        # `verified_row_count` records how many AST-extracted rows (verified
+        # endpoints, entities) shipped in each doc, so doc-level confidence
+        # can be blended deterministically rather than taking the LLM's
+        # self-asserted score at face value.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(generated_docs)").fetchall()}
+        if "verified_row_count" not in cols:
+            conn.execute(
+                "ALTER TABLE generated_docs ADD COLUMN verified_row_count INTEGER DEFAULT 0"
             )
 
 

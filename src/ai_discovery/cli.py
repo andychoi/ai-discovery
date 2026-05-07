@@ -20,6 +20,21 @@ app = typer.Typer(name="discover", help="Brownfield codebase discovery & doc gen
 _VALID_INGEST_TARGETS = {"dochub", "gitea"}
 
 
+def _project_output_dir(output: Path, slug: str) -> Path:
+    """Track 3: per-project output dir is `<output>/output-<slug>/`.
+
+    Read-side commands fall back to the legacy `<output>/<slug>/` layout if
+    the new path doesn't exist but the legacy one does — so existing scans
+    keep working without a forced migration. Write-side commands (scan)
+    always create the new path.
+    """
+    new_path = Path(output) / f"output-{slug}"
+    legacy_path = Path(output) / slug
+    if not new_path.exists() and legacy_path.exists():
+        return legacy_path
+    return new_path
+
+
 @app.command()
 def init(
     config: Path = typer.Option(
@@ -262,7 +277,7 @@ def chat(
     if provider:
         cfg.provider = provider
 
-    output_dir = Path(output) / project_slug
+    output_dir = _project_output_dir(output, project_slug)
     db_path = output_dir / f"discovery-{project_slug}.db"
     docs_dir = output_dir / "docs"
 
@@ -304,9 +319,9 @@ def ingest(
         console.print(f"[red]Invalid --target '{target}'. Must be: dochub | gitea[/]")
         raise typer.Exit(code=1)
 
-    intermediate = Path(output) / project_slug
+    intermediate = _project_output_dir(output, project_slug)
     db_path = intermediate / f"discovery-{project_slug}.db"
-    docs_dir = Path(docs_root) / project_slug
+    docs_dir = _project_output_dir(docs_root, project_slug)
 
     if not db_path.exists():
         console.print(f"[red]No discovery DB found:[/] {db_path}")
@@ -437,7 +452,7 @@ def impact(
     )
     from ai_discovery.graph.impact import EntityNotFound, query_entity_impact
 
-    artifacts_dir = output / project_slug
+    artifacts_dir = _project_output_dir(output, project_slug)
     fsm_path = artifacts_dir / "entity_state_machines.json"
     if not fsm_path.exists():
         console.print(f"[red]No FSM artifact at {fsm_path}. Run `discover scan` first.[/]")
@@ -565,7 +580,7 @@ def view(
 
     from ai_discovery.viewer.server import ViewerContext, make_server
 
-    slug_output = (output / project_slug).resolve()
+    slug_output = _project_output_dir(output, project_slug).resolve()
     if not slug_output.is_dir():
         console.print(
             f"[red]No scan output at {slug_output}.[/] Run `discover scan` first, "

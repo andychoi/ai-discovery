@@ -38,6 +38,12 @@ _DOC_TYPE_PREFIXES: dict[str, str] = {
     "pcr": "PCR",
     "agent-config": "AGT",
     "process-flow": "PF",
+    # Track 2: Phase 3 visual artifacts get DocHub-style folders so they
+    # ship alongside ASIS/ASD/ASSC/PF instead of as flat files at scan root.
+    "entity-backbone": "BPMN",
+    "entity-decisions": "DMN",
+    "entity-ears": "EARS",
+    "entity-impact": "IMPACT",
 }
 
 
@@ -53,7 +59,68 @@ def _doc_type_prefix(doc_type: str) -> str:
 
 
 def _make_doc_id(project_slug: str, domain: str, doc_type: str) -> str:
+    """Slugified DB identifier — stable across runs; remains
+    `{project_slug}-{domain}-{doc_type}` so existing DocHub IDs don't break."""
     return _slugify(f"{project_slug}-{domain}-{doc_type}")
+
+
+def _make_filename(domain: str, doc_type: str) -> str:
+    """Track 3: on-disk filename, decoupled from doc_id.
+
+    The DocHub-style folder (`ASIS/`, `ASD/`, `ASSC/`, `PF/`) already names
+    the type, and the output root folder names the project. So filenames only
+    need the domain — no project prefix, no type suffix.
+
+    For PF docs the caller appends `{scenario}` since one PF folder holds
+    many scenarios per domain; see `_make_scenario_filename`.
+    """
+    base = _slugify(domain) or doc_type
+    return f"{base}.md"
+
+
+def _make_scenario_filename(domain: str | None, scenario_id: str, fallback_index: int) -> str:
+    """Track 3: domain-grouped scenario filename: `{domain}-{scenario}.md`.
+
+    Domain-grouping puts related scenarios next to each other alphabetically
+    (`cart-addtocart.md`, `cart-deletecartitem.md`, …). The folder `PF/`
+    already implies process-flow; no `-process-flow` suffix.
+    """
+    scenario_slug = _slugify(scenario_id) or f"flow-{fallback_index:03d}"
+    domain_slug = _slugify(domain or "")
+    if domain_slug:
+        return f"{domain_slug}-{scenario_slug}.md"
+    return f"{scenario_slug}.md"
+
+
+# Track 3: scenarios that aren't real business flows. Filtered at write
+# time so they don't pollute PF/. Names match the slugified scenario_id.
+_BOOTSTRAP_SCENARIO_NAMES: frozenset[str] = frozenset({
+    "main",                  # Spring Boot @SpringBootApplication.main
+    "addresourcehandlers",   # Swagger / WebMvcConfigurer resource handler registration
+    "configure",             # generic Spring config callback
+    "corsconfigurer",        # CORS bean config
+    "addviewcontrollers",    # MVC view config
+    "apidocket",             # SwaggerConfig.Docket bean
+})
+
+
+def _is_bootstrap_scenario(scenario_id: str) -> bool:
+    """Track 3: identify scenarios that are config/bootstrap, not business flows.
+
+    Match against the raw scenario name (last hyphen-separated segment) since
+    upstream may prepend a counter. We compare slug-form to handle case and
+    punctuation variation across parsers.
+    """
+    if not scenario_id:
+        return True
+    slug = _slugify(scenario_id)
+    # Strip common upstream prefixes ("scenario-", "flow-") and trailing
+    # numeric counters ("-42") that could surround a bootstrap name.
+    for prefix in ("scenario-", "flow-"):
+        if slug.startswith(prefix):
+            slug = slug[len(prefix):]
+    slug = re.sub(r"-\d+$", "", slug)
+    return slug in _BOOTSTRAP_SCENARIO_NAMES
 
 
 def _get_template_env() -> Environment:
@@ -106,6 +173,7 @@ def write_docs(
     repo_url: str = "",
     repo_commit: str = "",
     domain_adjacency: dict[str, list[str]] | None = None,
+    scenario_flows: list | None = None,
 ) -> list[dict]:
     """Render and write all rollups to output_dir/{DOCHUB_PREFIX}/{doc_id}.md.
 
@@ -130,6 +198,21 @@ def write_docs(
         for r in rollups
     }
 
+    # Track 5: index PF doc_ids by domain so as-is-detail can link to its
+    # scenarios. Filter bootstrap scenarios with the same rule write_scenario_docs
+    # uses, so links don't point at docs that won't actually be written.
+    _pf_ids_by_domain: dict[str, list[str]] = {}
+    if scenario_flows:
+        for flow in scenario_flows:
+            if _is_bootstrap_scenario(flow.scenario_id):
+                continue
+            domain = flow.domain or ""
+            scenario_slug = _slugify(flow.scenario_id)
+            if not scenario_slug:
+                continue
+            pf_id = _slugify(f"{project_slug}-{scenario_slug}-process-flow")
+            _pf_ids_by_domain.setdefault(domain, []).append(pf_id)
+
     results: list[dict] = []
 
     for rollup in rollups:
@@ -147,6 +230,14 @@ def write_docs(
                 if callee_asis and callee_asis not in links_to:
                     links_to.append(callee_asis)
 
+        # Track 5: as-is-detail and as-is-schema link forward to PF scenarios
+        # in the same domain — bidirectional navigation between use cases and
+        # the process flows that implement them.
+        if rollup.doc_type in ("as-is-detail", "as-is-schema"):
+            for pf_id in _pf_ids_by_domain.get(rollup.domain, []):
+                if pf_id not in links_to:
+                    links_to.append(pf_id)
+
         doc_id, markdown = render_doc(
             rollup,
             project_slug,
@@ -158,7 +249,9 @@ def write_docs(
 
         prefix_dir = output_dir / _doc_type_prefix(rollup.doc_type)
         prefix_dir.mkdir(parents=True, exist_ok=True)
-        file_path = prefix_dir / f"{doc_id}.md"
+        # Track 3: filename is the domain only (folder names the type, root
+        # names the project). doc_id stays full-form for DB / DocHub.
+        file_path = prefix_dir / _make_filename(rollup.domain, rollup.doc_type)
         file_path.write_text(markdown, encoding="utf-8")
 
         results.append(
@@ -183,6 +276,7 @@ def write_scenario_docs(
     repo_url: str = "",
     repo_commit: str = "",
     mining_results: dict | None = None,
+    rollup_domains: set[str] | None = None,
 ) -> list[dict]:
     """Render and write process-flow docs from ScenarioFlow objects.
 
@@ -194,12 +288,27 @@ def write_scenario_docs(
         repo_url: Repository URL
         repo_commit: Commit SHA
         mining_results: dict[scenario_id] → MiningResult (optional)
+        rollup_domains: Track 5 — set of domain names that have ASIS/ASD/ASSC
+            rollups available; PF docs link back only to existing rollups so
+            we don't emit dead links to nonexistent docs. None = link to all
+            three doc types for whatever domain the scenario claims.
 
     Returns:
         list of dicts with: doc_id, doc_type, domain, file_path, confidence.
     """
     if not scenario_flows:
         return []
+
+    # Track 3: filter bootstrap/config scenarios — they aren't business flows.
+    filtered_flows = []
+    for flow in scenario_flows:
+        if _is_bootstrap_scenario(flow.scenario_id):
+            logger.info("Skipping bootstrap scenario %r (not a business flow)", flow.scenario_id)
+            continue
+        filtered_flows.append(flow)
+    if not filtered_flows:
+        return []
+    scenario_flows = filtered_flows
 
     mining_results = mining_results or {}
     env = _get_template_env()
@@ -243,8 +352,19 @@ def write_scenario_docs(
             content_parts.append(mining_md)
 
         content = "\n\n".join(content_parts)
+        # Track 3: doc_id (DB / DocHub identifier) keeps the full slugified
+        # form for stability; on-disk filename is the domain-grouped form.
         scenario_slug = _slugify(flow.scenario_id) or f"flow-{i:03d}"
         doc_id = _slugify(f"{project_slug}-{scenario_slug}-process-flow")
+        # Track 5: every PF doc links back to its domain's ASIS/ASD/ASSC so
+        # readers can navigate from a scenario to overview, detail, and schema.
+        # Only link to rollups that actually exist (rollup_domains tells us).
+        pf_links_to: list[str] = []
+        if flow.domain:
+            for target_doc_type in ("as-is", "as-is-detail", "as-is-schema"):
+                if rollup_domains is not None and flow.domain not in rollup_domains:
+                    continue
+                pf_links_to.append(_make_doc_id(project_slug, flow.domain, target_doc_type))
         rendered = template.render(
             doc_id=doc_id,
             title=f"Process Flow: {flow.scenario_id}",
@@ -253,10 +373,11 @@ def write_scenario_docs(
             repo_url=repo_url,
             repo_commit=repo_commit,
             confidence=flow.confidence,
-            links_to=[],
+            links_to=pf_links_to,
             content=content,
         )
-        file_path = prefix_dir / f"{doc_id}.md"
+        filename = _make_scenario_filename(flow.domain, flow.scenario_id, i)
+        file_path = prefix_dir / filename
         file_path.write_text(rendered, encoding="utf-8")
         results.append(
             {

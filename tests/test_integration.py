@@ -237,7 +237,8 @@ def test_full_pipeline(tmp_path):
         )
 
     # ── Verify DB ──────────────────────────────────────────────────────
-    db_path = output_dir / "test-proj" / "discovery-test-proj.db"
+    # Track 3: scan output now lands at output/output-<slug>/.
+    db_path = output_dir / "output-test-proj" / "discovery-test-proj.db"
     assert db_path.exists(), f"{db_path} should be created"
 
     conn = sqlite3.connect(str(db_path))
@@ -280,7 +281,7 @@ def test_full_pipeline(tmp_path):
 
     # ── Verify markdown output ─────────────────────────────────────────
     # Pipeline writes markdown under docs_root/{project_slug}/{PREFIX}/…
-    docs_dir = output_dir / "test-proj"
+    docs_dir = output_dir / "output-test-proj"
     assert docs_dir.exists(), f"{docs_dir} should exist"
 
     md_files = list(docs_dir.rglob("*.md"))

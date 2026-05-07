@@ -276,9 +276,13 @@ def run_pipeline(
         skip_phases: List of phases to skip (e.g. ["16", "10"])
     """
 
-    output_dir = Path(output_dir) / project_slug
+    # Track 3: per-project output dir is `output/output-<slug>/`. Read-side
+    # CLI commands (chat, view, ingest) fall back to legacy `output/<slug>/`
+    # when only the legacy path exists, so previously-scanned repos keep
+    # working without forced migration. New scans always create the new path.
+    output_dir = Path(output_dir) / f"output-{project_slug}"
     output_dir.mkdir(parents=True, exist_ok=True)
-    docs_dir = Path(docs_root) / project_slug
+    docs_dir = Path(docs_root) / f"output-{project_slug}"
     db_path = output_dir / f"discovery-{project_slug}.db"
     _pipeline_start = time.perf_counter()
 
@@ -760,12 +764,24 @@ def run_pipeline(
             )
         # Phase 4: L1/L2 entity-backbone Mermaid view. First consumer of
         # entity_kind + cross_entity_transitions as a unified artifact.
+        # Track 2: route into BPMN/ folder alongside ASIS/ASD/ASSC/PF so it
+        # ships as a first-class DocHub artifact, not a flat scan-root file.
         from .generators.bpmn_generator import BPMNGenerator
-        backbone_path = output_dir / "entity_backbone.mmd"
+        from .generators.doc_generator import _doc_type_prefix
+        bpmn_dir = output_dir / _doc_type_prefix("entity-backbone")
+        bpmn_dir.mkdir(parents=True, exist_ok=True)
+        backbone_path = bpmn_dir / "entity-backbone.md"
         backbone_path.write_text(
+            "# Entity Backbone (Mermaid)\n\n```mermaid\n"
+            + BPMNGenerator().generate_entity_backbone_mermaid(fsms, cross_links)
+            + "\n```\n"
+        )
+        # Keep a copy at the legacy path for tools that still read it directly
+        # (e.g. external scripts) — same content, two locations during transition.
+        (output_dir / "entity_backbone.mmd").write_text(
             BPMNGenerator().generate_entity_backbone_mermaid(fsms, cross_links)
         )
-        console.print(f"  Entity backbone: → {backbone_path.name}")
+        console.print(f"  Entity backbone: → {backbone_path.relative_to(output_dir)}")
 
         # Phase 3 deliverable: DMN decision tables on guarded/conditioned
         # transitions. Consumes guards (3c) + conditions (3d) as merged
@@ -773,9 +789,12 @@ def run_pipeline(
         from .generators.dmn_generator import generate_entity_decisions_markdown
         decisions_md = generate_entity_decisions_markdown(fsms, conditions)
         if "No guarded or conditioned transitions" not in decisions_md:
-            decisions_path = output_dir / "entity_decisions.md"
+            dmn_dir = output_dir / _doc_type_prefix("entity-decisions")
+            dmn_dir.mkdir(parents=True, exist_ok=True)
+            decisions_path = dmn_dir / "entity-decisions.md"
             decisions_path.write_text(decisions_md)
-            console.print(f"  Entity decisions: → {decisions_path.name}")
+            (output_dir / "entity_decisions.md").write_text(decisions_md)  # legacy mirror
+            console.print(f"  Entity decisions: → {decisions_path.relative_to(output_dir)}")
 
         # Phase 3 deliverable: EARS requirement skeletons. Unlike DMN, emits
         # for every transition with a to_state — each state change is a
@@ -783,9 +802,12 @@ def run_pipeline(
         from .generators.ears_generator import generate_entity_ears_markdown
         ears_md = generate_entity_ears_markdown(fsms, conditions)
         if "No transitions found" not in ears_md:
-            ears_path = output_dir / "entity_ears.md"
+            ears_dir = output_dir / _doc_type_prefix("entity-ears")
+            ears_dir.mkdir(parents=True, exist_ok=True)
+            ears_path = ears_dir / "entity-ears.md"
             ears_path.write_text(ears_md)
-            console.print(f"  Entity EARS: → {ears_path.name}")
+            (output_dir / "entity_ears.md").write_text(ears_md)  # legacy mirror
+            console.print(f"  Entity EARS: → {ears_path.relative_to(output_dir)}")
 
     # ------------------------------------------------------------------
     # 9. Smart chunk
@@ -1193,6 +1215,14 @@ def run_pipeline(
 
                         rollup.content_md = annotate_document(rollup.content_md, claims)
                         rollup.unverified_claims = summary["unverified"] + summary["contradicted"]
+                        # Track 4: replace LLM self-asserted confidence with a
+                        # deterministic blend of AST-verified rows + review verdicts.
+                        # Verified rows (Track 1 tables) always count as 1.0;
+                        # prose claims contribute per their review status.
+                        from .ai.rollup import blend_confidence
+                        rollup.confidence = blend_confidence(
+                            rollup.verified_row_count, summary
+                        )
 
                         # Update aggregate totals and advance overall bar
                         for k in _sr_totals:
@@ -1219,8 +1249,9 @@ def run_pipeline(
                             if doc_row:
                                 doc_db_id = doc_row["id"]
                                 conn.execute(
-                                    "UPDATE generated_docs SET unverified_claims = ? WHERE id = ?",
-                                    (rollup.unverified_claims, doc_db_id),
+                                    "UPDATE generated_docs SET unverified_claims = ?, "
+                                    "confidence = ? WHERE id = ?",
+                                    (rollup.unverified_claims, rollup.confidence, doc_db_id),
                                 )
                                 conn.commit()
                                 persist_claims(claims, doc_db_id, db_path)
@@ -1258,6 +1289,9 @@ def run_pipeline(
         from .generators.doc_generator import write_scenario_docs
 
         with _timed("write markdown"), console.status("[bold cyan]Writing markdown files..."):
+            # Track 5: thread scenario_flows into write_docs so ASD can link
+            # to its PF scenarios; thread the rollup-domain set into
+            # write_scenario_docs so PF only links to existing rollups.
             written = write_docs(
                 rollups,
                 docs_dir,
@@ -1265,6 +1299,7 @@ def run_pipeline(
                 repo_url=resolved.url or str(resolved.repo_path),
                 repo_commit=resolved.commit_sha,
                 domain_adjacency=domain_adjacency,
+                scenario_flows=scenario_flows,
             )
             scenario_written = write_scenario_docs(
                 scenario_flows,
@@ -1274,6 +1309,7 @@ def run_pipeline(
                 repo_url=resolved.url or str(resolved.repo_path),
                 repo_commit=resolved.commit_sha,
                 mining_results=mining_results,
+                rollup_domains={r.domain for r in rollups},
             )
             written.extend(scenario_written)
         console.print(f"  Written: [green]{len(written)}[/] markdown files to {docs_dir}")
