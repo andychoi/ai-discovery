@@ -28,7 +28,7 @@ _MQ = MODELS.get("mlx-qwen", {})
 
 # ── Provider configs ─────────────────────────────────────────────────────────
 
-_VALID_TIERS = frozenset({"tier1", "tier2", "tier3"})
+_VALID_TIERS = frozenset({"tier1", "tier2", "tier3", "screen"})
 
 # Discovery tier mapping:  tier1→fast, tier2→standard, tier3d→fast (dev), tier3p→deep (prod)
 
@@ -162,10 +162,14 @@ class DiscoveryConfig:
     # ── helpers ───────────────────────────────────────────────────────────
 
     def get_model(self, tier: str) -> str:
-        """Return the model ID for *tier* (tier1 | tier2 | tier3) from the
-        active provider. For tier3, selects tier3p (prod) or tier3d (dev)."""
+        """Return the model ID for *tier* (tier1 | tier2 | tier3 | screen) from the
+        active provider. For tier3, selects tier3p (prod) or tier3d (dev).
+        Screen tier maps to tier2 (Sonnet equivalent) for cost-effective spec generation."""
         if tier not in _VALID_TIERS:
             raise ValueError(f"Invalid tier '{tier}', must be one of {_VALID_TIERS}")
+        # Screen tier uses tier2 model (Sonnet: cost-effective prose generation)
+        if tier == "screen":
+            tier = "tier2"
         key = ("tier3p" if self.prod else "tier3d") if tier == "tier3" else tier
         if self.provider == "bedrock":
             return getattr(self.bedrock, key)

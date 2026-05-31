@@ -205,6 +205,21 @@ CREATE TABLE IF NOT EXISTS screen_source_hashes (
 );
 CREATE INDEX IF NOT EXISTS idx_source_hashes_screen ON screen_source_hashes(screen_id);
 
+CREATE TABLE IF NOT EXISTS screen_specs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id     INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
+    screen_id   TEXT NOT NULL,
+    spec_json   TEXT NOT NULL,
+    confidence  REAL DEFAULT 0.8,
+    tokens_in   INTEGER,
+    tokens_out  INTEGER,
+    model       TEXT,
+    created_at  TEXT NOT NULL,
+    UNIQUE(scan_id, screen_id)
+);
+CREATE INDEX IF NOT EXISTS idx_screen_specs_scan ON screen_specs(scan_id);
+CREATE INDEX IF NOT EXISTS idx_screen_specs_id ON screen_specs(screen_id);
+
 CREATE TABLE IF NOT EXISTS llm_costs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     scan_id    INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
