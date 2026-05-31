@@ -1,0 +1,179 @@
+---
+doc_id: {{ doc_id }}
+title: "{{ title }}"
+menu_path: {{ menu_path | tojson }}
+crud_profile: "{{ crud_profile }}"
+interaction_mode: "{{ interaction_mode }}"
+permissions: {{ permissions | tojson }}
+status: Draft
+related_docs:
+  backend_specs: {{ related_docs.backend_specs | tojson }}
+  batch_jobs: {{ related_docs.batch_jobs | tojson }}
+  databases: {{ related_docs.databases | tojson }}
+  interfaces: {{ related_docs.interfaces | tojson }}
+source_hashes: {{ source_hashes | tojson }}
+---
+
+# {{ title }}
+
+**Menu Path:** {{ menu_path | join(' > ') }}
+**CRUD Profile:** {{ crud_profile }}
+**Interaction Mode:** {{ interaction_mode }}
+**Status:** {{ status }}
+
+---
+
+## Purpose
+
+{{ purpose }}
+
+---
+
+## When This Screen Is Used
+
+{{ when_used }}
+
+---
+
+## User Actions and System Responses
+
+| User Action | System Response |
+|-------------|-----------------|
+{% for action in user_actions -%}
+| {{ action.action }} | {{ action.response }} |
+{% endfor -%}
+
+---
+
+## Important Rules and Restrictions
+
+{{ rules_narrative }}
+
+{% if rules %}
+| Rule | Description |
+|------|-------------|
+{% for rule in rules -%}
+| {{ rule.name }} | {{ rule.description }} |
+{% endfor -%}
+{% endif %}
+
+---
+
+## Data and Fields
+
+{% if fields_description %}
+The screen displays the following fields:
+
+| Field | Type | Source | Description |
+|-------|------|--------|-------------|
+{% for field in fields_description -%}
+| {{ field.name }} | {{ field.type }} | {{ field.source }} | {{ field.description }} |
+{% endfor -%}
+{% endif %}
+
+**Data sources:**
+{% for table in database_tables -%}
+- [{{ table }}](#/docs/database/{{ table | lower }})
+{% endfor %}
+
+---
+
+## Downstream Effects
+
+{% if downstream_effects %}
+When the user submits or takes action on this screen, the following effects occur:
+
+| Action | Effect |
+|--------|--------|
+{% for effect in downstream_effects -%}
+| {{ effect.action }} | {{ effect.effect }} |
+{% endfor -%}
+{% endif %}
+
+{% if batch_jobs %}
+**Related batch jobs triggered:**
+{% for job in batch_jobs -%}
+- [{{ job }}](#/docs/batch-jobs/{{ job | lower }})
+{% endfor %}
+{% endif %}
+
+{% if external_interfaces %}
+**External system interactions:**
+{% for interface in external_interfaces -%}
+- [{{ interface }}](#/docs/interfaces/{{ interface | lower }})
+{% endfor %}
+{% endif %}
+
+---
+
+## Permissions and Roles
+
+This screen is available to the following roles:
+
+{% for role in permissions -%}
+- `{{ role }}`
+{% endfor %}
+
+{% if permissions_narrative %}
+{{ permissions_narrative }}
+{% endif %}
+
+---
+
+## Open Items
+
+{% if open_items %}
+| Category | File:Line | Description | Severity |
+|----------|-----------|-------------|----------|
+{% for item in open_items -%}
+| {{ item.category }} | {{ item.file_line }} | {{ item.description }} | {{ item.severity }} |
+{% endfor -%}
+{% else %}
+_No open items detected._
+{% endif %}
+
+---
+
+## Technical Reference
+
+### Frontend Component
+
+- **Component:** `{{ fe_component }}`
+- **Framework:** {{ fe_framework | default('Unknown') }}
+- **Type:** {{ fe_component_type | default('Unknown') }}
+
+### API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+{% for api in fe_api_calls -%}
+| {{ api.method }} | `{{ api.path }}` | {% if api.purpose %}{{ api.purpose }}{% else %}_Not documented_{% endif %} |
+{% endfor -%}
+
+### Backend Logic
+
+{% if be_controllers %}
+**Controllers:**
+{% for controller in be_controllers -%}
+- [`{{ controller.class_name }}`](#/docs/backend-specs/{{ controller.class_name | lower }}) (`{{ controller.file_path }}`)
+{% endfor %}
+{% endif %}
+
+{% if be_services %}
+**Services:**
+{% for service in be_services -%}
+- [`{{ service.class_name }}`](#/docs/backend-specs/{{ service.class_name | lower }}) (`{{ service.file_path }}`)
+{% endfor %}
+{% endif %}
+
+### Database Tables
+
+{% for table in database_tables %}
+- [{{ table }}](#/docs/database/{{ table | lower }})
+{% endfor %}
+
+---
+
+<!-- MANUAL:business-context -->
+<!-- Insert additional business context here -->
+<!-- /MANUAL:business-context -->

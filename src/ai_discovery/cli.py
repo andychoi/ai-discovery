@@ -759,5 +759,95 @@ def ingest_docs(
     )
 
 
+@app.command()
+def detect_screens(
+    repo: str = typer.Argument(..., help="Path to repository to scan for screens."),
+    output: Path = typer.Option(
+        Path("./data/discovery-output"), "--output", "-o",
+        help="Output directory for screen_map.yaml and menu_tree.json.",
+    ),
+) -> None:
+    """Auto-detect menu system and screens in a repository.
+
+    Scans for menu definitions (JSON/YAML, TypeScript constants, framework routing)
+    and extracts screen definitions. Outputs screen_map.yaml and menu_tree.json.
+    """
+    from ai_discovery.menu_detector import detect_and_build_screens
+
+    output_dir = Path(output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    console.print(f"[bold green]discover detect-screens[/] repo={repo}")
+
+    with console.status("[bold cyan]Detecting menu system..."):
+        menu_items, screens = detect_and_build_screens(Path(repo))
+
+    if not screens:
+        console.print("[yellow]No screens detected. Check that menu definitions exist in the repo.[/]")
+        raise typer.Exit(code=1)
+
+    # Output screen_map.yaml
+    import yaml
+
+    screen_map = {"screens": [s.to_dict() for s in screens]}
+    screen_map_file = output_dir / "screen_map.yaml"
+    screen_map_file.write_text(yaml.dump(screen_map, default_flow_style=False))
+
+    # Output menu_tree.json
+    if menu_items:
+        import json
+
+        menu_tree = [item.to_dict() for item in menu_items]
+        menu_tree_file = output_dir / "menu_tree.json"
+        menu_tree_file.write_text(json.dumps(menu_tree, indent=2))
+
+    console.print(f"[green]✓ Detected {len(screens)} screens[/]")
+    console.print(f"  Wrote: {screen_map_file}")
+    if menu_items:
+        console.print(f"  Wrote: {menu_tree_file}")
+
+
+@app.command()
+def verify_drift(
+    repo: str = typer.Argument(..., help="Path to repository."),
+    spec_dir: Path = typer.Option(
+        Path("./data/specs"), "--spec-dir", "-s",
+        help="Directory containing generated screen specs (.md files).",
+    ),
+) -> None:
+    """Check for drift between screen specs and source code.
+
+    Reads source_hashes from spec frontmatter and compares against current files.
+    Exits with non-zero code if any drift is detected (suitable for CI).
+    """
+    from ai_discovery.drift_checker import check_drift
+
+    repo_path = Path(repo)
+
+    if not repo_path.exists():
+        console.print(f"[red]Repository not found: {repo_path}[/]")
+        raise typer.Exit(code=1)
+
+    if not spec_dir.exists():
+        console.print(f"[yellow]Spec directory not found: {spec_dir}[/]")
+        console.print("  No specs to check. Run detect-screens and generate-screen-specs first.")
+        raise typer.Exit(code=0)
+
+    console.print(f"[bold green]discover verify-drift[/] repo={repo}")
+    console.print(f"  specs={spec_dir}")
+
+    with console.status("[bold cyan]Checking for drift..."):
+        results, report = check_drift(repo_path, spec_dir)
+
+    console.print(report)
+
+    drifted = [r for r in results if r.is_drifted]
+    if drifted:
+        raise typer.Exit(code=1)
+    else:
+        console.print("\n[green]✓ All specs are in sync with source code[/]")
+        raise typer.Exit(code=0)
+
+
 if __name__ == "__main__":
     app()
