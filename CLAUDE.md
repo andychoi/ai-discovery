@@ -39,6 +39,98 @@ Adding a new language (Go, Rust, etc.) follows a checklist in `docs/guides/parse
 ### 5. Measure Before Optimizing
 Profile phases to find bottlenecks (Phase 6: parsing? Phase 14: Tier 1? Phase 16: Tier 3?). See `docs/guides/pipeline/profiling.md`.
 
+### 6. Screen-Centric Documentation as User Entry Point
+New feature (v0.3+): Generate screen-centric specs that serve as user-facing entry points to the entire system. Screens link OUT to supporting docs (backend, batch, database, interfaces). This reverses the traditional domain-centric model—instead of organizing by business domain, organize by user-facing screens.
+
+---
+
+## Screen-Centric Spec Generation (v0.3+)
+
+### Overview
+
+Traditional ai-discovery generates **domain-centric docs** (organized by business domain). The new screen-centric mode generates **screen-centric docs** (organized by user-facing screens) that link to supporting domain/backend/database docs.
+
+**Key idea**: Screens are the entry point. Users navigate by the menu they see, not by business domains.
+
+### Workflow
+
+1. **Auto-detect menu system** (`discover detect-screens <repo>`)
+   - Scans for menu definitions: JSON/YAML files, TypeScript constants, framework routing
+   - Extracts screen definitions and menu hierarchy
+   - Outputs `screen_map.yaml` and `menu_tree.json`
+
+2. **Map screens to backend** (integrated with existing `discover scan`)
+   - For each detected screen, links to:
+     - Frontend APIs it calls
+     - Backend controllers/services
+     - Database tables accessed
+     - Batch jobs triggered
+     - External interfaces (EAI/ETL)
+   - Computes source file hashes for drift detection
+
+3. **Generate screen specs** (integrated with existing `discover scan`)
+   - Creates one spec per screen (combined format, not split tech/func)
+   - Sections: Purpose, When Used, User Actions, Rules, Data, Downstream Effects, Permissions, Open Items, Technical Reference
+   - Frontmatter includes drift-detection hashes
+
+4. **Detect drift** (`discover verify-drift <repo> --spec-dir ./docs/screens`)
+   - Reads `source_hashes` from each spec
+   - Compares against current source files
+   - Reports which specs are out of sync
+   - Exit non-zero for CI integration
+
+### Integration with Existing Pipeline
+
+**No replacement, no parallel tracks**: Screen specs are NEW entry points that LINK to existing docs.
+
+```
+docs/
+├── screens/                    # NEW: User entry point
+│   ├── customer-search.md
+│   ├── customer-edit.md
+│   └── ...
+├── ASIS/, ASD/, ASSC/         # EXISTING: Domain-centric docs
+├── PF/, BPMN/, DMN/           # EXISTING: Process/visual artifacts
+├── database/                   # EXISTING: Table schemas
+├── batch-jobs/                 # EXISTING: Batch job specs
+└── interfaces/                 # EXISTING: External interface specs
+```
+
+Screen specs **link out** to supporting docs. Screens do NOT replace domain docs.
+
+### CLI Commands
+
+```bash
+# Detect menu system and extract screens
+discover detect-screens /path/to/repo --output ./data
+
+# Check if specs are out of sync with source code
+discover verify-drift /path/to/repo --spec-dir ./data/specs
+```
+
+### Supported Menu Formats (Hybrid Detection)
+
+- **JSON/YAML files** (`menu.json`, `navigation.yaml`, etc.)
+- **TypeScript constants** (`export const MENU = [...]`)
+- **Framework routing** (Vue Router, React Router, Angular routing configs)
+- **Server-side rendering** apps (Java Spring, .NET ASP.NET, etc.)
+
+### Drift Detection
+
+Each screen spec includes `source_hashes` in frontmatter—SHA256 of all source files the screen depends on. When source changes:
+
+```yaml
+---
+doc_id: myapp-screen-customer-search
+source_hashes:
+  src/pages/Customer/SearchPage.vue: abc123def456
+  src/main/java/.../CustomerController.java: def456ghi789
+  migration_001_customer.sql: ghi789jkl012
+---
+```
+
+`discover verify-drift` flags drifted specs for regeneration (cost-saving: only regen what changed).
+
 ---
 
 ## Using Skills

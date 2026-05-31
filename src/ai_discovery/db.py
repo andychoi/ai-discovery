@@ -17,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -161,6 +161,49 @@ CREATE TABLE IF NOT EXISTS scenario_flows (
     UNIQUE(scan_id, scenario_id)
 );
 CREATE INDEX IF NOT EXISTS idx_scenario_flows_scan ON scenario_flows(scan_id);
+
+CREATE TABLE IF NOT EXISTS screens (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id             INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
+    screen_id           TEXT NOT NULL,
+    menu_path_json      TEXT,
+    label               TEXT,
+    path                TEXT,
+    fe_component        TEXT,
+    crud_profile        TEXT,
+    interaction_mode    TEXT,
+    permissions_json    TEXT,
+    related_screens_json TEXT,
+    metadata_json       TEXT,
+    created_at          TEXT NOT NULL,
+    UNIQUE(scan_id, screen_id)
+);
+CREATE INDEX IF NOT EXISTS idx_screens_scan ON screens(scan_id);
+CREATE INDEX IF NOT EXISTS idx_screens_id ON screens(screen_id);
+
+CREATE TABLE IF NOT EXISTS screen_mappings (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    screen_id           INTEGER NOT NULL REFERENCES screens(id) ON DELETE CASCADE,
+    fe_api_calls_json   TEXT,
+    be_controllers_json TEXT,
+    be_services_json    TEXT,
+    db_tables_json      TEXT,
+    batch_jobs_json     TEXT,
+    external_interfaces_json TEXT,
+    source_files_json   TEXT,
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_screen_mappings_screen ON screen_mappings(screen_id);
+
+CREATE TABLE IF NOT EXISTS screen_source_hashes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    screen_id   INTEGER NOT NULL REFERENCES screens(id) ON DELETE CASCADE,
+    file_path   TEXT NOT NULL,
+    sha256_hash TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    UNIQUE(screen_id, file_path)
+);
+CREATE INDEX IF NOT EXISTS idx_source_hashes_screen ON screen_source_hashes(screen_id);
 
 CREATE TABLE IF NOT EXISTS llm_costs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
