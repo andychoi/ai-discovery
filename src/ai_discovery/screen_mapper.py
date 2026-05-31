@@ -53,6 +53,20 @@ class DataInjectionPoint:
 
 
 @dataclass
+class ETLBatchJob:
+    """Represents an ETL/EAI batch job that populates external tables."""
+
+    job_name: str
+    job_class: str
+    file_path: str
+    tables_populated: list[str] = field(default_factory=list)  # Tables this job writes to
+    confidence: float = 0.7  # Confidence this is an ETL job
+    trigger_type: str = "unknown"  # internal, external_http, external_queue
+    reason: str = ""  # Why we believe this is an ETL job
+    external_sources: list[str] = field(default_factory=list)  # Where it gets data (FTP, HTTP, etc.)
+
+
+@dataclass
 class ScreenMapping:
     """Enhanced screen with backend linkages."""
 
@@ -65,6 +79,7 @@ class ScreenMapping:
     batch_jobs: list[str] = field(default_factory=list)
     external_interfaces: list[str] = field(default_factory=list)
     data_injection_points: list[DataInjectionPoint] = field(default_factory=list)  # External data sources
+    etl_batch_jobs: list[ETLBatchJob] = field(default_factory=list)  # ETL jobs populating external tables
     source_files: list[str] = field(default_factory=list)  # All source files touched
     source_hashes: dict[str, str] = field(default_factory=dict)  # file_path -> SHA256
 
@@ -76,6 +91,7 @@ class ScreenMapping:
         result["be_controllers"] = [asdict(comp) for comp in self.be_controllers]
         result["be_services"] = [asdict(comp) for comp in self.be_services]
         result["data_injection_points"] = [asdict(point) for point in self.data_injection_points]
+        result["etl_batch_jobs"] = [asdict(job) for job in self.etl_batch_jobs]
         return result
 
 
@@ -203,6 +219,96 @@ class ScreenMapper:
             injection_points.append(injection_point)
 
         return injection_points
+
+    def detect_etl_batch_jobs(self, orphaned_tables: list[str], injection_points: list[DataInjectionPoint]) -> list[ETLBatchJob]:
+        """
+        Detect ETL/EAI batch jobs that populate orphaned tables.
+
+        ETL jobs are identified by:
+        1. Accessing the same tables that are marked as orphaned (externally injected)
+        2. Having access to external import mechanisms (FTP, SFTP, HTTP)
+        3. Being triggered by external events (REST endpoints, message queues)
+        4. Processing large data volumes (batch patterns)
+
+        Returns list of detected ETL jobs with confidence scores.
+        """
+        etl_jobs = []
+
+        # Get list of orphaned table names
+        orphaned_table_names = {ip.table_name for ip in injection_points if ip.injection_type == "direct_database"}
+
+        # Search for batch job files
+        job_files = list(self.repo_path.glob("src/**/*Job.java"))
+        job_files.extend(list(self.repo_path.glob("src/**/*JobConfig.java")))
+        job_files.extend(list(self.repo_path.glob("src/**/batch/**/*.java")))
+
+        for job_file in job_files:
+            try:
+                content = job_file.read_text(errors="ignore")
+
+                # Check if this job is an ETL job (reads from external sources, writes to orphaned tables)
+                has_etl_pattern = False
+                tables_written = set()
+                external_sources = []
+                trigger_type = "unknown"
+
+                # Detect if job has ETL characteristics
+                # 1. Accesses orphaned tables (read or write)
+                for orphaned_table in orphaned_table_names:
+                    if orphaned_table in content:
+                        has_etl_pattern = True
+                        tables_written.add(orphaned_table)
+
+                # 2. Has external source access (FTP, SFTP, HTTP)
+                if "FTPClient" in content or "FTP" in content:
+                    external_sources.append("FTP")
+                    has_etl_pattern = True
+                if "ChannelSftp" in content or "JSch" in content or "SFTP" in content:
+                    external_sources.append("SFTP")
+                    has_etl_pattern = True
+                if "HttpClient" in content or "RestTemplate" in content:
+                    external_sources.append("HTTP")
+                    has_etl_pattern = True
+
+                # 3. Detect trigger type
+                if "@Scheduled" in content:
+                    trigger_type = "internal"
+                if "@PostMapping" in content or "@RequestMapping" in content:
+                    trigger_type = "external_http"
+                if "@KafkaListener" in content or "@JmsListener" in content:
+                    trigger_type = "external_queue"
+
+                # If this looks like an ETL job, record it
+                if has_etl_pattern:
+                    class_match = re.search(r'public\s+class\s+(\w+)', content)
+                    if class_match:
+                        job_class = class_match.group(1)
+                        job_name = re.sub(r'(Job|JobConfig|JobDefinition)$', '', job_class)
+
+                        confidence = 0.7
+                        if external_sources:
+                            confidence = min(0.9, confidence + 0.1 * len(external_sources))
+
+                        reason = f"ETL job {job_name} accesses orphaned tables: {', '.join(sorted(tables_written))}"
+                        if external_sources:
+                            reason += f" with external source access: {', '.join(external_sources)}"
+
+                        etl_job = ETLBatchJob(
+                            job_name=job_name,
+                            job_class=job_class,
+                            file_path=str(job_file.relative_to(self.repo_path)),
+                            tables_populated=sorted(list(tables_written)),
+                            confidence=confidence,
+                            trigger_type=trigger_type,
+                            reason=reason,
+                            external_sources=external_sources,
+                        )
+                        etl_jobs.append(etl_job)
+
+            except Exception:
+                pass
+
+        return etl_jobs
 
     def _find_potential_sources(self, table: str, be_services: list[BackendComponent]) -> list[str]:
         """Identify potential external systems that might inject this table."""
@@ -368,7 +474,10 @@ class ScreenMapper:
         # 8. Detect data injection points (orphaned tables, stored procedures, views)
         mapping.data_injection_points = self.detect_data_injection_points(mapping.db_tables, mapping.be_services)
 
-        # 9. Compute hashes
+        # 9. Detect ETL batch jobs that populate external tables
+        mapping.etl_batch_jobs = self.detect_etl_batch_jobs(mapping.db_tables, mapping.data_injection_points)
+
+        # 10. Compute hashes
         mapping.source_files = list(set(mapping.source_files))  # Deduplicate
         mapping.source_hashes = self._compute_source_hashes(mapping.source_files)
 
