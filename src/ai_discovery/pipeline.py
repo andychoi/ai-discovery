@@ -43,13 +43,16 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 # Phase spec mapping (supports both number and name).
-# Contiguous integers 5..19 — no decimal sub-phases. Optional and
+# Phase 2: screen-centric LLM spec generation (NEW, parallel to domain phases)
+# Phases 5-19: domain-centric analysis (existing)
+# Contiguous integers — no decimal sub-phases. Optional and
 # previously-half-step stages (execution_slices, scenario_flow_inference,
 # visual_artifacts, process_mining) get their own integer slot. Inline
 # operations that are not checkpointed (link_entry_points, fsm_rollup_etc)
 # are labelled with letter suffixes (8a, 8b) in code comments only and do
 # not appear in this dict.
 _PHASE_SPECS = {
+    2: "screen_llm_specs",
     5: "lang_detect",
     6: "parse",
     7: "domain_classify",
@@ -429,6 +432,82 @@ def run_pipeline(
         finally:
             conn.close()
         console.print(f"  Scan run [bold]#{scan_id}[/] created")
+
+    # ------------------------------------------------------------------
+    # 2. Screen-centric LLM spec generation (PARALLEL to domain analysis)
+    # ------------------------------------------------------------------
+    from .menu_detector import detect_and_build_screens
+    from .screen_mapper import map_all_screens
+    from .ai.screen_spec_generator import (
+        generate_all_screen_specs, persist_screen_specs,
+    )
+    from .generators.screen_doc_writer import write_all_screen_specs
+
+    if _phase_should_run(2, start_phase, skip_phases):
+        with _with_checkpoint(db_path, scan_id, 2, "screen_llm_specs"):
+            console.print("[bold cyan]Phase 2: Generating screen specs...[/]")
+
+            # Detect screens from menu
+            with _timed("screen detect"), console.status("[bold cyan]Detecting screens..."):
+                menu_items, screens = detect_and_build_screens(resolved.repo_path)
+
+            if not screens:
+                console.print("[yellow]No screens detected — skipping Phase 2 LLM.[/]")
+            else:
+                console.print(f"  Screens detected: [green]{len(screens)}[/]")
+
+                # Map screens to backend
+                with _timed("screen map"), console.status("[bold cyan]Mapping screens to backend..."):
+                    screen_mappings = map_all_screens(screens, resolved.repo_path)
+
+                # Generate specs via LLM
+                if not _budget_ok(llm_client, config, "Screen spec generation"):
+                    console.print("[yellow]Budget exceeded — skipping Phase 2 LLM.[/]")
+                else:
+                    with _timed("screen specs"), Progress(
+                        SpinnerColumn(),
+                        TextColumn("[bold cyan]Generating screen specs"),
+                        BarColumn(),
+                        TaskProgressColumn(),
+                        console=console,
+                    ) as progress:
+                        ptask = progress.add_task("Generating", total=len(screen_mappings))
+
+                        def _on_screen_progress(done: int, total: int):
+                            progress.update(ptask, completed=done, total=total)
+
+                        screen_specs = generate_all_screen_specs(
+                            screen_mappings,
+                            llm_client,
+                            db_path,
+                            max_workers=max(1, config.max_concurrent or 1),
+                            on_progress=_on_screen_progress,
+                        )
+
+                    # Write specs to disk
+                    if screen_specs:
+                        with _timed("write screen specs"), console.status(
+                            "[bold cyan]Writing screen specs to disk..."
+                        ):
+                            write_results = write_all_screen_specs(
+                                screen_specs,
+                                docs_dir,
+                                project_slug,
+                                repo_url=resolved.url or str(resolved.repo_path),
+                                repo_commit=resolved.commit_sha,
+                            )
+                            written = sum(1 for r in write_results if r["status"] == "written")
+                            console.print(f"  Screen specs: [green]{written}/{len(screen_specs)}[/] written")
+
+                    # Persist to DB
+                    persist_screen_specs(screen_specs, db_path, scan_id)
+                    screen_cost = llm_client.get_costs().get("screen", {}).get("est_usd", 0.0)
+                    console.print(
+                        f"  Screen cost: ${screen_cost:.4f}  "
+                        f"(total so far: ${llm_client.total_cost_usd():.4f})"
+                    )
+    else:
+        console.print("[dim]Phase 2 (screen_llm_specs): skipped (already complete)[/]")
 
     # ------------------------------------------------------------------
     # 5. Detect languages

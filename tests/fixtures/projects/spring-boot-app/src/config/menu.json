@@ -1,0 +1,91 @@
+{
+  "items": [
+    {
+      "id": "catalog",
+      "label": "Catalog Management",
+      "path": "/catalog",
+      "roles": ["ROLE_ADMIN"],
+      "children": [
+        {
+          "id": "products-list",
+          "label": "Products",
+          "path": "/catalog/products"
+        },
+        {
+          "id": "products-add",
+          "label": "Add Product",
+          "path": "/catalog/products/new"
+        },
+        {
+          "id": "products-edit",
+          "label": "Edit Product",
+          "path": "/catalog/products/:id/edit"
+        },
+        {
+          "id": "categories",
+          "label": "Categories",
+          "path": "/catalog/categories"
+        }
+      ]
+    },
+    {
+      "id": "orders",
+      "label": "Order Management",
+      "path": "/orders",
+      "roles": ["ROLE_ADMIN", "ROLE_USER"],
+      "children": [
+        {
+          "id": "orders-list",
+          "label": "Orders",
+          "path": "/orders"
+        },
+        {
+          "id": "orders-detail",
+          "label": "Order Details",
+          "path": "/orders/:id"
+        },
+        {
+          "id": "orders-invoice",
+          "label": "Invoice",
+          "path": "/orders/:id/invoice"
+        }
+      ]
+    },
+    {
+      "id": "customers",
+      "label": "Customers",
+      "path": "/customers",
+      "roles": ["ROLE_ADMIN"],
+      "children": [
+        {
+          "id": "customers-list",
+          "label": "Customers",
+          "path": "/customers"
+        },
+        {
+          "id": "customers-detail",
+          "label": "Customer Detail",
+          "path": "/customers/:id"
+        }
+      ]
+    },
+    {
+      "id": "reports",
+      "label": "Reports",
+      "path": "/reports",
+      "roles": ["ROLE_ADMIN"],
+      "children": [
+        {
+          "id": "reports-sales",
+          "label": "Sales Report",
+          "path": "/reports/sales"
+        },
+        {
+          "id": "reports-inventory",
+          "label": "Inventory",
+          "path": "/reports/inventory"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "items": [
+    {
+      "id": "products",
+      "label": "Products",
+      "path": "/products",
+      "children": [
+        {
+          "id": "products-list",
+          "label": "All Products",
+          "path": "/products"
+        },
+        {
+          "id": "products-create",
+          "label": "Add New",
+          "path": "/products/create"
+        }
+      ]
+    },
+    {
+      "id": "orders",
+      "label": "Orders",
+      "path": "/orders",
+      "children": [
+        {
+          "id": "orders-list",
+          "label": "Orders",
+          "path": "/orders"
+        },
+        {
+          "id": "orders-detail",
+          "label": "Details",
+          "path": "/orders/:id"
+        }
+      ]
+    }
+  ]
+}

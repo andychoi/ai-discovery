@@ -431,6 +431,7 @@ class LLMClient:
         entry["tokens_out"] += tokens_out
         cost_per_1m = {
             "tier1": (0.80, 4.0), "tier2": (3.0, 15.0), "tier3": (15.0, 75.0),
+            "screen": (3.0, 15.0),  # Sonnet 4.6 rates (same as tier2)
             "advisor": (15.0, 75.0),  # Opus 4.7 rates
         }
         in_rate, out_rate = cost_per_1m.get(tier, (3.0, 15.0))
