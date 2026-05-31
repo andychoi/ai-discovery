@@ -102,7 +102,7 @@ data/todoapp/
 │   ├── SPEC/                  # Technical specifications
 │   ├── DM/                    # Data model docs
 │   ├── IF/                    # Interface definitions
-│   └── PF/                    # Process flows (BPMN, Mermaid, PlantUML)
+│   └── PF/                    # Process flows (BPMN, Mermaid sequence + flowchart)
 ├── mining_reports/            # Process mining analysis (if enabled)
 │   ├── scenario_*.md          # Markdown reports
 │   └── scenario_*.json        # JSON metrics
@@ -121,7 +121,7 @@ data/todoapp/
 | 12 | 15-30m | Tier 2: Flow analysis (standard model) |
 | 13 | 5-10m | Infer scenario flows from slices |
 | 14 | 10-30m | Tier 3: Doc rollup (deep model) |
-| 15 | 5-10m | Generate BPMN, Mermaid, PlantUML |
+| 15 | 5-10m | Generate BPMN, Mermaid (sequence + flowchart) |
 | **16** | **10-20m** | **Process mining (optional)** |
 | **17** | **30-60m** | **Self-review (optional)** |
 | 18–19 | 5m | Render markdown files, finalise |
@@ -347,7 +347,7 @@ watch -n 2 'nvidia-smi'  # If using NVIDIA GPU
 
 - **As-Is Documentation**: Domain overview, responsibilities, dependencies
 - **Detailed Specs**: Class diagrams, API contracts, data models
-- **Process Flows**: BPMN, Mermaid sequence, PlantUML activity
+- **Process Flows**: BPMN, Mermaid sequence + flowchart activity
 - **Mining Reports**: Conformance metrics, bottlenecks, edge frequencies
 
 ### Confidence Scores

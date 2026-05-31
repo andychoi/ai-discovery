@@ -95,7 +95,7 @@ Pipeline Stages:
   Stage 11:         Tier 1 summarization (10-20 min)
   Stage 12:         Tier 2 flow analysis (15-30 min)
   Stage 12.5:       Scenario flow inference (5-10 min)
-  Stage 13.5:       BPMN/Mermaid/PlantUML artifacts (5-10 min)
+  Stage 13.5:       BPMN + Mermaid (seq + flowchart) artifacts (5-10 min)
   Stage 10.5:       Process mining [OPTIONAL] (10-20 min)
   Stage 15:         Markdown rendering (5 min)
   Stage 14:         Self-review [OPTIONAL] (30-60 min)
@@ -103,7 +103,7 @@ Pipeline Stages:
 Output Artifacts:
   docs/ASIS/        As-is domain documentation
   docs/ASD/         As-is detailed specs
-  docs/PF/          Process flows (BPMN, Mermaid, PlantUML)
+  docs/PF/          Process flows (BPMN, Mermaid sequence + flowchart)
   mining_reports/   Mining analysis (conformance, bottlenecks)
 
 Requirements:

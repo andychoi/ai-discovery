@@ -29,7 +29,7 @@ STEP 3: Review Output
   SPEC/         Technical specs
   DM/           Data models
   IF/           Interfaces
-  PF/           Process flows (BPMN, Mermaid, PlantUML)
+  PF/           Process flows (BPMN, Mermaid sequence + flowchart)
 
   $ cat data/todoapp/docs/ASIS/*.md
   $ cat data/todoapp/docs/PF/*.md
@@ -73,7 +73,7 @@ Tier 2 Flow Analysis    (15-30m)  Infer business flows (4B model)
   ↓
 Scenario Inference      (5-10m)   Extract process flows
   ↓
-BPMN Generation         (5-10m)   Create diagrams, PlantUML, Mermaid
+BPMN Generation         (5-10m)   Create BPMN + Mermaid (seq + flowchart)
   ↓
 Process Mining [OPT]    (10-20m)  Conformance analysis, bottlenecks
   ↓
@@ -171,7 +171,7 @@ discovery-todoapp.db  SQLite cache (allows resume)
 
 docs/ASIS/            Domain overview documents
 docs/ASD/             Detailed specifications
-docs/PF/              Process flows (BPMN, Mermaid, PlantUML)
+docs/PF/              Process flows (BPMN, Mermaid sequence + flowchart)
 mining_reports/       Conformance analysis (if enabled)
 
 ════════════════════════════════════════════════════════════════════════════

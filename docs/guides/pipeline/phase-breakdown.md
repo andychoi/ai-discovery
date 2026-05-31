@@ -194,7 +194,7 @@ Stores in `generated_docs` table.
 
 ### Phase 15: Visual Artifacts
 **Input**: `scenario_flows`  
-**Output**: BPMN 2.0 XML, Mermaid sequences, PlantUML, IPO markdown per scenario  
+**Output**: BPMN 2.0 XML, Mermaid sequence + flowchart diagrams, IPO markdown per scenario  
 **Time**: 1–10s
 
 Generates diagram artifacts from the inferred flows. Persists scenario+artifact rows so render and ingest can locate them. Always runs (no `enabled` flag).

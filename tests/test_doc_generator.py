@@ -129,3 +129,42 @@ class TestWriteDocs:
         assert r["doc_type"] == "as-is"
         assert r["domain"] == "Auth Service"
         assert r["confidence"] == 0.85
+
+
+class TestWriteScenarioDocsActivityDiagram:
+    """Verify the PF markdown layout for the Mermaid flowchart activity block."""
+
+    def _make_flow(self):
+        from ai_discovery.ai.flow_analyzer import ScenarioFlow
+        return ScenarioFlow(
+            scenario_id="placeorder",
+            domain="orders",
+            steps=[{"step": 1, "name": "Validate", "type": "PROCESS", "description": ""}],
+            confidence=0.9,
+        )
+
+    def _artifacts(self):
+        return {
+            "placeorder": {
+                "mermaid": "sequenceDiagram\n    User->>System: Validate",
+                "mermaid_flowchart": 'flowchart TD\n    start(("Start"))\n    step_0["Validate"]\n    end_node(("End"))\n    start --> step_0\n    step_0 --> end_node',
+                "bpmn": "<bpmn/>",
+                "ipo": "### IPO",
+            }
+        }
+
+    def test_inline_mermaid_block_under_activity_diagram_heading(self, tmp_path: Path):
+        from ai_discovery.generators.doc_generator import write_scenario_docs
+
+        results = write_scenario_docs(
+            [self._make_flow()], self._artifacts(), tmp_path, "myproj"
+        )
+        md = Path(results[0]["file_path"]).read_text(encoding="utf-8")
+
+        assert "## Activity Diagram" in md
+        # Single inline mermaid block — no SVG reference, no <details> wrapper.
+        assert "```mermaid\nflowchart TD" in md
+        assert "![Activity diagram]" not in md
+        assert "<details>" not in md
+        # No orphan SVG file should be created.
+        assert not list(tmp_path.glob("**/*.activity.svg"))

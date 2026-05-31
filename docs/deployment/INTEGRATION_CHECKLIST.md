@@ -129,7 +129,7 @@ discover scan ./myrepo -p myproject
 ```
 ┌─────────────────────────────────────────┐
 │ Pipeline Stage 15: Visual Artifacts   │
-│ (BPMN, Mermaid, PlantUML, IPO)          │
+│ (BPMN, Mermaid, IPO)                    │
 └──────────────┬──────────────────────────┘
                │
                ↓

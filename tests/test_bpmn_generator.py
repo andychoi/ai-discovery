@@ -125,31 +125,37 @@ def test_bpmn_default_step_is_service_task(gen: BPMNGenerator):
 
 
 # ---------------------------------------------------------------------------
-# PlantUML
+# Mermaid flowchart
 # ---------------------------------------------------------------------------
 
 
-def test_plantuml_starts_and_ends_correctly(gen: BPMNGenerator):
+def test_mermaid_flowchart_declares_direction_and_endpoints(gen: BPMNGenerator):
     flow = _make_flow()
-    puml = gen.generate_plantuml(flow)
-    assert puml.startswith("@startuml")
-    assert puml.strip().endswith("@enduml")
+    fc = gen.generate_mermaid_flowchart(flow)
+    assert fc.startswith("flowchart TD")
+    assert 'start(("Start"))' in fc
+    assert 'end_node(("End"))' in fc
 
 
-def test_plantuml_gateway_uses_if_block(gen: BPMNGenerator):
+def test_mermaid_flowchart_gateway_renders_diamond_with_labeled_edges(gen: BPMNGenerator):
     flow = _make_flow(steps=[
         {"step": 1, "name": "Is Valid?", "type": "GATEWAY", "description": ""},
     ])
-    puml = gen.generate_plantuml(flow)
-    assert "if (" in puml
-    assert "endif" in puml
+    fc = gen.generate_mermaid_flowchart(flow)
+    # Diamond uses {"label"} syntax in Mermaid.
+    assert 'gw_0{"Is Valid?"}' in fc
+    assert "gw_0 -->|yes| gw_0_yes" in fc
+    assert "gw_0 -->|no| gw_0_no" in fc
+    # Both branches must reconverge on the terminal node.
+    assert "gw_0_yes --> end_node" in fc
+    assert "gw_0_no --> end_node" in fc
 
 
-def test_plantuml_contains_step_names(gen: BPMNGenerator):
+def test_mermaid_flowchart_contains_step_names(gen: BPMNGenerator):
     flow = _make_flow()
-    puml = gen.generate_plantuml(flow)
-    assert "Validate Order" in puml
-    assert "Persist Order" in puml
+    fc = gen.generate_mermaid_flowchart(flow)
+    assert "Validate Order" in fc
+    assert "Persist Order" in fc
 
 
 # ---------------------------------------------------------------------------

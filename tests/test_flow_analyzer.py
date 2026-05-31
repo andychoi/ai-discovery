@@ -401,7 +401,7 @@ def test_persist_and_load_scenario_flows(tmp_path: Path):
     artifacts = {
         "scenario_create_1": {
             "mermaid": "sequenceDiagram\n    User->>System: Validate",
-            "plantuml": "@startuml\nstart\n:Validate;\nstop\n@enduml",
+            "mermaid_flowchart": 'flowchart TD\n    start(("Start"))\n    step_0["Validate"]\n    end_node(("End"))\n    start --> step_0\n    step_0 --> end_node',
             "bpmn": "<bpmn/>",
             "ipo": "### IPO",
         }

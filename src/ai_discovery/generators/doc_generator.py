@@ -293,7 +293,7 @@ def write_scenario_docs(
 
     Args:
         scenario_flows: List of ScenarioFlow objects
-        artifacts: dict[scenario_id] → {mermaid, plantuml, ipo, bpmn}
+        artifacts: dict[scenario_id] → {mermaid, mermaid_flowchart, ipo, bpmn}
         output_dir: Output directory
         project_slug: Project slug for doc ID
         repo_url: Repository URL
@@ -332,6 +332,7 @@ def write_scenario_docs(
     for i, flow in enumerate(scenario_flows, start=1):
         art = artifacts.get(flow.scenario_id, {})
         content_parts: list[str] = []
+        filename = _make_scenario_filename(flow.domain, flow.scenario_id, i)
 
         if flow.steps:
             step_lines = ["## Business Steps\n"]
@@ -350,9 +351,9 @@ def write_scenario_docs(
         if art.get("ipo"):
             content_parts.append(art["ipo"])
 
-        if art.get("plantuml"):
+        if art.get("mermaid_flowchart"):
             content_parts.append(
-                f"## Activity Diagram\n\n```plantuml\n{art['plantuml']}\n```"
+                f"## Activity Diagram\n\n```mermaid\n{art['mermaid_flowchart']}\n```"
             )
 
         # Include process mining analysis if available
@@ -387,7 +388,6 @@ def write_scenario_docs(
             links_to=pf_links_to,
             content=content,
         )
-        filename = _make_scenario_filename(flow.domain, flow.scenario_id, i)
         file_path = prefix_dir / filename
         file_path.write_text(rendered, encoding="utf-8")
         results.append(

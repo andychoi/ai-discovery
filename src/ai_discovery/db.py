@@ -17,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 9
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -152,9 +152,9 @@ CREATE TABLE IF NOT EXISTS scenario_flows (
     output_json     TEXT,
     data_flow_json  TEXT,
     interfaces_json TEXT,
-    mermaid         TEXT,
-    plantuml        TEXT,
-    bpmn_xml        TEXT,
+    mermaid             TEXT,
+    mermaid_flowchart   TEXT,
+    bpmn_xml            TEXT,
     ipo_md          TEXT,
     confidence      REAL DEFAULT 1.0,
     created_at      TEXT NOT NULL,
@@ -438,6 +438,21 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             conn.execute(
                 "ALTER TABLE generated_docs ADD COLUMN verified_row_count INTEGER DEFAULT 0"
             )
+
+    if current < 9:
+        # Activity diagrams are emitted as inline Mermaid flowcharts. Databases
+        # created before this carried the diagram source in a legacy `plantuml`
+        # or `d2` column (PlantUML, then D2). Ensure the Mermaid column exists
+        # and drop the legacy columns so no DB retains them. The old PlantUML/D2
+        # source is format-incompatible and is not preserved; the flowchart is
+        # regenerated on the next scan (or via scripts/regen_pf_diagrams.py).
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(scenario_flows)").fetchall()}
+        if "mermaid_flowchart" not in cols:
+            conn.execute("ALTER TABLE scenario_flows ADD COLUMN mermaid_flowchart TEXT")
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(scenario_flows)").fetchall()}
+        for legacy in ("plantuml", "d2"):
+            if legacy in cols:
+                conn.execute(f"ALTER TABLE scenario_flows DROP COLUMN {legacy}")
 
 
 # ---------------------------------------------------------------------------

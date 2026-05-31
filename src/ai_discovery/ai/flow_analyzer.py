@@ -416,7 +416,7 @@ def persist_scenario_flows(
                 """INSERT OR REPLACE INTO scenario_flows
                    (scan_id, scenario_id, domain, steps_json, input_json, process_json,
                     output_json, data_flow_json, interfaces_json,
-                    mermaid, plantuml, bpmn_xml, ipo_md, confidence, created_at)
+                    mermaid, mermaid_flowchart, bpmn_xml, ipo_md, confidence, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     scan_id,
@@ -429,7 +429,7 @@ def persist_scenario_flows(
                     json.dumps(flow.data_flow),
                     json.dumps(flow.external_interfaces),
                     art.get("mermaid", ""),
-                    art.get("plantuml", ""),
+                    art.get("mermaid_flowchart", ""),
                     art.get("bpmn", ""),
                     art.get("ipo", ""),
                     flow.confidence,
@@ -481,7 +481,7 @@ def load_scenario_flows(scan_id: int, db_path: Path) -> tuple[list[ScenarioFlow]
         flows.append(flow)
         artifacts[row["scenario_id"]] = {
             "mermaid": row["mermaid"] or "",
-            "plantuml": row["plantuml"] or "",
+            "mermaid_flowchart": row["mermaid_flowchart"] or "",
             "bpmn": row["bpmn_xml"] or "",
             "ipo": row["ipo_md"] or "",
         }

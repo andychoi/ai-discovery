@@ -1136,7 +1136,7 @@ def run_pipeline(
         persist_rollups(rollups, scan_id, db_path, project_slug)
         console.print(f"  Documents: [green]{len(rollups)}[/] generated")
 
-    # 15: Generate Visual Artifacts (BPMN/Mermaid/PlantUML) and persist
+    # 15: Generate Visual Artifacts (BPMN + Mermaid sequence/flowchart) and persist
     from .generators.bpmn_generator import BPMNGenerator
     from .ai.flow_analyzer import persist_scenario_flows
 
@@ -1148,7 +1148,7 @@ def run_pipeline(
         for flow in scenario_flows:
             scenario_artifacts[flow.scenario_id] = {
                 "mermaid": bpmn_gen.generate_mermaid_sequence(flow),
-                "plantuml": bpmn_gen.generate_plantuml(flow),
+                "mermaid_flowchart": bpmn_gen.generate_mermaid_flowchart(flow),
                 "bpmn": bpmn_gen.generate_bpmn_xml(flow),
                 "ipo": bpmn_gen.generate_ipo_markdown(flow),
             }

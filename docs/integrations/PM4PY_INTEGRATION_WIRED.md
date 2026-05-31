@@ -102,7 +102,7 @@ process_mining:
 ## Flow Diagram
 
 ```
-Phase 15: Visual artifacts (BPMN, Mermaid, PlantUML, IPO)
+Phase 15: Visual artifacts (BPMN, Mermaid sequence + flowchart, IPO)
        ↓
 Phase 16: Process Mining (OPTIONAL)
        ├─ Check: config.process_mining.enabled?

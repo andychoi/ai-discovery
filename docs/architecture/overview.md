@@ -128,7 +128,7 @@ Budget guard: each tier checks `total_cost_usd < budget_limit_usd` before runnin
 | `domains` | Business domain metadata; entry_points, tech_stack (JSON) |
 | `node_summaries` | Tier 1 LLM output per node; purpose, business_rules, io_summary |
 | `business_flows` | Tier 2 domain flows; flow_type, name, involved node_ids |
-| `scenario_flows` | Execution scenario; steps, IPO, mermaid/plantuml/bpmn artifacts |
+| `scenario_flows` | Execution scenario; steps, IPO, mermaid sequence/flowchart/bpmn artifacts |
 | `generated_docs` | Tier 3 output; content_md, confidence, push_status, unverified_claims |
 | `review_claims` | Self-review; claim_text, status (verified/unverified/contradicted) |
 | `llm_costs` | Per-tier token counts and estimated USD cost |

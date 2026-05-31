@@ -1,4 +1,4 @@
-"""Generates BPMN 2.0, Mermaid, and PlantUML diagrams from ScenarioFlow."""
+"""Generates BPMN 2.0 and Mermaid (sequence + flowchart) diagrams from ScenarioFlow."""
 
 from __future__ import annotations
 
@@ -186,24 +186,51 @@ class BPMNGenerator:
         return "\n".join(xml)
 
     # ------------------------------------------------------------------
-    # PlantUML activity diagram
+    # Mermaid flowchart activity diagram
     # ------------------------------------------------------------------
 
-    def generate_plantuml(self, flow: ScenarioFlow) -> str:
-        """Generate a PlantUML activity diagram."""
-        lines = ["@startuml", f"title {flow.scenario_id}", "start"]
-        for step in flow.steps:
-            name = step.get("name", "Step")
+    def generate_mermaid_flowchart(self, flow: ScenarioFlow) -> str:
+        """Generate a Mermaid flowchart activity diagram.
+
+        Renders each step as a rectangle and each GATEWAY as a diamond with
+        two labeled outgoing edges that reconverge on the following step.
+        Start and end events are circles. Branch reconvergence is drawn
+        explicitly because Mermaid has no implicit vertical merge.
+
+        The terminal node is named `end_node` because `end` is a reserved
+        keyword in Mermaid (used to close subgraph blocks).
+        """
+        nodes: list[str] = ['start(("Start"))']
+        edges: list[str] = []
+
+        prev_ids: list[str] = ["start"]
+
+        for i, step in enumerate(flow.steps):
+            label = _mermaid_label(step.get("name", "Step"))
             if step.get("type") == "GATEWAY":
-                lines.append(f"if ({name}?) then (yes)")
-                lines.append("  :Continue;")
-                lines.append("else (no)")
-                lines.append("  :Skip;")
-                lines.append("endif")
+                gw_id = f"gw_{i}"
+                yes_id = f"gw_{i}_yes"
+                no_id = f"gw_{i}_no"
+                nodes.append(f'{gw_id}{{"{label}"}}')
+                nodes.append(f'{yes_id}["Continue"]')
+                nodes.append(f'{no_id}["Skip"]')
+                edges.extend(f"{p} --> {gw_id}" for p in prev_ids)
+                edges.append(f"{gw_id} -->|yes| {yes_id}")
+                edges.append(f"{gw_id} -->|no| {no_id}")
+                prev_ids = [yes_id, no_id]
             else:
-                lines.append(f":{name};")
-        lines.extend(["stop", "@enduml"])
-        return "\n".join(lines)
+                step_id = f"step_{i}"
+                nodes.append(f'{step_id}["{label}"]')
+                edges.extend(f"{p} --> {step_id}" for p in prev_ids)
+                prev_ids = [step_id]
+
+        nodes.append('end_node(("End"))')
+        edges.extend(f"{p} --> end_node" for p in prev_ids)
+
+        out = ["flowchart TD"]
+        out.extend(f"    {n}" for n in nodes)
+        out.extend(f"    {e}" for e in edges)
+        return "\n".join(out)
 
     # ------------------------------------------------------------------
     # IPO markdown table

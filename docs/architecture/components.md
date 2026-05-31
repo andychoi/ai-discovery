@@ -44,7 +44,7 @@ src/ai_discovery/
 │
 ├── output/
 │   ├── doc_generator.py ← Jinja2 render; slug doc_ids; PREFIX folder layout
-│   ├── bpmn_generator.py← Mermaid, PlantUML, BPMN 2.0 XML, IPO table, FSM, pseudo event log
+│   ├── bpmn_generator.py← Mermaid (sequence + flowchart), BPMN 2.0 XML, IPO table, FSM, pseudo event log
 │   ├── push.py          ← Ingest to DocHub API / Gitea / offline copy
 │   └── templates/       ← *.md.j2 per doc type
 │
@@ -89,7 +89,7 @@ src/ai_discovery/
 - **`output/bpmn_generator.py`** — Artifact generation
   - BPMN 2.0 XML with swimlanes
   - Mermaid sequence/state diagrams
-  - PlantUML activity diagrams
+  - Mermaid flowchart activity diagrams (renders inline on GitHub; no external server, no extra binary)
   - IPO markdown tables
   - Pseudo event logs for process mining
 
