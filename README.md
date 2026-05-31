@@ -418,6 +418,176 @@ discover ingest-docs ./docs -p myproject \
 
 Stale/duplicate files are ingested with `status=Deprecated` (not skipped). Subsequent runs fetch the next free doc ID to avoid collisions.
 
+## Screen-Centric Documentation (v0.3+)
+
+**New in v0.3**: Generate user-facing documentation organized by application screens instead of business domains.
+
+### What is Screen-Centric Mode?
+
+Traditional discovery generates domain-centric docs ("Customer Domain", "Order Domain"). Screen-centric mode generates docs organized by **screens users see** (menus), providing a complete end-to-end view from UI click → backend logic → database → external systems.
+
+**Why?** Users navigate apps by menu, not by domain. A single screen often spans multiple domains. One screen spec answers: "What can I do here?" and "What happens when I submit?"
+
+### How It Works
+
+#### 1. Auto-Detect Menus
+
+Automatically discovers menu structure from:
+- JSON/YAML menu files (`menu.json`, `navigation.yaml`)
+- Framework routing configs (Vue Router, React Router, Angular routes)
+- TypeScript constants (`export const MENU = [...]`)
+
+```bash
+discover detect-screens /path/to/repo --output ./data
+```
+
+**Output**: `screen_map.yaml` with detected screens and `menu_tree.json` with hierarchy.
+
+#### 2. Link to Backend
+
+For each screen, automatically maps:
+- Frontend API calls (from Vue/React components)
+- Backend controllers/services (Java Spring, ASP.NET, Express)
+- Database tables accessed
+- Batch jobs triggered (ETL, scheduled tasks)
+- External system integrations (REST APIs, Kafka, FTP imports)
+- Data injection points (orphaned tables, stored procedures, views)
+
+```yaml
+screens:
+  - screen_id: customer-search
+    menu_path: [Customers, Search]
+    fe_component: src/pages/Customer/SearchPage.vue
+    fe_api_calls:
+      - GET /api/customers/search
+    be_controllers:
+      - CustomerController
+    be_services:
+      - CustomerService
+    db_tables:
+      - CUSTOMER
+      - CUSTOMER_ADDRESS
+    batch_jobs:
+      - CustomerExportJob
+    external_interfaces:
+      - REST: https://crm.partner.com/sync
+    data_injection_points:
+      - CUSTOMER_AUDIT (orphaned table - external injection)
+```
+
+#### 3. Generate Screen Specs
+
+Creates one markdown spec per screen with:
+- **Purpose** — What the screen does
+- **When Used** — Who sees it, workflow context
+- **User Actions & System Responses** — Interaction table
+- **Important Rules** — Business rules, validations
+- **Data & Fields** — Fields displayed, data sources
+- **Downstream Effects** — What happens (screens, batches, external syncs)
+- **Permissions & Roles** — Access control
+- **Technical Reference** — Collapsed details linking to backend specs
+
+Output structure:
+```
+docs/
+├── screens/
+│   ├── customer-search.md
+│   ├── customer-edit.md
+│   └── customer-detail.md
+├── screen-index.md              # Menu tree with links
+├── database/                    # Existing table schemas
+├── backend-specs/               # Existing service specs
+├── batch-jobs/                  # Existing ETL specs
+└── interfaces/                  # External system specs
+```
+
+#### 4. Detect Drift
+
+Specs include source file hashes in frontmatter. Detect stale specs:
+
+```bash
+discover verify-drift /path/to/repo --spec-dir ./docs/screens
+```
+
+**Output**:
+```
+Drifted screens: 3 of 20
+
+  ⚠️  customer-search
+      src/pages/Customer/SearchPage.vue changed
+      src/main/java/.../CustomerController.java changed
+
+  ⚠️  customer-edit
+      migration_001_customer.sql changed
+
+  ✓  customer-detail (no drift)
+```
+
+### Multi-Framework Support
+
+Screen-centric mode works with:
+- **Java/Spring** — @RestController, @Service, @Entity, Spring Batch, @Scheduled
+- **.NET/ASP.NET** — [ApiController], [Service], DbSet<>, BackgroundService
+- **Node.js/Express** — Express routes, Mongoose models, node-schedule
+- **Extensible** — Add custom frameworks via `framework_detector.py`
+
+### Data Lineage Visualization
+
+Complete data flow from external sources to screens:
+
+```
+External System (EAI/ETL)
+    ↓ (RestTemplate, WebClient, FTP, Kafka)
+ETL Batch Job (DataSyncJob)
+    ↓ (writes)
+Orphaned Table (PARTNER_ORDERS)
+    ↓ (read by service)
+Backend Service (PartnerService)
+    ↓ (API endpoint)
+REST Controller (PartnerController)
+    ↓ (called by)
+Frontend Screen (Partner Search)
+```
+
+### Example Command Sequence
+
+```bash
+# 1. Detect screens from menu
+discover detect-screens ./my-app --output ./data
+
+# 2. Map screens to backend + external systems
+# (Integrated into standard scan, runs automatically)
+discover scan ./my-app -p myapp
+
+# 3. Check if screens are out of sync with source
+discover verify-drift ./my-app --spec-dir ./docs/screens
+
+# 4. Regenerate only drifted screens (cost-saving)
+discover scan ./my-app -p myapp --resume
+```
+
+### Integration with Existing Docs
+
+Screen specs do **not replace** domain docs. They **link to** them:
+- Each screen links to database table specs (ASSC)
+- Each screen links to backend controller specs (ASD)
+- Each screen links to batch job docs
+- Each screen links to external interface specs
+
+Users can navigate:
+- **By menu** → start at screen spec
+- **By domain** → start at domain-centric docs
+- **By component** → start at backend/batch/interface specs
+
+### Performance & Cost
+
+- Menu detection: < 100ms
+- Screen mapping: ~50ms per screen (parallel)
+- Spec generation: ~3s per screen (LLM latency dominant)
+- **Drift detection**: < 1s (no LLM calls needed)
+
+**Cost optimization**: Only regenerate drifted screens on subsequent runs → 60–80% savings.
+
 ## Installation Methods
 
 ### Docker Compose (Recommended)
