@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "id": "products",
+      "label": "Products",
+      "path": "/products",
+      "children": [
+        {
+          "id": "products-list",
+          "label": "List",
+          "path": "/products"
+        },
+        {
+          "id": "products-search",
+          "label": "Search",
+          "path": "/products/search"
+        },
+        {
+          "id": "products-detail",
+          "label": "Detail",
+          "path": "/products/:id"
+        }
+      ]
+    },
+    {
+      "id": "orders",
+      "label": "Orders",
+      "path": "/orders",
+      "children": [
+        {
+          "id": "orders-list",
+          "label": "Orders",
+          "path": "/orders"
+        },
+        {
+          "id": "orders-create",
+          "label": "Create",
+          "path": "/orders"
+        }
+      ]
+    }
+  ]
+}
