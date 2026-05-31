@@ -766,37 +766,64 @@ def detect_screens(
         Path("./data/discovery-output"), "--output", "-o",
         help="Output directory for screen_map.yaml and menu_tree.json.",
     ),
+    include_backend: bool = typer.Option(
+        True, "--include-backend/--no-backend",
+        help="Include backend mapping (controllers, services, tables)."
+    ),
 ) -> None:
     """Auto-detect menu system and screens in a repository.
 
     Scans for menu definitions (JSON/YAML, TypeScript constants, framework routing)
-    and extracts screen definitions. Outputs screen_map.yaml and menu_tree.json.
+    and extracts screen definitions. Optionally maps screens to backend components.
+    Outputs screen_map.yaml and menu_tree.json.
     """
     from ai_discovery.menu_detector import detect_and_build_screens
+    from ai_discovery.screen_mapper import ScreenMapper
+    import yaml
+    import json
 
     output_dir = Path(output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    repo_path = Path(repo)
     console.print(f"[bold green]discover detect-screens[/] repo={repo}")
 
     with console.status("[bold cyan]Detecting menu system..."):
-        menu_items, screens = detect_and_build_screens(Path(repo))
+        menu_items, screens = detect_and_build_screens(repo_path)
 
     if not screens:
         console.print("[yellow]No screens detected. Check that menu definitions exist in the repo.[/]")
         raise typer.Exit(code=1)
 
-    # Output screen_map.yaml
-    import yaml
+    # Map screens to backend components if requested
+    screen_mappings = []
+    if include_backend:
+        with console.status("[bold cyan]Mapping screens to backend components..."):
+            mapper = ScreenMapper(repo_path)
+            for screen in screens:
+                try:
+                    mapping = mapper.map_screen(screen)
+                    screen_mappings.append(mapping)
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Failed to map {screen.screen_id}: {e}[/]")
+                    screen_mappings.append(None)
 
-    screen_map = {"screens": [s.to_dict() for s in screens]}
+    # Output screen_map.yaml with backend info if available
+    if screen_mappings and any(m is not None for m in screen_mappings):
+        screen_map = {
+            "screens": [
+                m.to_dict() if m is not None else s.to_dict()
+                for m, s in zip(screen_mappings, screens)
+            ]
+        }
+    else:
+        screen_map = {"screens": [s.to_dict() for s in screens]}
+
     screen_map_file = output_dir / "screen_map.yaml"
     screen_map_file.write_text(yaml.dump(screen_map, default_flow_style=False))
 
     # Output menu_tree.json
     if menu_items:
-        import json
-
         menu_tree = [item.to_dict() for item in menu_items]
         menu_tree_file = output_dir / "menu_tree.json"
         menu_tree_file.write_text(json.dumps(menu_tree, indent=2))
@@ -805,6 +832,11 @@ def detect_screens(
     console.print(f"  Wrote: {screen_map_file}")
     if menu_items:
         console.print(f"  Wrote: {menu_tree_file}")
+
+    if include_backend:
+        mapped_count = sum(1 for m in screen_mappings if m is not None)
+        console.print(f"  [cyan]Backend mapping: {mapped_count}/{len(screens)} screens mapped[/]")
+
 
 
 @app.command()
