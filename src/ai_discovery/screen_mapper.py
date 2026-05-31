@@ -67,6 +67,21 @@ class ETLBatchJob:
 
 
 @dataclass
+class APIInjectionPoint:
+    """Represents a REST API endpoint that returns external/injected data."""
+
+    endpoint_path: str  # /api/partner/data, /api/external/sync
+    controller_class: str
+    method_name: str
+    http_method: str  # GET, POST, etc.
+    file_path: str
+    tables_written: list[str] = field(default_factory=list)  # Tables this API populates
+    external_indicator: str = ""  # Why we think this is external data (e.g., "RestTemplate call", "WebClient fetch")
+    confidence: float = 0.7
+    reason: str = ""  # Detailed reasoning
+
+
+@dataclass
 class ScreenMapping:
     """Enhanced screen with backend linkages."""
 
@@ -80,6 +95,7 @@ class ScreenMapping:
     external_interfaces: list[str] = field(default_factory=list)
     data_injection_points: list[DataInjectionPoint] = field(default_factory=list)  # External data sources
     etl_batch_jobs: list[ETLBatchJob] = field(default_factory=list)  # ETL jobs populating external tables
+    api_injection_points: list[APIInjectionPoint] = field(default_factory=list)  # REST endpoints returning external data
     source_files: list[str] = field(default_factory=list)  # All source files touched
     source_hashes: dict[str, str] = field(default_factory=dict)  # file_path -> SHA256
 
@@ -92,6 +108,7 @@ class ScreenMapping:
         result["be_services"] = [asdict(comp) for comp in self.be_services]
         result["data_injection_points"] = [asdict(point) for point in self.data_injection_points]
         result["etl_batch_jobs"] = [asdict(job) for job in self.etl_batch_jobs]
+        result["api_injection_points"] = [asdict(point) for point in self.api_injection_points]
         return result
 
 
@@ -310,6 +327,91 @@ class ScreenMapper:
 
         return etl_jobs
 
+    def detect_api_injection_points(self, be_controllers: list[BackendComponent]) -> list[APIInjectionPoint]:
+        """
+        Detect REST API endpoints that return external/injected data.
+
+        API injection points are identified by:
+        1. REST endpoints (@GetMapping, @PostMapping) that call external APIs
+        2. Controllers with methods that fetch from external systems
+        3. Methods that write directly to database tables from external sources
+
+        Returns list of detected API endpoints that inject external data.
+        """
+        api_injections = []
+
+        # Search for controller files
+        controller_files = list(self.repo_path.glob("src/**/*Controller.java"))
+
+        for ctrl_file in controller_files:
+            try:
+                content = ctrl_file.read_text(errors="ignore")
+
+                # Extract class name
+                class_match = re.search(r'public\s+class\s+(\w+)', content)
+                if not class_match:
+                    continue
+
+                class_name = class_match.group(1)
+
+                # Find all @GetMapping/@PostMapping methods
+                # Pattern: @(Get|Post|Put|Delete)Mapping(optional path) public <return> methodName(...)
+                method_patterns = r'@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\s*(?:\(\s*["\']([^"\']*)["\']?\s*\))?\s+public\s+\w+\s+(\w+)\s*\('
+
+                for match in re.finditer(method_patterns, content):
+                    http_verb = match.group(1).replace("Mapping", "").upper()
+                    endpoint_path = match.group(2) or ""
+                    method_name = match.group(3)
+
+                    # Check if this method calls external systems
+                    # Find the method body
+                    method_start = match.end()
+                    # Simple heuristic: look for external API calls in the next 500 chars
+                    method_context = content[method_start:method_start + 1000]
+
+                    external_indicators = []
+                    is_api_injection = False
+
+                    # Check for RestTemplate calls (external API)
+                    if "restTemplate" in method_context or "WebClient" in method_context:
+                        external_indicators.append("RestTemplate/WebClient call")
+                        is_api_injection = True
+
+                    # Check for @FeignClient calls
+                    if "Client" in class_name or ("Feign" in content and "interface" in content):
+                        external_indicators.append("FeignClient interface")
+                        is_api_injection = True
+
+                    # Check for HTTP calls
+                    if "HttpClient" in method_context or "HttpURLConnection" in method_context:
+                        external_indicators.append("Direct HTTP call")
+                        is_api_injection = True
+
+                    # Check for external data source indicators
+                    if ("external" in method_context.lower() or "partner" in method_context.lower() or
+                        "vendor" in method_context.lower() or "third" in method_context.lower()):
+                        external_indicators.append("External system reference")
+                        is_api_injection = True
+
+                    if is_api_injection:
+                        api_injection = APIInjectionPoint(
+                            endpoint_path=endpoint_path or f"/{method_name}",
+                            controller_class=class_name,
+                            method_name=method_name,
+                            http_method=http_verb,
+                            file_path=str(ctrl_file.relative_to(self.repo_path)),
+                            tables_written=[],  # Would need deeper analysis to determine
+                            external_indicator=" + ".join(external_indicators),
+                            confidence=0.75,
+                            reason=f"REST endpoint {http_verb} {endpoint_path} fetches external data: {', '.join(external_indicators)}"
+                        )
+                        api_injections.append(api_injection)
+
+            except Exception:
+                pass
+
+        return api_injections
+
     def _find_potential_sources(self, table: str, be_services: list[BackendComponent]) -> list[str]:
         """Identify potential external systems that might inject this table."""
         sources = []
@@ -477,7 +579,10 @@ class ScreenMapper:
         # 9. Detect ETL batch jobs that populate external tables
         mapping.etl_batch_jobs = self.detect_etl_batch_jobs(mapping.db_tables, mapping.data_injection_points)
 
-        # 10. Compute hashes
+        # 10. Detect API endpoints that return external data
+        mapping.api_injection_points = self.detect_api_injection_points(mapping.be_controllers)
+
+        # 11. Compute hashes
         mapping.source_files = list(set(mapping.source_files))  # Deduplicate
         mapping.source_hashes = self._compute_source_hashes(mapping.source_files)
 
