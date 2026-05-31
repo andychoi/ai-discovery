@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .menu_detector import Screen
+from .framework_detector import FrameworkDetector
+from .entity_service_resolver import EntityServiceResolver, Entity as ResolverEntity
 
 
 @dataclass
@@ -529,6 +531,48 @@ class ScreenMapper:
 
         return imports
 
+    def _enhance_entity_service_linking(self, be_services: list[BackendComponent]) -> dict[str, list[str]]:
+        """
+        Enhance entity-service linking using the generic EntityServiceResolver.
+
+        Returns a mapping of entity names to service class names that use them.
+        """
+        entity_service_map = {}
+
+        try:
+            # Try to detect framework
+            detected_framework = FrameworkDetector.detect_framework(self.repo_path)
+            if not detected_framework:
+                return entity_service_map
+
+            # Initialize resolver
+            resolver = EntityServiceResolver(self.repo_path, detected_framework)
+
+            # For each service, find entities it uses
+            for service in be_services:
+                from .entity_service_resolver import Service as ResolverService
+                resolver_service = ResolverService(
+                    service_type="class",
+                    class_name=service.class_name,
+                    file_path=service.file_path
+                )
+
+                # Find entities this service uses
+                entities = resolver.find_entities_for_service(resolver_service)
+
+                # Build entity -> service mapping
+                for entity in entities:
+                    if entity.class_name not in entity_service_map:
+                        entity_service_map[entity.class_name] = []
+                    if service.class_name not in entity_service_map[entity.class_name]:
+                        entity_service_map[entity.class_name].append(service.class_name)
+
+        except Exception:
+            # If resolver fails, return empty map (fallback to basic linking)
+            pass
+
+        return entity_service_map
+
     def map_screen(self, screen: Screen) -> ScreenMapping:
         """
         Map a single screen to its backend components.
@@ -566,6 +610,13 @@ class ScreenMapper:
 
         # 5. Extract database tables
         mapping.db_tables = self._extract_db_tables(mapping.be_services)
+
+        # 5b. Enhance entity-service linking via generic resolver
+        entity_service_map = self._enhance_entity_service_linking(mapping.be_services)
+        # Add any additional entities found by the resolver
+        for entity_name in entity_service_map.keys():
+            if entity_name not in mapping.db_tables:
+                mapping.db_tables.append(entity_name)
 
         # 6. Find related batch jobs
         mapping.batch_jobs = self._find_related_batch_jobs(mapping.db_tables)
