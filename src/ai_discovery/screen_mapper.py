@@ -10,6 +10,7 @@ Links detected screens to:
 """
 
 import hashlib
+import re
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Optional
@@ -181,6 +182,7 @@ class ScreenMapper:
 
         Looks for patterns like:
         - fetch('/api/...')
+        - fetch(`/api/...`)
         - axios.get('/api/...')
         - this.http.get('/api/...')
         """
@@ -193,17 +195,28 @@ class ScreenMapper:
         calls = []
 
         # Regex patterns for common API call patterns
+        # Support single quotes, double quotes, and backticks
         patterns = [
-            r"(?:fetch|axios\.(?:get|post|put|delete|patch))\(['\"](/api/[^'\"]+)['\"]",
-            r"(?:get|post|put|delete|patch)\(['\"](/api/[^'\"]+)['\"]",
-            r"this\.http\.(?:get|post|put|delete)\(['\"](/api/[^'\"]+)['\"]",
+            r"(?:fetch|axios\.(?:get|post|put|delete|patch))\(['\"`](/api/[^'\"` ]+)['\"`]",
+            r"(?:get|post|put|delete|patch)\(['\"`](/api/[^'\"` ]+)['\"`]",
+            r"this\.http\.(?:get|post|put|delete)\(['\"`](/api/[^'\"` ]+)['\"`]",
+            # Also handle template strings with interpolation
+            r"\$\{`?/api/([^`$}\"\']+)(?:`?)}\s*(?:\?[^`}]*)?",
         ]
 
         for pattern in patterns:
-            import re
-
             for match in re.finditer(pattern, content):
-                path = match.group(1)
+                if match.group(1).startswith("/"):
+                    # First capture group is the full path
+                    path = match.group(1)
+                else:
+                    # For the template string pattern, reconstruct the path
+                    path = "/" + match.group(1)
+
+                # Skip if it's not an API path
+                if "/api/" not in path:
+                    continue
+
                 # Infer HTTP method from context (simplified)
                 method = self._infer_http_method(content, match.start())
 
@@ -240,31 +253,206 @@ class ScreenMapper:
         Resolve API call to backend controller.
 
         Looks for @RequestMapping, @GetMapping, etc. with matching paths.
+        Supports Java Spring framework.
         """
-        # Placeholder: in real implementation, would parse backend code
-        # and resolve API path to controller class
-        return []
+        controllers = []
+
+        # Search for Java controller files
+        controller_files = list(self.repo_path.glob("src/**/*Controller.java"))
+
+        for ctrl_file in controller_files:
+            try:
+                content = ctrl_file.read_text(errors="ignore")
+
+                # Look for class-level @RequestMapping or @RestController
+                class_mapping = self._extract_class_mapping(content)
+
+                # Combine with method-level mappings
+                method_mappings = self._extract_method_mappings(content, api_call.method)
+
+                for method_path in method_mappings:
+                    full_path = (class_mapping + method_path).rstrip("/")
+
+                    # Check if this matches our API call
+                    if self._path_matches(api_call.path, full_path):
+                        # Extract class name from file
+                        class_name = ctrl_file.stem  # e.g., CustomerController
+                        controllers.append(
+                            BackendComponent(
+                                component_type="controller",
+                                class_name=class_name,
+                                file_path=str(ctrl_file.relative_to(self.repo_path)),
+                                confidence=0.7,
+                            )
+                        )
+                        break
+            except Exception:
+                pass
+
+        return controllers
+
+    def _extract_class_mapping(self, content: str) -> str:
+        """Extract class-level @RequestMapping path from Java Spring code."""
+        # Look for @RequestMapping(value = "/api/..." or @RestController above class
+        match = re.search(r'@(?:RequestMapping|RestController)\s*\([^)]*value\s*=\s*["\']([^"\']*)["\']', content)
+        if match:
+            return match.group(1)
+
+        # Try simpler pattern
+        match = re.search(r'@RequestMapping\s*\(\s*["\']([^"\']*)["\']', content)
+        if match:
+            return match.group(1)
+
+        return ""
+
+    def _extract_method_mappings(self, content: str, http_method: str) -> list[str]:
+        """Extract method-level request mappings matching the HTTP method."""
+        paths = []
+
+        # Mapping annotation to HTTP method
+        method_to_annotation = {
+            "GET": ["GetMapping", "RequestMapping"],
+            "POST": ["PostMapping", "RequestMapping"],
+            "PUT": ["PutMapping", "RequestMapping"],
+            "DELETE": ["DeleteMapping", "RequestMapping"],
+            "PATCH": ["PatchMapping", "RequestMapping"],
+        }
+
+        annotations = method_to_annotation.get(http_method, ["RequestMapping"])
+
+        for annotation in annotations:
+            # Find @GetMapping(value = "/path" or similar patterns
+            pattern = rf'@{annotation}\s*\(\s*(?:value\s*=\s*)?["\']([^"\']*)["\']'
+            for match in re.finditer(pattern, content):
+                path = match.group(1)
+                paths.append(path)
+
+            # Also handle @GetMapping with no parameters (empty path)
+            pattern_empty = rf'@{annotation}\s*\(\s*\)'
+            if re.search(pattern_empty, content):
+                paths.append("")
+
+            # Handle @GetMapping with no parentheses at all
+            pattern_no_params = rf'@{annotation}(?:\s+|$)'
+            if re.search(pattern_no_params, content) and annotation in ["GetMapping", "PostMapping", "PutMapping", "DeleteMapping", "PatchMapping"]:
+                # Only add empty path for specific mapping annotations, not RequestMapping
+                if annotation != "RequestMapping":
+                    paths.append("")
+
+        return paths
+
+    def _path_matches(self, api_path: str, controller_path: str) -> bool:
+        """Check if API path matches controller mapping."""
+        # Normalize paths
+        api_norm = api_path.rstrip("/").lower()
+        ctrl_norm = controller_path.rstrip("/").lower()
+
+        # Exact match
+        if api_norm == ctrl_norm:
+            return True
+
+        # Handle path variables like {id} in controller_path matching api_path
+        ctrl_pattern = re.sub(r"\{[^}]+\}", "[^/]+", ctrl_norm)
+        if re.match(f"^{ctrl_pattern}$", api_norm):
+            return True
+
+        return False
 
     def _resolve_to_services(self, controller: BackendComponent) -> list[BackendComponent]:
         """
         Resolve controller to services it uses.
 
-        Looks for @Autowired, @Inject, etc.
+        Looks for @Autowired, @Inject, @Qualifier etc. in controller class.
         """
-        # Placeholder
-        return []
+        services = []
+
+        ctrl_path = self.repo_path / controller.file_path
+        if not ctrl_path.exists():
+            return services
+
+        try:
+            content = ctrl_path.read_text(errors="ignore")
+
+            # Look for @Autowired private ServiceName serviceName; pattern
+            autowired_pattern = r'@(?:Autowired|Inject)\s+private\s+(\w+)\s+\w+;'
+            for match in re.finditer(autowired_pattern, content):
+                service_class = match.group(1)
+
+                # Try to find the service file
+                service_files = list(self.repo_path.glob(f"src/**/{service_class}.java"))
+                if service_files:
+                    service_path = service_files[0]
+                    services.append(
+                        BackendComponent(
+                            component_type="service",
+                            class_name=service_class,
+                            file_path=str(service_path.relative_to(self.repo_path)),
+                            confidence=0.8,
+                        )
+                    )
+
+        except Exception:
+            pass
+
+        return services
 
     def _extract_db_tables(self, services: list[BackendComponent]) -> list[str]:
         """
         Extract database tables accessed by services.
 
         Looks for:
-        - JPA entity references
-        - MyBatis mapper namespaces
+        - JPA entity references (@Entity @Table)
+        - Repository method signatures
         - SQL in strings
         """
-        # Placeholder
-        return []
+        tables = set()
+
+        # Search for entity files
+        entity_files = list(self.repo_path.glob("src/**/*Entity.java"))
+        entity_files.extend(list(self.repo_path.glob("src/**/entity/*.java")))
+        entity_files.extend(list(self.repo_path.glob("src/**/model/*.java")))
+
+        for entity_file in entity_files:
+            try:
+                content = entity_file.read_text(errors="ignore")
+
+                # Look for @Entity and @Table annotations
+                if "@Entity" in content:
+                    # Extract table name from @Table annotation
+                    match = re.search(r'@Table\s*\(\s*name\s*=\s*["\']([^"\']+)["\']', content)
+                    if match:
+                        tables.add(match.group(1))
+                    else:
+                        # Use class name as fallback (convert camelCase to UPPER_SNAKE)
+                        class_match = re.search(r'public\s+class\s+(\w+)', content)
+                        if class_match:
+                            class_name = class_match.group(1)
+                            # Remove "Entity" suffix if present
+                            entity_name = class_name.replace("Entity", "")
+                            table_name = re.sub(r'([A-Z])', r'_\1', entity_name).upper().lstrip("_")
+                            tables.add(table_name)
+            except Exception:
+                pass
+
+        # Also extract from service files
+        for service in services:
+            service_path = self.repo_path / service.file_path
+            if service_path.exists():
+                try:
+                    content = service_path.read_text(errors="ignore")
+
+                    # Look for @Repository or repository.findBy* patterns
+                    # This is a simplified heuristic
+                    entity_refs = re.findall(r'\b([A-Z]\w+Entity)\b', content)
+                    for entity_ref in entity_refs:
+                        # Convert entity class name to table name
+                        entity_name = entity_ref.replace("Entity", "")
+                        table_name = re.sub(r'([A-Z])', r'_\1', entity_name).upper().lstrip("_")
+                        tables.add(table_name)
+                except Exception:
+                    pass
+
+        return sorted(list(tables))
 
     def _find_related_batch_jobs(self, tables: list[str]) -> list[str]:
         """
