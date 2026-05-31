@@ -459,18 +459,151 @@ class ScreenMapper:
         Find batch jobs that read/write the same tables.
 
         Looks for Spring Batch Job definitions that reference these tables.
+        Also finds other jobs (Quartz, custom task schedulers).
         """
-        # Placeholder
-        return []
+        jobs = set()
+
+        if not tables:
+            return []
+
+        # Search for job configuration files
+        job_files = list(self.repo_path.glob("src/**/*Job.java"))
+        job_files.extend(list(self.repo_path.glob("src/**/*JobConfig.java")))
+        job_files.extend(list(self.repo_path.glob("src/**/batch/**/*.java")))
+
+        for job_file in job_files:
+            try:
+                content = job_file.read_text(errors="ignore")
+
+                # Look for table references in Spring Batch jobs
+                for table in tables:
+                    # Check for direct table name references
+                    if table in content:
+                        # Extract job class name
+                        class_match = re.search(r'public\s+class\s+(\w+)', content)
+                        if class_match:
+                            job_class = class_match.group(1)
+                            # Remove suffixes like Job, JobConfig, JobDefinition
+                            job_name = re.sub(r'(Job|JobConfig|JobDefinition)$', '', job_class)
+                            jobs.add(job_name)
+
+                    # Check for entity class references
+                    entity_pattern = re.sub(r'([A-Z])', r'_\1', table).strip("_").replace("_", "")
+                    entity_class = entity_pattern.title().replace("_", "") + "Entity"
+                    if entity_class in content:
+                        class_match = re.search(r'public\s+class\s+(\w+)', content)
+                        if class_match:
+                            job_class = class_match.group(1)
+                            job_name = re.sub(r'(Job|JobConfig|JobDefinition)$', '', job_class)
+                            jobs.add(job_name)
+
+                # Look for @EnableBatchProcessing and @Bean @Job patterns
+                if "@EnableBatchProcessing" in content or "@Scheduled" in content:
+                    class_match = re.search(r'public\s+class\s+(\w+)', content)
+                    if class_match:
+                        job_class = class_match.group(1)
+                        job_name = re.sub(r'(Job|JobConfig|JobDefinition)$', '', job_class)
+                        jobs.add(job_name)
+
+            except Exception:
+                pass
+
+        return sorted(list(jobs))
 
     def _find_external_interfaces(self, controllers: list[BackendComponent]) -> list[str]:
         """
         Find external system interfaces (EAI/ETL feeds).
 
-        Looks for references to external APIs, message queues, etc.
+        Looks for references to:
+        - RestTemplate/WebClient calls (external REST APIs)
+        - Message queue producers (JMS, Kafka, RabbitMQ)
+        - FTP/SFTP clients
+        - Database links (external databases)
         """
-        # Placeholder
-        return []
+        interfaces = set()
+
+        # Get all files referenced in controllers (for tracing)
+        all_files = []
+        for controller in controllers:
+            all_files.append(self.repo_path / controller.file_path)
+
+        # Also search in service/repository files
+        all_files.extend(list(self.repo_path.glob("src/**/*Service.java")))
+        all_files.extend(list(self.repo_path.glob("src/**/*Repository.java")))
+
+        for file_path in all_files:
+            if not file_path.exists():
+                continue
+
+            try:
+                content = file_path.read_text(errors="ignore")
+
+                # Look for RestTemplate usage (external REST APIs)
+                rest_template_urls = re.findall(
+                    r'restTemplate\.(?:get|post|put|delete|exchange)\s*\(\s*["\']([^"\']+)["\']',
+                    content
+                )
+                for url in rest_template_urls:
+                    if url.startswith("http"):
+                        interfaces.add(f"REST-{url}")
+
+                # Look for @FeignClient (external REST API)
+                feign_clients = re.findall(r'@FeignClient\s*\(\s*(?:value|name)\s*=\s*["\']([^"\']+)["\']', content)
+                for client in feign_clients:
+                    interfaces.add(f"FeignClient-{client}")
+
+                # Look for WebClient usage
+                webclient_urls = re.findall(
+                    r'webClient\.(?:get|post|put|delete)\s*\(\s*["\']([^"\']+)["\']',
+                    content
+                )
+                for url in webclient_urls:
+                    if url.startswith("http"):
+                        interfaces.add(f"WebClient-{url}")
+
+                # Look for JMS/Kafka/RabbitMQ
+                if "JmsTemplate" in content:
+                    interfaces.add("JMS-MessageQueue")
+                if "KafkaTemplate" in content or "@KafkaListener" in content:
+                    interfaces.add("Kafka-MessageBroker")
+                if "RabbitTemplate" in content or "@RabbitListener" in content:
+                    interfaces.add("RabbitMQ-MessageBroker")
+
+                # Look for FTP/SFTP clients
+                if "FTPClient" in content or "FTP" in content:
+                    interfaces.add("FTP-FileTransfer")
+                if "SFTPClient" in content or "JSch" in content:
+                    interfaces.add("SFTP-FileTransfer")
+
+                # Look for external datasources or database links
+                if "DataSource" in content and "@Qualifier" in content:
+                    # Likely an external database
+                    datasources = re.findall(r'@Qualifier\s*\(\s*["\']([^"\']+)["\']', content)
+                    for ds in datasources:
+                        if "external" in ds.lower() or "remote" in ds.lower():
+                            interfaces.add(f"Database-{ds}")
+
+                # Look for AWS SDK usage
+                if "AmazonS3" in content or "s3:" in content:
+                    interfaces.add("AWS-S3")
+                if "AmazonDynamoDB" in content:
+                    interfaces.add("AWS-DynamoDB")
+                if "AWSCredentials" in content:
+                    interfaces.add("AWS-Service")
+
+                # Look for custom external service calls
+                http_calls = re.findall(
+                    r'new\s+URL\s*\(\s*["\']([^"\']+)["\']',
+                    content
+                )
+                for url in http_calls:
+                    if url.startswith("http"):
+                        interfaces.add(f"HttpURL-{url}")
+
+            except Exception:
+                pass
+
+        return sorted(list(interfaces))
 
     def _compute_source_hashes(self, source_files: list[str]) -> dict[str, str]:
         """
