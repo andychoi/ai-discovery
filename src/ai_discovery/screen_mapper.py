@@ -459,7 +459,8 @@ class ScreenMapper:
         Find batch jobs that read/write the same tables.
 
         Looks for Spring Batch Job definitions that reference these tables.
-        Also finds other jobs (Quartz, custom task schedulers).
+        Detects both internal triggers (@Scheduled, @EnableBatchProcessing) and
+        external triggers (REST endpoints, message queue listeners).
         """
         jobs = set()
 
@@ -497,13 +498,32 @@ class ScreenMapper:
                             job_name = re.sub(r'(Job|JobConfig|JobDefinition)$', '', job_class)
                             jobs.add(job_name)
 
-                # Look for @EnableBatchProcessing and @Bean @Job patterns
+                # INTERNAL TRIGGERS: @EnableBatchProcessing, @Scheduled, @Bean @Job patterns
                 if "@EnableBatchProcessing" in content or "@Scheduled" in content:
                     class_match = re.search(r'public\s+class\s+(\w+)', content)
                     if class_match:
                         job_class = class_match.group(1)
                         job_name = re.sub(r'(Job|JobConfig|JobDefinition)$', '', job_class)
                         jobs.add(job_name)
+
+                # EXTERNAL TRIGGERS: REST endpoints that trigger jobs
+                if "@PostMapping" in content or "@RequestMapping" in content:
+                    # This job can be triggered via HTTP
+                    class_match = re.search(r'public\s+class\s+(\w+)', content)
+                    if class_match:
+                        job_class = class_match.group(1)
+                        job_name = re.sub(r'(Job|JobConfig|JobDefinition)$', '', job_class)
+                        # Mark as externally triggerable
+                        jobs.add(f"{job_name}(HTTP-triggered)")
+
+                # EXTERNAL TRIGGERS: Message queue listeners
+                if "@KafkaListener" in content or "@RabbitListener" in content or "@JmsListener" in content:
+                    class_match = re.search(r'public\s+class\s+(\w+)', content)
+                    if class_match:
+                        job_class = class_match.group(1)
+                        job_name = re.sub(r'(Job|JobConfig|JobDefinition)$', '', job_class)
+                        # Mark as queue-triggered
+                        jobs.add(f"{job_name}(Queue-triggered)")
 
             except Exception:
                 pass
@@ -514,11 +534,18 @@ class ScreenMapper:
         """
         Find external system interfaces (EAI/ETL feeds).
 
+        Detects both directions:
+        - PUSH: Outbound calls (RestTemplate, KafkaTemplate, S3, etc.)
+        - PULL: Inbound webhooks (@PostMapping receiving external data, @KafkaListener, etc.)
+
         Looks for references to:
-        - RestTemplate/WebClient calls (external REST APIs)
-        - Message queue producers (JMS, Kafka, RabbitMQ)
-        - FTP/SFTP clients
-        - Database links (external databases)
+        - RestTemplate/WebClient calls (external REST APIs) - PUSH
+        - @FeignClient (external REST APIs) - PUSH
+        - Message queue producers (JMS, Kafka, RabbitMQ) - PUSH
+        - Message queue listeners (@KafkaListener, @JmsListener) - PULL
+        - @PostMapping endpoints (receiving webhooks) - PULL
+        - FTP/SFTP clients - PUSH
+        - External datasources - PUSH/PULL
         """
         interfaces = set()
 
@@ -530,6 +557,7 @@ class ScreenMapper:
         # Also search in service/repository files
         all_files.extend(list(self.repo_path.glob("src/**/*Service.java")))
         all_files.extend(list(self.repo_path.glob("src/**/*Repository.java")))
+        all_files.extend(list(self.repo_path.glob("src/**/*Listener.java")))
 
         for file_path in all_files:
             if not file_path.exists():
@@ -538,67 +566,100 @@ class ScreenMapper:
             try:
                 content = file_path.read_text(errors="ignore")
 
-                # Look for RestTemplate usage (external REST APIs)
+                # ============ OUTBOUND (PUSH) ============
+
+                # Look for RestTemplate usage (external REST APIs) - PUSH
                 rest_template_urls = re.findall(
                     r'restTemplate\.(?:get|post|put|delete|exchange)\s*\(\s*["\']([^"\']+)["\']',
                     content
                 )
                 for url in rest_template_urls:
                     if url.startswith("http"):
-                        interfaces.add(f"REST-{url}")
+                        interfaces.add(f"REST-PUSH-{url}")
 
-                # Look for @FeignClient (external REST API)
+                # Look for @FeignClient (external REST API) - PUSH
                 feign_clients = re.findall(r'@FeignClient\s*\(\s*(?:value|name)\s*=\s*["\']([^"\']+)["\']', content)
                 for client in feign_clients:
-                    interfaces.add(f"FeignClient-{client}")
+                    interfaces.add(f"FeignClient-PUSH-{client}")
 
-                # Look for WebClient usage
+                # Look for WebClient usage - PUSH
                 webclient_urls = re.findall(
                     r'webClient\.(?:get|post|put|delete)\s*\(\s*["\']([^"\']+)["\']',
                     content
                 )
                 for url in webclient_urls:
                     if url.startswith("http"):
-                        interfaces.add(f"WebClient-{url}")
+                        interfaces.add(f"WebClient-PUSH-{url}")
 
-                # Look for JMS/Kafka/RabbitMQ
+                # Look for JMS/Kafka/RabbitMQ PRODUCERS - PUSH
                 if "JmsTemplate" in content:
-                    interfaces.add("JMS-MessageQueue")
-                if "KafkaTemplate" in content or "@KafkaListener" in content:
-                    interfaces.add("Kafka-MessageBroker")
-                if "RabbitTemplate" in content or "@RabbitListener" in content:
-                    interfaces.add("RabbitMQ-MessageBroker")
+                    interfaces.add("JMS-PUSH-MessageQueue")
+                if "KafkaTemplate" in content:
+                    interfaces.add("Kafka-PUSH-MessageBroker")
+                if "RabbitTemplate" in content:
+                    interfaces.add("RabbitMQ-PUSH-MessageBroker")
 
-                # Look for FTP/SFTP clients
+                # Look for FTP/SFTP clients - PUSH
                 if "FTPClient" in content or "FTP" in content:
-                    interfaces.add("FTP-FileTransfer")
+                    interfaces.add("FTP-PUSH-FileTransfer")
                 if "SFTPClient" in content or "JSch" in content:
-                    interfaces.add("SFTP-FileTransfer")
+                    interfaces.add("SFTP-PUSH-FileTransfer")
 
-                # Look for external datasources or database links
+                # Look for external datasources (write operations) - PUSH
                 if "DataSource" in content and "@Qualifier" in content:
-                    # Likely an external database
                     datasources = re.findall(r'@Qualifier\s*\(\s*["\']([^"\']+)["\']', content)
                     for ds in datasources:
                         if "external" in ds.lower() or "remote" in ds.lower():
-                            interfaces.add(f"Database-{ds}")
+                            interfaces.add(f"Database-PUSH-{ds}")
 
-                # Look for AWS SDK usage
-                if "AmazonS3" in content or "s3:" in content:
-                    interfaces.add("AWS-S3")
+                # Look for AWS SDK usage (write operations) - PUSH
+                if "AmazonS3" in content or "s3Client.putObject" in content:
+                    interfaces.add("AWS-S3-PUSH")
                 if "AmazonDynamoDB" in content:
-                    interfaces.add("AWS-DynamoDB")
+                    interfaces.add("AWS-DynamoDB-PUSH")
                 if "AWSCredentials" in content:
-                    interfaces.add("AWS-Service")
+                    interfaces.add("AWS-Service-PUSH")
 
-                # Look for custom external service calls
+                # Look for custom external service calls - PUSH
                 http_calls = re.findall(
                     r'new\s+URL\s*\(\s*["\']([^"\']+)["\']',
                     content
                 )
                 for url in http_calls:
                     if url.startswith("http"):
-                        interfaces.add(f"HttpURL-{url}")
+                        interfaces.add(f"HttpURL-PUSH-{url}")
+
+                # ============ INBOUND (PULL) ============
+
+                # Look for @PostMapping/@PutMapping endpoints (webhook receivers) - PULL
+                if "@PostMapping" in content or "@PutMapping" in content:
+                    # This endpoint receives data from external systems
+                    mapping_paths = re.findall(r'@(?:PostMapping|PutMapping)\s*\(\s*["\']([^"\']+)["\']', content)
+                    for path in mapping_paths:
+                        interfaces.add(f"REST-PULL-{path}")
+
+                # Look for JMS/Kafka/RabbitMQ CONSUMERS - PULL
+                if "@JmsListener" in content:
+                    interfaces.add("JMS-PULL-MessageQueue")
+                if "@KafkaListener" in content:
+                    interfaces.add("Kafka-PULL-MessageBroker")
+                if "@RabbitListener" in content:
+                    interfaces.add("RabbitMQ-PULL-MessageBroker")
+
+                # Look for FTP/SFTP file receivers (polling) - PULL
+                if "FTP" in content and ("poll" in content.lower() or "schedule" in content.lower()):
+                    interfaces.add("FTP-PULL-FileTransfer")
+                if "SFTP" in content and ("poll" in content.lower() or "schedule" in content.lower()):
+                    interfaces.add("SFTP-PULL-FileTransfer")
+
+                # Look for external datasource (read operations) - PULL
+                if "DataSource" in content and "SELECT" in content:
+                    interfaces.add("Database-PULL-ExternalSource")
+
+                # Look for webhook validators/handlers - PULL
+                if "hmac" in content.lower() or "signature" in content.lower():
+                    # Likely receiving authenticated webhooks
+                    interfaces.add("Webhook-PULL-WithAuth")
 
             except Exception:
                 pass
