@@ -117,13 +117,29 @@ For each detected screen:
 5. Extract database tables (from MyBatis, JPA, EF)
 6. Find related batch jobs (Spring Batch Job classes, .NET scheduled tasks)
 7. Identify external interfaces (RestTemplate, WebClient, partner APIs)
-8. **Compute SHA256 hashes of all touched files** (for drift detection)
+8. **Detect data injection points** (orphaned tables, stored procedures, views)
+9. **Link ETL batch jobs** that populate external data sources
+10. **Compute SHA256 hashes of all touched files** (for drift detection)
 
-**Current state**: Skeleton with file-path heuristics. Real implementation would:
-- Parse Java annotations (@Service, @Repository, @Autowired)
-- Parse .NET attributes ([Service], [Inject])
-- Traverse call chains (not just first hop)
-- Use AST for accurate extraction
+**Data Injection Point Detection** (NEW):
+Identifies external data sources and injection mechanisms:
+- **Orphaned tables** (read but never written in code) → direct database injection by EAI/ETL systems
+- **Stored procedures** (CALL, EXECUTE, @Procedure) → database-level integrations
+- **Database views** (V_*, VIEW* patterns) → data aggregation from external sources
+- **External imports** (FTP, SFTP, HTTP downloads) → file-based data integration
+
+**ETL Batch Job Pattern Detection** (NEW):
+Links ETL/EAI batch jobs to the external tables they populate:
+- Detects batch jobs that access orphaned tables
+- Identifies trigger types: internal (@Scheduled), external REST (@PostMapping), external queue (@KafkaListener)
+- Tracks external data sources (FTP, SFTP, HTTP) accessed by each ETL job
+- Provides complete data lineage: External System → ETL Job → Orphaned Table → Screen
+- Confidence scoring (0.7-0.9) based on external source detection
+
+**Current state**: 
+- ✅ Data injection point detection fully implemented (orphaned tables, stored procedures, views, external imports)
+- ✅ ETL batch job pattern detection fully implemented (trigger types, external source tracking)
+- ⏳ Real backend resolution: Parse Java annotations (@Service, @Repository, @Autowired), .NET attributes, traverse call chains
 
 #### Phase 2: LLM Spec Generation (New)
 **Input**: Enhanced screen_map.yaml
