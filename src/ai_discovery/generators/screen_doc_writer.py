@@ -118,7 +118,7 @@ def write_screen_spec(
         fe_api_calls=spec.fe_api_calls,
         be_controllers=spec.be_controllers,
         be_services=spec.be_services,
-        permissions=spec.screen.permissions if hasattr(spec, "screen") else [],
+        permissions=[],
         related_docs=related_docs,
         source_hashes=spec.source_hashes,
         open_items=spec.open_items,

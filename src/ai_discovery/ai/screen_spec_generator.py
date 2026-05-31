@@ -85,6 +85,8 @@ def build_screen_spec_prompt(
     controllers_str = json.dumps([asdict(c) for c in screen_mapping.be_controllers], indent=2)
     services_str = json.dumps([asdict(c) for c in screen_mapping.be_services], indent=2)
 
+    permissions = ", ".join(screen_mapping.screen.permissions) if screen_mapping.screen.permissions else "(not specified)"
+
     return f"""You are a business analyst documenting a software screen for end users and engineers.
 
 Generate a comprehensive specification for this screen:
@@ -94,6 +96,7 @@ Generate a comprehensive specification for this screen:
 - **Label**: {screen_mapping.screen.label}
 - **Route**: {screen_mapping.screen.path}
 - **Frontend Component**: {screen_mapping.fe_component or "(not detected)"}
+- **Permissions**: {permissions}
 
 ## Detected Integrations
 **API Calls Made by This Screen**:
