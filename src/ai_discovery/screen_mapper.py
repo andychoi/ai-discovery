@@ -42,6 +42,17 @@ class BackendComponent:
 
 
 @dataclass
+class DataInjectionPoint:
+    """Represents a potential data injection point (external EAI or direct DB)."""
+
+    table_name: str
+    injection_type: str  # direct_database, stored_procedure, view, unknown
+    confidence: float  # 0.0-1.0
+    reason: str  # Why we think this is an injection point
+    potential_sources: list[str] = field(default_factory=list)  # EAI systems, APIs, etc.
+
+
+@dataclass
 class ScreenMapping:
     """Enhanced screen with backend linkages."""
 
@@ -53,6 +64,7 @@ class ScreenMapping:
     db_tables: list[str] = field(default_factory=list)
     batch_jobs: list[str] = field(default_factory=list)
     external_interfaces: list[str] = field(default_factory=list)
+    data_injection_points: list[DataInjectionPoint] = field(default_factory=list)  # External data sources
     source_files: list[str] = field(default_factory=list)  # All source files touched
     source_hashes: dict[str, str] = field(default_factory=dict)  # file_path -> SHA256
 
@@ -63,6 +75,7 @@ class ScreenMapping:
         result["fe_api_calls"] = [asdict(call) for call in self.fe_api_calls]
         result["be_controllers"] = [asdict(comp) for comp in self.be_controllers]
         result["be_services"] = [asdict(comp) for comp in self.be_services]
+        result["data_injection_points"] = [asdict(point) for point in self.data_injection_points]
         return result
 
 
@@ -71,6 +84,242 @@ class ScreenMapper:
 
     def __init__(self, repo_path: Path):
         self.repo_path = Path(repo_path)
+        self.tables_with_reads = set()  # Tables we read from
+        self.tables_with_writes = set()  # Tables we write to
+
+    def detect_data_injection_points(self, db_tables: list[str], be_services: list[BackendComponent]) -> list[DataInjectionPoint]:
+        """
+        Detect potential external data injection points.
+
+        Identifies tables that are READ but have NO detected WRITE operations in code.
+        These are likely:
+        1. Directly injected by external EAI/ETL systems
+        2. Written via stored procedures called by external systems
+        3. Populated by database views or triggers
+        4. Updated through batch jobs not fully analyzed
+        5. Imported via FTP/SFTP or other external import mechanisms
+
+        Returns list of injection points with confidence scores.
+        """
+        injection_points = []
+
+        # First, scan all services to identify which tables are read vs written
+        tables_read_by_service = {}
+        tables_written_by_service = {}
+
+        for service in be_services:
+            service_path = self.repo_path / service.file_path
+            if not service_path.exists():
+                continue
+
+            try:
+                content = service_path.read_text(errors="ignore")
+
+                # Detect table reads (SELECT, repository.findBy, findAll, etc.)
+                read_patterns = [
+                    r'SELECT\s+.*?\s+FROM\s+(\w+)',
+                    r'@Query.*?SELECT\s+.*?\s+FROM\s+(\w+)',
+                    r'repository\.find(?:All|By|One)\(',
+                    r'\.find.*?\(\)',
+                ]
+
+                for pattern in read_patterns:
+                    for match in re.finditer(pattern, content, re.IGNORECASE | re.DOTALL):
+                        if len(match.groups()) > 0:
+                            table = match.group(1)
+                            if table not in tables_read_by_service:
+                                tables_read_by_service[table] = []
+                            tables_read_by_service[table].append(service.class_name)
+
+                # Detect table writes (INSERT, UPDATE, DELETE)
+                write_patterns = [
+                    r'INSERT\s+INTO\s+(\w+)',
+                    r'UPDATE\s+(\w+)\s+SET',
+                    r'DELETE\s+FROM\s+(\w+)',
+                    r'repository\.save\(',
+                    r'repository\.delete\(',
+                    r'jpaPersistenceProvider\.persist\(',
+                ]
+
+                for pattern in write_patterns:
+                    for match in re.finditer(pattern, content, re.IGNORECASE):
+                        if len(match.groups()) > 0:
+                            table = match.group(1)
+                            if table not in tables_written_by_service:
+                                tables_written_by_service[table] = []
+                            tables_written_by_service[table].append(service.class_name)
+
+            except Exception:
+                pass
+
+        # Detect orphaned tables (read but not written)
+        for table in db_tables:
+            if table in tables_read_by_service and table not in tables_written_by_service:
+                # This table is read but never written - likely external injection
+                injection_point = DataInjectionPoint(
+                    table_name=table,
+                    injection_type="direct_database",
+                    confidence=0.8,
+                    reason=f"Table {table} is read by {', '.join(tables_read_by_service[table])} but no write operations detected in code",
+                    potential_sources=self._find_potential_sources(table, be_services),
+                )
+                injection_points.append(injection_point)
+
+        # Detect stored procedures (additional injection points)
+        stored_procs = self._find_stored_procedures(be_services)
+        for proc_name, proc_info in stored_procs.items():
+            # Stored procedures are often updated by external systems
+            injection_point = DataInjectionPoint(
+                table_name=proc_name,
+                injection_type="stored_procedure",
+                confidence=0.6,
+                reason=f"Stored procedure {proc_name} called by {proc_info['called_by']} - may be updated by external systems",
+                potential_sources=["External ETL/EAI via stored procedure"],
+            )
+            injection_points.append(injection_point)
+
+        # Detect database views (aggregations from other sources)
+        views = self._find_database_views(be_services)
+        for view_name in views:
+            injection_point = DataInjectionPoint(
+                table_name=view_name,
+                injection_type="view",
+                confidence=0.5,
+                reason=f"Database view {view_name} - underlying tables may be externally injected",
+                potential_sources=["View aggregates external data sources"],
+            )
+            injection_points.append(injection_point)
+
+        # Detect external import mechanisms (FTP, SFTP, HTTP)
+        external_imports = self._find_external_import_mechanisms(be_services)
+        for import_info in external_imports:
+            injection_point = DataInjectionPoint(
+                table_name=f"{import_info['type']}_import",
+                injection_type="external_import",
+                confidence=0.7,
+                reason=f"External data import mechanism: {import_info['type']} used in {import_info['service']}",
+                potential_sources=[f"{import_info['type']} data import"],
+            )
+            injection_points.append(injection_point)
+
+        return injection_points
+
+    def _find_potential_sources(self, table: str, be_services: list[BackendComponent]) -> list[str]:
+        """Identify potential external systems that might inject this table."""
+        sources = []
+
+        # Check for FTP/SFTP imports that might populate this table
+        for service in be_services:
+            service_path = self.repo_path / service.file_path
+            if not service_path.exists():
+                continue
+
+            try:
+                content = service_path.read_text(errors="ignore")
+
+                if "FTP" in content or "SFTP" in content:
+                    sources.append(f"FTP/SFTP import ({service.class_name})")
+
+                if "import" in content.lower() and table.lower() in content.lower():
+                    sources.append(f"External data import ({service.class_name})")
+
+            except Exception:
+                pass
+
+        if not sources:
+            sources.append(f"Direct database connection (EAI/ETL)")
+
+        return sources
+
+    def _find_stored_procedures(self, be_services: list[BackendComponent]) -> dict[str, dict]:
+        """Find stored procedures that are called from services."""
+        stored_procs = {}
+
+        for service in be_services:
+            service_path = self.repo_path / service.file_path
+            if not service_path.exists():
+                continue
+
+            try:
+                content = service_path.read_text(errors="ignore")
+
+                # Look for stored procedure calls
+                proc_patterns = [
+                    r'call\s+(\w+)\s*\(',  # CALL proc_name()
+                    r'execute\s+(\w+)',  # EXECUTE proc_name
+                    r'@Procedure\s*\(\s*name\s*=\s*"(\w+)"',  # @Procedure(name="proc_name")
+                ]
+
+                for pattern in proc_patterns:
+                    for match in re.finditer(pattern, content, re.IGNORECASE):
+                        proc_name = match.group(1)
+                        if proc_name not in stored_procs:
+                            stored_procs[proc_name] = {"called_by": []}
+                        stored_procs[proc_name]["called_by"].append(service.class_name)
+
+            except Exception:
+                pass
+
+        return stored_procs
+
+    def _find_database_views(self, be_services: list[BackendComponent]) -> list[str]:
+        """Find references to database views (which aggregate external data)."""
+        views = []
+
+        for service in be_services:
+            service_path = self.repo_path / service.file_path
+            if not service_path.exists():
+                continue
+
+            try:
+                content = service_path.read_text(errors="ignore")
+
+                # Look for view references (usually named V_* or VIEW_*)
+                view_patterns = [
+                    r'FROM\s+(V_\w+)',
+                    r'FROM\s+(\w*VIEW\w*)',
+                    r'@Query.*?FROM\s+(V_\w+)',
+                ]
+
+                for pattern in view_patterns:
+                    for match in re.finditer(pattern, content, re.IGNORECASE | re.DOTALL):
+                        view_name = match.group(1)
+                        if view_name not in views:
+                            views.append(view_name)
+
+            except Exception:
+                pass
+
+        return views
+
+    def _find_external_import_mechanisms(self, be_services: list[BackendComponent]) -> list[dict]:
+        """Find external import mechanisms (FTP, SFTP, HTTP APIs)."""
+        imports = []
+
+        for service in be_services:
+            service_path = self.repo_path / service.file_path
+            if not service_path.exists():
+                continue
+
+            try:
+                content = service_path.read_text(errors="ignore")
+
+                # Detect FTP imports
+                if "FTPClient" in content or ("FTP" in content and "import" in content.lower()):
+                    imports.append({"type": "FTP", "service": service.class_name})
+
+                # Detect SFTP imports
+                if "ChannelSftp" in content or "JSch" in content or ("SFTP" in content and "import" in content.lower()):
+                    imports.append({"type": "SFTP", "service": service.class_name})
+
+                # Detect HTTP-based data import
+                if "HttpClient" in content or "HttpURLConnection" in content and "download" in content.lower():
+                    imports.append({"type": "HTTP", "service": service.class_name})
+
+            except Exception:
+                pass
+
+        return imports
 
     def map_screen(self, screen: Screen) -> ScreenMapping:
         """
@@ -116,7 +365,10 @@ class ScreenMapper:
         # 7. Find external interfaces
         mapping.external_interfaces = self._find_external_interfaces(mapping.be_controllers)
 
-        # 8. Compute hashes
+        # 8. Detect data injection points (orphaned tables, stored procedures, views)
+        mapping.data_injection_points = self.detect_data_injection_points(mapping.db_tables, mapping.be_services)
+
+        # 9. Compute hashes
         mapping.source_files = list(set(mapping.source_files))  # Deduplicate
         mapping.source_hashes = self._compute_source_hashes(mapping.source_files)
 
