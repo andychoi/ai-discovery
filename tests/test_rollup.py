@@ -12,11 +12,14 @@ from ai_discovery.ai.rollup import (
     DOC_TYPES,
     RollupResult,
     RollupTotalFailureError,
+    UNVERIFIABLE_CONFIDENCE,
+    UNREVIEWED_WITH_FACTS_CONFIDENCE,
     _build_rollup_prompt,
     _parse_rollup,
     generate_all_docs,
     generate_domain_docs,
     persist_rollups,
+    unreviewed_confidence,
 )
 from ai_discovery.ai.flow_analyzer import BusinessFlow
 from ai_discovery.ai.llm_client import LLMResponse
@@ -240,6 +243,16 @@ def test_parse_rollup_case_insensitive():
 # ---------------------------------------------------------------------------
 
 
+def test_unreviewed_confidence_is_deterministic():
+    """P1-b: unreviewed confidence depends only on AST-fact rows, never the LLM."""
+    assert unreviewed_confidence(3) == UNREVIEWED_WITH_FACTS_CONFIDENCE
+    assert unreviewed_confidence(1) == UNREVIEWED_WITH_FACTS_CONFIDENCE
+    assert unreviewed_confidence(0) == UNVERIFIABLE_CONFIDENCE
+    assert unreviewed_confidence(None) == UNVERIFIABLE_CONFIDENCE
+    # Capped below 1.0 — unreviewed prose is never "certain".
+    assert UNREVIEWED_WITH_FACTS_CONFIDENCE < 1.0
+
+
 def test_generate_domain_docs_all_types():
     """Mock LLM, verify one RollupResult per doc type in DOC_TYPES."""
     domain = _make_domain()
@@ -256,7 +269,9 @@ def test_generate_domain_docs_all_types():
     for result in results:
         assert isinstance(result, RollupResult)
         assert result.domain == "orders"
-        assert result.confidence == 0.85
+        # P1-b: confidence is deterministic (AST-fact based), never the LLM's
+        # self-asserted 0.85 from the mock response.
+        assert result.confidence in (0.3, 0.6)
         assert result.tokens_in == 1000
         assert result.tokens_out == 500
         assert result.model == "claude-opus"

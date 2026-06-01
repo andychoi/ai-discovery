@@ -438,6 +438,23 @@ def blend_confidence(verified_row_count: int, review_summary: dict) -> float:
     return round(score / total, 2)
 
 
+# Confidence for a doc whose prose has NOT been claim-verified — self-review was
+# skipped (budget) or hasn't run yet. We must never publish the LLM's own
+# self-asserted "Confidence: X.XX" (P1-b): a model rating its own output is not a
+# trust signal. A doc backed by AST-verified facts but unreviewed prose earns a
+# capped, middling score; one with no facts at all is unverifiable.
+UNREVIEWED_WITH_FACTS_CONFIDENCE = 0.6
+
+
+def unreviewed_confidence(verified_row_count: int) -> float:
+    """Deterministic confidence for an as-yet-unreviewed doc (P1-b)."""
+    return (
+        UNREVIEWED_WITH_FACTS_CONFIDENCE
+        if (verified_row_count or 0) > 0
+        else UNVERIFIABLE_CONFIDENCE
+    )
+
+
 def _parse_rollup(text: str, domain_name: str, doc_type: str) -> tuple[str, float]:
     """Parse LLM rollup response.
     Extract markdown content and confidence score.
@@ -486,7 +503,10 @@ def _generate_single_doc(
             max_advisor_cost_pct=0.5  # willing to spend up to 50% on advisor for doc quality
         )
     )
-    content_md, confidence = _parse_rollup(response.text, domain.name, doc_type)
+    # _parse_rollup also strips the LLM's trailing "Confidence: X.XX" line from
+    # the content; we keep that but discard the self-asserted score (P1-b) — the
+    # published confidence is derived deterministically below.
+    content_md, _llm_self_confidence = _parse_rollup(response.text, domain.name, doc_type)
 
     # Track 1: prepend AST-verified facts to LLM output. Doc-type aware so each
     # doc gets the table that matches its purpose; `as-is` gets both as a quick
@@ -506,6 +526,11 @@ def _generate_single_doc(
             verified_row_count += schema_result[1]
     if verified_blocks:
         content_md = "\n\n".join(verified_blocks) + "\n\n" + content_md
+
+    # P1-b: publish a deterministic confidence, not the LLM's self-rating. When
+    # self-review (phase 17) runs it overwrites this with the full blended score;
+    # if it's skipped, this deterministic value stands instead of a fabricated 0.7.
+    confidence = unreviewed_confidence(verified_row_count)
 
     label = _DOC_TYPE_LABELS.get(doc_type, doc_type)
     title = f"{domain.name} \u2014 {label}"
