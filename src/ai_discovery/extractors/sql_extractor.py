@@ -16,7 +16,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from ..graph.models import CodeNode
+from ..graph.models import CodeNode, EntityRelationship
 
 # ---------------------------------------------------------------------------
 # SQL statement patterns
@@ -144,6 +144,112 @@ def extract_sql_entities(nodes: list[CodeNode]) -> list[CodeNode]:
                 entry.evidence.append(snippet.strip())
 
     return [_to_code_node(e) for e in acc.values() if e.fields]
+
+
+# ---------------------------------------------------------------------------
+# Foreign-key relationship extraction (FK-aware table docs, Phase 1)
+# ---------------------------------------------------------------------------
+# Both table-level `FOREIGN KEY (...) REFERENCES tbl (...)` (also when prefixed
+# by `CONSTRAINT name`) and inline `col TYPE REFERENCES tbl(col)`. Multi-column
+# FKs are paired positionally.
+
+_FK_CONSTRAINT_RE = re.compile(
+    r"FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([`\"\[\]\w\.]+)\s*(?:\(([^)]+)\))?",
+    re.IGNORECASE,
+)
+_INLINE_REF_RE = re.compile(
+    r"REFERENCES\s+([`\"\[\]\w\.]+)\s*(?:\(([^)]+)\))?",
+    re.IGNORECASE,
+)
+
+
+def extract_sql_relationships(nodes: list[CodeNode]) -> list[EntityRelationship]:
+    """Return foreign-key edges declared in CREATE TABLE statements.
+
+    Each FK is `N:1` from the table that holds the key to the referenced table
+    (confidence 1.0 — these are declared constraints, not guesses). Inline and
+    table-level / CONSTRAINT-prefixed forms are both handled; multi-column FKs
+    yield one edge per column pair.
+    """
+    rels: list[EntityRelationship] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def _emit(from_t: str, to_t_raw: str, from_c: str, to_c: str, node: CodeNode) -> None:
+        to_t = _strip_schema(_clean_qualified(to_t_raw))
+        if not from_t or not to_t or _is_ignored(to_t_raw):
+            return
+        rel = EntityRelationship(
+            from_entity=from_t, to_entity=to_t,
+            from_field=from_c, to_field=to_c,
+            cardinality="N:1", source="sql",
+            source_file=node.file_path, source_line=node.line_start,
+            confidence=1.0, inferred=False,
+        )
+        if rel.key() not in seen:
+            seen.add(rel.key())
+            rels.append(rel)
+
+    for node in nodes:
+        if not node.source_code or "REFERENCES" not in node.source_code.upper():
+            continue
+        for m in _CREATE_TABLE_RE.finditer(node.source_code):
+            from_table = _strip_schema(_clean_qualified(m.group(1)))
+            if not from_table or _is_ignored(m.group(1)):
+                continue
+            for piece in _split_top_level(m.group(2), ","):
+                piece = piece.strip()
+                upper = piece.upper()
+                if not piece or "REFERENCES" not in upper:
+                    continue
+                if "FOREIGN KEY" in upper:
+                    fk = _FK_CONSTRAINT_RE.search(piece)
+                    if not fk:
+                        continue
+                    from_cols = [_clean_ident(c) for c in fk.group(1).split(",")]
+                    to_cols = [_clean_ident(c) for c in fk.group(3).split(",")] if fk.group(3) else []
+                    for i, fc in enumerate(from_cols):
+                        _emit(from_table, fk.group(2), fc,
+                              to_cols[i] if i < len(to_cols) else "", node)
+                elif not upper.startswith(("PRIMARY KEY", "UNIQUE", "CHECK", "INDEX", "KEY ")):
+                    # Inline column reference: `customer_id INT REFERENCES customers(id)`.
+                    ref = _INLINE_REF_RE.search(piece)
+                    if not ref:
+                        continue
+                    from_col = _clean_ident(piece.split(None, 1)[0])
+                    to_col = _clean_ident(ref.group(2).split(",")[0]) if ref.group(2) else ""
+                    _emit(from_table, ref.group(1), from_col, to_col, node)
+    return rels
+
+
+def read_sql_file_nodes(repo_path) -> list[CodeNode]:
+    """Read standalone ``.sql`` files (including ``migrations/``) as synthetic
+    CodeNodes so their DDL feeds the SQL entity + relationship extractors.
+
+    ``.sql`` is not a tree-sitter language, so ``walk_repo`` never yields it and
+    ``migrations/`` is in ``_SKIP_DIRS`` — yet migrations are the most reliable
+    schema + FK source. We walk plainly here, skipping only vendor/build noise.
+    """
+    from pathlib import Path
+    from ..repo.lang_detector import _SKIP_DIRS
+
+    repo_path = Path(repo_path)
+    skip = _SKIP_DIRS - {"migrations"}  # migrations carry the canonical schema
+    out: list[CodeNode] = []
+    for path in sorted(repo_path.rglob("*.sql")):
+        if any(part in skip for part in path.parts):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if not text.strip():
+            continue
+        out.append(CodeNode(
+            file_path=str(path), language="sql", node_type="sql_source",
+            name=path.name, qualified_name=f"sqlfile::{path.name}",
+            source_code=text, line_start=1, line_end=text.count("\n") + 1,
+        ))
+    return out
 
 
 def _mine_statements(text: str):

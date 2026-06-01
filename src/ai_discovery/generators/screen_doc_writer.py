@@ -104,6 +104,9 @@ def write_screen_spec(
         crud_profile=spec.crud_profile,
         interaction_mode=spec.interaction_mode,
         status="Draft",
+        # CRIT-3: screen specs are LLM narrative not yet claim-verified; never
+        # publish the LLM's self-asserted confidence at face value — cap it.
+        confidence=min(getattr(spec, "confidence", 0.5) or 0.5, 0.5),
         purpose=spec.purpose,
         when_used=spec.when_used,
         user_actions=spec.user_actions,

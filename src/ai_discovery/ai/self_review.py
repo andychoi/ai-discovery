@@ -16,12 +16,23 @@ from ..db import get_conn, now_iso
 logger = logging.getLogger(__name__)
 
 
+# HIGH-2: a "verified" verdict is only trustworthy when RAG actually retrieved
+# relevant code. Above this best-match distance the evidence is too weak to
+# support "verified" — we abstain (downgrade to unverified/weak_evidence) rather
+# than let an LLM bless a claim whose supporting code was never found. Lenient
+# by default so only clearly-unrelated matches are gated; tune against a corpus.
+_MAX_VERIFY_DISTANCE = 1.0
+
+
 @dataclass
 class ReviewClaim:
     claim_text: str
     status: str  # "verified", "unverified", "contradicted"
     evidence: str = ""  # matching source code snippet
     source_file: str = ""
+    # HIGH-2: why this verdict — distinguishes unverified-because-not-retrieved
+    # and -weak-evidence from -ambiguous, so masked hallucinations are visible.
+    reason: str = ""  # supported | contradicted | ambiguous | not_retrieved | weak_evidence
 
 
 def extract_claims(content_md: str, llm_client: LLMClient) -> list[str]:
@@ -123,7 +134,11 @@ def verify_claim(
     results = search(claim, db_path, llm_client, top_k=top_k, query_vec=query_vec)
 
     if not results:
-        return ReviewClaim(claim_text=claim, status="unverified")
+        # HIGH-2: no supporting code retrieved — abstain, don't silently treat
+        # as merely "ambiguous". This is the masked-hallucination case.
+        return ReviewClaim(claim_text=claim, status="unverified", reason="not_retrieved")
+
+    best_distance = results[0].get("distance")
 
     # Build context from RAG results
     code_snippets = []
@@ -158,11 +173,21 @@ def verify_claim(
     answer = response.text.strip().lower()
 
     if "verified" in answer and "unverified" not in answer:
-        status = "verified"
+        status, reason = "verified", "supported"
     elif "contradicted" in answer:
-        status = "contradicted"
+        status, reason = "contradicted", "contradicted"
     else:
-        status = "unverified"
+        status, reason = "unverified", "ambiguous"
+
+    # HIGH-2: abstain from "verified" when the supporting evidence is weak —
+    # an LLM blessing a claim over distant/unrelated code is exactly how a
+    # hallucination gets masked as confirmed. Only gate when a distance is known.
+    if (
+        status == "verified"
+        and isinstance(best_distance, (int, float))
+        and best_distance > _MAX_VERIFY_DISTANCE
+    ):
+        status, reason = "unverified", "weak_evidence"
 
     # Use best matching snippet as evidence
     best_evidence = results[0].get("chunk_text", "")
@@ -172,6 +197,7 @@ def verify_claim(
         status=status,
         evidence=best_evidence,
         source_file=best_file,
+        reason=reason,
     )
 
 
@@ -179,7 +205,7 @@ def review_document(
     content_md: str,
     db_path: Path,
     llm_client: LLMClient,
-    max_claims: int = 10,
+    max_claims: int = 50,  # HIGH-2: was 10 — confidence reflected only a sample
     max_workers: int = 5,
     on_total_known: Callable[[int], None] | None = None,
     on_claim_done: Callable[["ReviewClaim"], None] | None = None,

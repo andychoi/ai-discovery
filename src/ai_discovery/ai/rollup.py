@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 # Doc types generated per domain (Phase 0: Discovery)
 DOC_TYPES = ("as-is", "as-is-detail", "as-is-schema")
 
+# Confidence for a doc with nothing scorable (no AST rows, no extractable
+# claims). Such a doc is unverifiable — not certain — so it scores low. See
+# blend_confidence (HIGH-1 fix).
+UNVERIFIABLE_CONFIDENCE = 0.3
+
 # Human-readable labels for doc types
 _DOC_TYPE_LABELS = {
     "as-is":        "As-Is Assessment",
@@ -103,13 +108,14 @@ def _build_verified_api_table(domain: Domain) -> tuple[str, int] | None:
     lines = [
         "## API Surface (verified)",
         "",
-        "*Extracted directly from source AST annotations. HTTP verbs and paths are authoritative.*",
+        "*Extracted verbatim from source AST annotations — `✓ AST` marks provenance "
+        "(faithful to source), not independent validation of correctness.*",
         "",
-        "| Handler | HTTP | Path | Source | Conf |",
+        "| Handler | HTTP | Path | Source | Provenance |",
         "|---|---|---|---|---|",
     ]
     for qn, method, route, src in rows:
-        lines.append(f"| `{qn}` | {method} | `{route}` | `{src}` | ✓ 1.00 |")
+        lines.append(f"| `{qn}` | {method} | `{route}` | `{src}` | ✓ AST |")
     lines.append("")
     return "\n".join(lines), len(rows)
 
@@ -137,12 +143,13 @@ def _build_verified_schema_table(domain: Domain) -> tuple[str, int] | None:
     lines = [
         "## Entity Schema (verified)",
         "",
-        "*Extracted directly from source AST. Entity names and field lists are authoritative.*",
+        "*Extracted verbatim from source AST — `✓ AST` marks provenance (faithful "
+        "to source), not independent validation of correctness.*",
         "",
     ]
     for qn, name, fields, bases, src in entries:
         extends = f" — extends `{', '.join(bases)}`" if bases else ""
-        lines.append(f"### `{name}` &nbsp;<sub>✓ 1.00</sub>")
+        lines.append(f"### `{name}` &nbsp;<sub>✓ AST</sub>")
         lines.append(f"Source: `{src}`{extends}")
         lines.append("")
         lines.append("**Fields:**")
@@ -324,7 +331,14 @@ def _build_rollup_prompt(
 
     if domain.external_edges:
         sorted_external = sorted(domain.external_edges, key=lambda e: getattr(e, 'confidence', 0.0), reverse=True)
-        lines.append("## External Dependencies")
+        # HIGH-8: these are calls leaving this domain — mostly to OTHER internal
+        # domains, plus unresolved calls. They are not necessarily external
+        # *systems*; labeling them "External Dependencies" overstated the system's
+        # outward surface. (First-class external-system nodes are future work.)
+        lines.append("## Cross-Domain & Outbound Calls")
+        lines.append("")
+        lines.append("*Calls that leave this domain — to other internal domains or unresolved targets. Not necessarily external systems.*")
+        lines.append("")
         for edge in sorted_external[:_EDGE_LIMIT]:
             callee_info = ""
             if edge.callee in summaries:
@@ -391,9 +405,11 @@ def blend_confidence(verified_row_count: int, review_summary: dict) -> float:
     verified/unverified/contradicted split: verified=1.0, unverified=0.5,
     contradicted=0.0.
 
-    Returns a value in [0.0, 1.0]. If there's nothing to score (no AST rows
-    AND no claims extracted), returns 1.0 by convention — matching
-    `get_review_summary` for empty inputs.
+    Returns a value in [0.0, 1.0]. If there's nothing to score (no AST rows AND
+    no claims extracted), the doc is *unverifiable*, not certain — return a low
+    confidence (HIGH-1 fix). Publishing 1.0 here meant a doc whose claims could
+    not even be extracted shipped as maximally confident, which is exactly
+    backwards for a trustworthiness signal.
     """
     n_ast = max(0, int(verified_row_count or 0))
     verified = int(review_summary.get("verified", 0))
@@ -403,7 +419,7 @@ def blend_confidence(verified_row_count: int, review_summary: dict) -> float:
 
     total = n_ast + n_prose
     if total == 0:
-        return 1.0
+        return UNVERIFIABLE_CONFIDENCE
 
     score = (n_ast * 1.0) + (verified * 1.0) + (unverified * 0.5) + (contradicted * 0.0)
     return round(score / total, 2)

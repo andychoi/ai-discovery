@@ -376,4 +376,4 @@ confidence:
 ## See Also
 - `docs/guides/call-graph/debugging-workflow.md` — How to trace and debug a specific call
 - `docs/guides/call-graph/test-strategy.md` — Validating confidence scores systematically
-- `docs/architecture/decisions.md` — Why we chose 7-level scoring
+- `docs/architecture/decisions.md` — Why we chose 4-stage graded confidence

@@ -83,13 +83,15 @@ def test_extracts_endpoints(parser: CSharpParser, controller_file: Path):
 
     by_name = {e.name: e for e in endpoints}
 
+    # HIGH-4: routes compose the controller-level [Route("api/[controller]")]
+    # prefix (with [controller] -> "Payments") rather than dropping it.
     create = by_name["CreatePayment"]
     assert create.framework_hints["method"] == "POST"
-    assert create.framework_hints["route"] == ""
+    assert create.framework_hints["route"] == "/api/Payments"
 
     get = by_name["GetPayment"]
     assert get.framework_hints["method"] == "GET"
-    assert get.framework_hints["route"] == "{id}"
+    assert get.framework_hints["route"] == "/api/Payments/{id}"
 
 
 def test_extracts_ef_model(parser: CSharpParser, model_file: Path):

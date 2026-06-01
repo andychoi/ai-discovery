@@ -80,7 +80,7 @@ def test_verified_api_table_renders_extracted_routes():
     assert "/user/register" not in table
     assert "PUT" not in table  # ProductController.updateProduct is POST, not PUT
     # Track 4: every verified row carries an explicit confidence marker.
-    assert "✓ 1.00" in table
+    assert "✓ AST" in table
 
 
 def test_verified_api_table_includes_source_citation():
@@ -125,7 +125,7 @@ def test_verified_schema_table_lists_entity_fields():
     assert "totalPrice" in table
     assert "extends `BaseEntity`" in table
     # Track 4: entity heading carries a confidence marker
-    assert "✓ 1.00" in table
+    assert "✓ AST" in table
 
 
 def test_verified_schema_table_returns_none_when_no_entities_with_fields():
@@ -153,10 +153,13 @@ def test_prompt_includes_verified_facts_block_with_non_overridable_marker():
 # Track 4 — confidence blending
 # ---------------------------------------------------------------------------
 
-def test_blend_confidence_no_data_returns_one():
-    """Empty review + zero AST rows -> confidence 1.0 (no claims to falsify)."""
+def test_blend_confidence_no_data_is_unverifiable_not_certain():
+    """Empty review + zero AST rows -> LOW confidence (HIGH-1): a doc with
+    nothing verifiable is unverifiable, not maximally confident."""
+    from ai_discovery.ai.rollup import UNVERIFIABLE_CONFIDENCE
     summary = {"verified": 0, "unverified": 0, "contradicted": 0, "total": 0}
-    assert blend_confidence(0, summary) == 1.0
+    assert blend_confidence(0, summary) == UNVERIFIABLE_CONFIDENCE
+    assert blend_confidence(0, summary) < 0.5
 
 
 def test_blend_confidence_pure_ast_no_review():

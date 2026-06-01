@@ -12,6 +12,15 @@ PY_LANGUAGE = Language(tspython.language())
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "options"})
 
+# Base classes that mark a class-based view whose HTTP-verb-named methods are
+# request handlers (Django CBV/DRF, Flask MethodView, flask-restful Resource).
+_VIEW_BASES = frozenset({
+    "View", "APIView", "ViewSet", "ModelViewSet", "GenericViewSet", "ReadOnlyModelViewSet",
+    "MethodView", "Resource", "TemplateView", "ListView", "DetailView",
+    "CreateView", "UpdateView", "DeleteView", "RedirectView",
+    "ListAPIView", "RetrieveAPIView", "CreateAPIView", "GenericAPIView",
+})
+
 # ── Tree-sitter queries ──────────────────────────────────────────────
 
 _CLASS_QUERY = Query(
@@ -149,6 +158,16 @@ class PythonParser(LanguageParser):
             class_fields = self._extract_class_fields(cls_node)
             class_bases = self._extract_bases(cls_node)
 
+            # Class-based view? (Django/DRF/Flask MethodView/flask-restful) —
+            # HTTP-verb-named methods are endpoints even without a decorator
+            # (HIGH-5). Route comes from URL config, not the class, so it's left
+            # empty here (and thus excluded from the verified-API table, which
+            # requires both verb and path — we don't stamp an empty route).
+            is_view = any(
+                b.split(".")[-1] in _VIEW_BASES or b.endswith(("View", "ViewSet", "APIView"))
+                for b in class_bases
+            )
+
             nodes.append(CodeNode(
                 file_path=fp,
                 language="python",
@@ -188,10 +207,22 @@ class PythonParser(LanguageParser):
                 if is_async:
                     f_hints["async_boundary"] = True
 
+                # Endpoint? Decorated class method (@router.get) or a verb-named
+                # method on a view class (CBV). HIGH-5.
+                m_decorators = self._extract_decorators(m_node)
+                endpoint_info = self._detect_endpoint(m_decorators)
+                if endpoint_info is None and is_view and method_name.lower() in _HTTP_METHODS:
+                    endpoint_info = {"method": method_name.upper(), "route": ""}
+                m_node_type = "method"
+                if endpoint_info:
+                    m_node_type = "endpoint"
+                    f_hints["method"] = endpoint_info["method"]
+                    f_hints["route"] = endpoint_info["route"]
+
                 nodes.append(CodeNode(
                     file_path=fp,
                     language="python",
-                    node_type="method",
+                    node_type=m_node_type,
                     name=method_name,
                     qualified_name=m_qualified,
                     source_code=m_node.text.decode(),
@@ -596,27 +627,44 @@ class PythonParser(LanguageParser):
 
     @staticmethod
     def _detect_endpoint(decorators: list[dict]) -> dict | None:
-        """If any decorator looks like ``@obj.get("/path")``, return method + route."""
+        """Detect an HTTP endpoint decorator.
+
+        Handles both idioms:
+        - ``@obj.get("/path")`` / ``@router.post("/p")`` (FastAPI, Flask 2.x) —
+          the HTTP verb is the attribute name.
+        - ``@app.route("/path", methods=["POST"])`` (Flask/Blueprint, the
+          dominant Flask idiom, HIGH-5) — verb(s) live in ``methods=[...]``,
+          defaulting to GET. Multiple methods are joined with ",".
+        """
+        import re
+
+        def _first_string(s: str) -> str:
+            for ch in ('"', "'"):
+                if ch in s:
+                    start = s.index(ch) + 1
+                    end = s.index(ch, start)
+                    if end > start:
+                        return s[start:end]
+            return ""
+
         for dec in decorators:
             text = dec["text"]
-            # Pattern: <obj>.<http_method>("<route>")
             if "(" not in text or "." not in text:
                 continue
-            # Split on first '(' to get the callable part
             callable_part, args_part = text.split("(", 1)
             parts = callable_part.rsplit(".", 1)
             if len(parts) != 2:
                 continue
-            method = parts[1].lower()
-            if method not in _HTTP_METHODS:
-                continue
-            # Extract route from first string argument
-            route = ""
-            for ch in ('"', "'"):
-                if ch in args_part:
-                    start = args_part.index(ch) + 1
-                    end = args_part.index(ch, start)
-                    route = args_part[start:end]
-                    break
-            return {"method": method.upper(), "route": route}
+            verb = parts[1].lower()
+            route = _first_string(args_part)
+            if verb == "route":
+                # Flask: @app.route("/p", methods=["GET", "POST"]) — default GET.
+                mm = re.search(r"methods\s*=\s*[\[\(]([^\]\)]*)[\]\)]", args_part)
+                methods = (
+                    [s.strip().strip("'\"").upper() for s in mm.group(1).split(",") if s.strip()]
+                    if mm else []
+                ) or ["GET"]
+                return {"method": ",".join(methods), "route": route}
+            if verb in _HTTP_METHODS:
+                return {"method": verb.upper(), "route": route}
         return None

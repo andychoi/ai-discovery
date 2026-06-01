@@ -173,6 +173,12 @@ class CSharpParser(LanguageParser):
             if is_db_model and table_attr and table_attr.get("arg"):
                 framework_hints["table"] = table_attr["arg"]
 
+            # Class-level [Route("api/[controller]")] prefix — composed into
+            # each action's route below (HIGH-4: previously dropped, so the
+            # "verified" path was a truncated method fragment stamped ✓1.00).
+            route_attr = next((a for a in attrs if a["name"] == "Route"), None)
+            class_route = route_attr.get("arg", "") if route_attr else ""
+
             # Constructor DI: extract parameter type names as calls
             ctor_calls = self._extract_constructor_di(cls_node)
 
@@ -216,8 +222,13 @@ class CSharpParser(LanguageParser):
                 call_sites = self._extract_call_sites(m_node)
                 return_type = self._extract_return_type(m_node)
 
-                # Detect HTTP endpoint
+                # Detect HTTP endpoint, composing the controller-level route
+                # prefix and resolving [controller]/[action] tokens.
                 endpoint_info = self._detect_endpoint(m_attrs)
+                if endpoint_info:
+                    endpoint_info["route"] = self._compose_route(
+                        class_route, endpoint_info["route"], class_name, method_name,
+                    )
                 m_node_type = "endpoint" if endpoint_info else "method"
                 
                 # New: Extract behavioral signals
@@ -580,7 +591,11 @@ class CSharpParser(LanguageParser):
 
     @staticmethod
     def _detect_endpoint(attrs: list[dict]) -> dict | None:
-        """If any attribute is an HTTP method attribute, return method + route."""
+        """If any attribute is an HTTP method attribute, return method + route.
+
+        The route here is the method-level fragment only; the caller composes it
+        with the controller-level [Route] prefix via _compose_route.
+        """
         for attr in attrs:
             m = _HTTP_ATTR_PATTERN.match(attr["name"])
             if m:
@@ -588,3 +603,21 @@ class CSharpParser(LanguageParser):
                 route = attr.get("arg", "")
                 return {"method": method, "route": route}
         return None
+
+    @staticmethod
+    def _compose_route(
+        class_route: str, method_route: str, controller_name: str, action_name: str
+    ) -> str:
+        """Join the controller [Route] prefix with the action route and resolve
+        ASP.NET tokens. `[controller]` → controller name minus 'Controller'
+        suffix; `[action]` → method name. Produces a leading-slash path.
+        """
+        ctrl = controller_name[:-10] if controller_name.endswith("Controller") else controller_name
+
+        def _sub(t: str) -> str:
+            return (t or "").replace("[controller]", ctrl).replace("[action]", action_name)
+
+        base = _sub(class_route).strip("/")
+        leaf = _sub(method_route).strip("/")
+        parts = [p for p in (base, leaf) if p]
+        return "/" + "/".join(parts) if parts else ""

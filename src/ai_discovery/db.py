@@ -17,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -268,6 +268,25 @@ CREATE TABLE IF NOT EXISTS entity_state_machines (
 );
 CREATE INDEX IF NOT EXISTS idx_fsm_scan ON entity_state_machines(scan_id);
 
+CREATE TABLE IF NOT EXISTS db_relationship (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id       INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE CASCADE,
+    from_entity   TEXT NOT NULL,
+    to_entity     TEXT NOT NULL,
+    from_field    TEXT DEFAULT '',
+    to_field      TEXT DEFAULT '',
+    cardinality   TEXT DEFAULT '',
+    source        TEXT DEFAULT '',     -- sql | jpa | ef
+    source_file   TEXT DEFAULT '',
+    source_line   INTEGER DEFAULT 0,
+    confidence    REAL DEFAULT 1.0,
+    inferred      INTEGER DEFAULT 0,   -- 1 = name-convention guess, not a declared FK
+    UNIQUE(scan_id, from_entity, from_field, to_entity, to_field)
+);
+CREATE INDEX IF NOT EXISTS idx_db_rel_scan ON db_relationship(scan_id);
+CREATE INDEX IF NOT EXISTS idx_db_rel_from ON db_relationship(scan_id, from_entity);
+CREATE INDEX IF NOT EXISTS idx_db_rel_to   ON db_relationship(scan_id, to_entity);
+
 CREATE TABLE IF NOT EXISTS schema_version (
     version    INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL
@@ -453,6 +472,78 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         for legacy in ("plantuml", "d2"):
             if legacy in cols:
                 conn.execute(f"ALTER TABLE scenario_flows DROP COLUMN {legacy}")
+
+    if current < 10:
+        # FK-aware table docs (Phase 1): db_relationship stores foreign-key edges
+        # between entities. The table is created by the CREATE TABLE IF NOT EXISTS
+        # in _SCHEMA_SQL (run before this migration), so existing DBs gain it
+        # automatically; this block only records the version bump.
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Entity relationship (foreign-key) helpers — FK-aware table docs, Phase 1
+# ---------------------------------------------------------------------------
+
+def persist_relationships(db_path: Path, scan_id: int, relationships) -> int:
+    """Upsert EntityRelationship edges for a scan. Returns the count written.
+
+    Idempotent: re-persisting the same scan replaces prior edges (the UNIQUE
+    constraint dedups by endpoints + columns, keeping the latest values).
+    """
+    conn = get_conn(db_path)
+    try:
+        conn.execute("DELETE FROM db_relationship WHERE scan_id = ?", (scan_id,))
+        rows = [
+            (scan_id, r.from_entity, r.to_entity, r.from_field, r.to_field,
+             r.cardinality, r.source, r.source_file, r.source_line,
+             float(r.confidence), 1 if r.inferred else 0)
+            for r in relationships
+        ]
+        conn.executemany(
+            """INSERT OR REPLACE INTO db_relationship
+               (scan_id, from_entity, to_entity, from_field, to_field,
+                cardinality, source, source_file, source_line, confidence, inferred)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows,
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
+
+
+def get_relationships(db_path: Path, scan_id: int, *, from_entity: str | None = None):
+    """Return EntityRelationship edges for a scan (optionally filtered by source
+    entity), ordered for stable rendering."""
+    from .graph.models import EntityRelationship
+
+    conn = get_conn(db_path)
+    try:
+        if from_entity is not None:
+            cur = conn.execute(
+                "SELECT * FROM db_relationship WHERE scan_id = ? AND from_entity = ? "
+                "ORDER BY from_entity, from_field, to_entity",
+                (scan_id, from_entity),
+            )
+        else:
+            cur = conn.execute(
+                "SELECT * FROM db_relationship WHERE scan_id = ? "
+                "ORDER BY from_entity, from_field, to_entity",
+                (scan_id,),
+            )
+        return [
+            EntityRelationship(
+                from_entity=row["from_entity"], to_entity=row["to_entity"],
+                from_field=row["from_field"], to_field=row["to_field"],
+                cardinality=row["cardinality"], source=row["source"],
+                source_file=row["source_file"], source_line=row["source_line"],
+                confidence=row["confidence"], inferred=bool(row["inferred"]),
+            )
+            for row in cur.fetchall()
+        ]
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,8 @@ related_docs:
   databases: {{ related_docs.databases | tojson }}
   interfaces: {{ related_docs.interfaces | tojson }}
 source_hashes: {{ source_hashes | tojson }}
+discovery_confidence: {{ confidence }}
+content_provenance: llm-narrative-unverified
 ---
 
 # {{ title }}
@@ -20,6 +22,11 @@ source_hashes: {{ source_hashes | tojson }}
 **CRUD Profile:** {{ crud_profile }}
 **Interaction Mode:** {{ interaction_mode }}
 **Status:** {{ status }}
+
+> ⚠ **LLM-authored, not source-verified.** Purpose, rules, and field
+> descriptions below are generated narrative; the backend/database/interface
+> links are mapping-derived. This spec does not yet pass through the
+> claim-verification step the ASIS/ASD/ASSC rollups get (CRIT-3).
 
 ---
 

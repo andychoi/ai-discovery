@@ -107,3 +107,52 @@ def test_no_double_counting_class_functions(parser: PythonParser, sample_fastapi
     assert "process_payment" not in function_names
     assert "_validate" not in function_names
     assert "_charge" not in function_names
+
+
+# ---------------------------------------------------------------------------
+# Endpoint detection — Flask methods=[], default GET, and class-based views.
+# HIGH-5: these idioms were previously missed; Python had no endpoint tests.
+# ---------------------------------------------------------------------------
+
+def _endpoints(parser, tmp_path: Path, code: str):
+    f = tmp_path / "views.py"
+    f.write_text(code)
+    return {n.name: n for n in parser.parse_file(f) if n.node_type == "endpoint"}
+
+
+def test_flask_route_methods_list(parser, tmp_path):
+    code = (
+        "from flask import Flask\n"
+        "app = Flask(__name__)\n\n"
+        "@app.route('/users/signup', methods=['POST'])\n"
+        "def signup():\n    pass\n\n"
+        "@app.route('/health')\n"
+        "def health():\n    pass\n"
+    )
+    eps = _endpoints(parser, tmp_path, code)
+    assert eps["signup"].framework_hints["method"] == "POST"
+    assert eps["signup"].framework_hints["route"] == "/users/signup"
+    # No methods= defaults to GET.
+    assert eps["health"].framework_hints["method"] == "GET"
+    assert eps["health"].framework_hints["route"] == "/health"
+
+
+def test_flask_route_multiple_methods(parser, tmp_path):
+    code = (
+        "@app.route('/items', methods=['GET', 'POST'])\n"
+        "def items():\n    pass\n"
+    )
+    eps = _endpoints(parser, tmp_path, code)
+    assert eps["items"].framework_hints["method"] == "GET,POST"
+
+
+def test_class_based_view_verb_methods_are_endpoints(parser, tmp_path):
+    code = (
+        "class OrderView(APIView):\n"
+        "    def get(self, request):\n        pass\n"
+        "    def post(self, request):\n        pass\n"
+        "    def helper(self):\n        pass\n"
+    )
+    eps = _endpoints(parser, tmp_path, code)
+    assert set(eps) == {"get", "post"}  # helper is not an endpoint
+    assert eps["get"].framework_hints["method"] == "GET"

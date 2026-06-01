@@ -28,7 +28,7 @@ A sophisticated brownfield reverse-engineering engine that parses code, infers b
 Design → Plan → Implement → Verify. Don't skip design.
 
 ### 2. Heuristics Are Load-Bearing
-Every heuristic (7-level confidence scoring, domain classification, framework detection) has documented reasoning in `docs/architecture/decisions.md`. When changing a heuristic, update both code and documentation.
+Every heuristic (4-stage graded call-resolution confidence, domain classification, framework detection) has documented reasoning in `docs/architecture/decisions.md`. When changing a heuristic, update both code and documentation.
 
 ### 3. Confidence Scoring Is Multi-Signal
 No single heuristic is authoritative. Call resolution uses depth, state transitions, data boundaries, external APIs, and read-after-write patterns. See `docs/guides/call-graph/resolution-heuristics.md` for details.

@@ -8,6 +8,38 @@
 
 ---
 
+## 0. Implementation Status (updated 2026-05-31)
+
+Findings from this review were implemented in waves (each its own commit, full suite green at every step). Status:
+
+| Finding | Status | Notes |
+|---|---|---|
+| **CRIT-1** screen-phase crash | ✅ Done | `llm_client` constructed before Phase 2; AST regression guard. |
+| Screen-spec fence/truncation | ✅ Done | Durable structured output (Bedrock tool use) + shared fence-tolerant fallback. |
+| **CRIT-2** PF docs over-confident | ◑ Interim | Confidence capped to 0.5 + provenance banner. *Remaining:* source-fed prompts + per-step citations + verification pass. |
+| **CRIT-3** screen specs over-confident | ◑ Interim | Confidence capped + `content_provenance` + banner. *Remaining:* same as CRIT-2. |
+| **HIGH-1** blend_confidence 1.0 trap | ✅ Done | Unverifiable docs → 0.3, not 1.0. |
+| **HIGH-2** self-review trust holes | ✅ Done | Evidence-gated verdicts (abstain on weak/absent RAG), re-verify regenerated prose, claim cap 10→50. |
+| **HIGH-3** no DI/receiver-type resolution | ☐ Deferred | Large; risk of broadly perturbing the call graph. Needs corpus accuracy harness first. |
+| **HIGH-4** C# route prefix dropped | ✅ Done | Composes `[Route]` + `[controller]`/`[action]` tokens. |
+| **HIGH-5** Python Flask/CBV endpoints | ✅ Done | `methods=[]`, default GET, class-based views; Python endpoint tests added. |
+| **HIGH-6** no FK/relationship extraction | ✅ Done | FK extraction (SQL + JPA) + `db_relationship` table + `.sql`/migrations reading (FK-aware docs Phase 1–2). |
+| **HIGH-7** non-code artifacts ignored | ☐ Deferred | OpenAPI/proto/IaC ingestion — large, new subsystem. |
+| **HIGH-8** external systems / federation | ◑ Partial | Relabeled "External Dependencies". *Remaining (large):* first-class external-system nodes; cross-repo integration correlator. |
+| **HIGH-9** inferred USER_TASK steps | ✅ Done | `⚠ inferred` marker in BPMN/Mermaid; transition-provenance doc reconciled. |
+| **HIGH-10** faithfulness untested / no corpus | ☐ Deferred | Real pinned-repo accuracy harness — large; own effort. |
+| **MED-1** confidence doc≠code | ✅ Done | decisions.md/CLAUDE.md reconciled to the 4-stage resolver + raw ranking score. |
+| **MED-3** edge dedup | ✅ Done | Edges deduped per (caller, callee, edge_type), max confidence. |
+| triggers min_support=1 | ✅ Done | Raised to 2 (single co-occurrence ≠ causal). |
+| **LOW** ✓1.00 label / PF H1 / etc. | ✅ Done | `✓ AST` provenance label; PF body H1 uses scenario. |
+| **LSP/compiler resolver tier** | ☐ Deferred | The biggest architectural shift; multi-day, own effort. |
+
+**Legend:** ✅ done & tested · ◑ interim/partial (active harm reduced; deeper fix scoped) · ☐ deferred (large architectural effort, documented for a focused future pass).
+
+The deferred items share a precondition the review itself names: a **corpus-based accuracy harness** (HIGH-10) should land first, so DI resolution (HIGH-3), external-system modeling (HIGH-8), and artifact ingestion (HIGH-7) can be measured rather than asserted. Rushing them at the tail of this pass would reproduce the very "under-tested sprawl" the review warns against.
+
+---
+
 ## 1. Executive Verdict
 
 **Is this the best reverse-spec solution?** The *architecture* is the right primary bet and contains one genuinely best-in-class idea. The *implementation* is half-finished against its own design intent, and the unfinished half is the half that determines whether a reader can trust the output.
