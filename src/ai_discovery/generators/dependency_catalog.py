@@ -103,6 +103,45 @@ def render_dependency_catalog(db_path, scan_id: int, project_slug: str) -> str:
     return "\n".join(lines)
 
 
+def render_integration_map(integration_edges: list, source_repos: list[str]) -> str:
+    """Render cross-repo provider→consumer integrations (the correlator output)
+    as a human-readable map: a dependency matrix plus per-provider detail.
+
+    `integration_edges` are IntegrationEdge objects (from integration_correlator).
+    Returns "" when there are no cross-repo integrations.
+    """
+    if not integration_edges:
+        return ""
+
+    # Consumer→{providers} for a compact dependency overview.
+    deps: dict[str, set[str]] = {}
+    for e in integration_edges:
+        deps.setdefault(e.consumer_repo, set()).add(e.provider_repo)
+
+    lines = [
+        "# Cross-Repo Integration Map",
+        "",
+        f"> Provider→consumer integrations correlated across {len(source_repos)} repos "
+        "by matching outbound HTTP calls to inbound endpoints (method + normalized path).",
+        "",
+        "## Dependency Overview",
+        "",
+        "| Consumer | Depends on (providers) |",
+        "|---|---|",
+    ]
+    for consumer in sorted(deps):
+        lines.append(f"| `{consumer}` | {', '.join(f'`{p}`' for p in sorted(deps[consumer]))} |")
+    lines += ["", "## Integration Edges", "",
+              "| Provider | Endpoint | Consumer | Caller |", "|---|---|---|---|"]
+    for e in sorted(integration_edges, key=lambda x: (x.provider_repo, x.path, x.consumer_repo)):
+        lines.append(
+            f"| `{e.provider_repo}` | `{e.method} {e.path}` | `{e.consumer_repo}` "
+            f"| {e.consumer_caller or ''} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def write_dependency_catalog(db_path, scan_id: int, project_slug: str, docs_dir):
     """Write the catalog under `INTERFACES/`. Returns the path, or None if empty."""
     from pathlib import Path

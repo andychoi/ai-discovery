@@ -60,3 +60,18 @@ def test_interfaces_roundtrip(tmp_path):
     p = tmp_path / "interfaces.json"; p.write_text(json.dumps(d))
     back = interfaces_from_dict(json.loads(p.read_text()))
     assert back.inbound[0].path == "/a" and back.outbound[0].target == "/b"
+
+
+def test_render_integration_map():
+    from ai_discovery.generators.dependency_catalog import render_integration_map
+    from ai_discovery.graph.integration_correlator import IntegrationEdge
+    edges = [
+        IntegrationEdge("orders-svc", "web-bff", "GET", "/api/orders/{}", "dashboard"),
+        IntegrationEdge("orders-svc", "mobile-bff", "POST", "/api/orders", "checkout"),
+    ]
+    md = render_integration_map(edges, ["orders-svc", "web-bff", "mobile-bff"])
+    assert "# Cross-Repo Integration Map" in md
+    assert "## Dependency Overview" in md
+    assert "`web-bff`" in md and "`orders-svc`" in md
+    assert "GET /api/orders/{}" in md
+    assert render_integration_map([], []) == ""
