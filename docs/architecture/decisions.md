@@ -31,8 +31,12 @@ constructor-param types the parsers extract, so `orderService.process()` resolve
 to `OrderService.process` only — instead of the short-name stage fanning out to
 every `process()` in the codebase. It returns no match (falls through) when the
 receiver's type is unknown or the method isn't defined on it (e.g. framework-
-inherited `repository.findAll()`), so it never invents an edge. Measured by the
-`di_resolution` dimension of the corpus harness (`tests/corpus/`).
+inherited `repository.findAll()`), so it never invents an edge. The receiver is
+matched both literally (Java/C# field `_svc`) and by its final dotted segment
+(Python `self.order_service` → `order_service`). Field-type extraction is
+implemented for **Java, C#, and Python** (field injection, auto-properties, and
+typed-`__init__` DI). Measured by the `di_resolution` dimension of the corpus
+harness across per-language collision fixtures (`tests/corpus/`).
 
 ### Legacy 7-level framing (historical)
 The original prose ranked levels exact → prefix → suffix → external →

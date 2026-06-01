@@ -1,0 +1,16 @@
+{
+  "_README": "Python name-collision fixture (mirror of java-di-collision). Two services define process(); CheckoutHandler.run() calls self.order_service.process(), which must resolve to OrderService only. Authored from source.",
+  "project": "python-di-collision",
+  "language": "python",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "CheckoutHandler.run", "callee_suffix": "services.OrderService.process", "min_confidence": 0.6}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "CheckoutHandler.run", "callee_suffix": "services.PaymentService.process"}
+  ],
+  "_di_resolution_note": "HIGH-3 (Python): self.order_service is assigned the __init__ param order_service annotated OrderService, so process() resolves to OrderService.process only. di_resolution=1.0 with receiver-type resolution; was 0.0 (short-name fan-out)."
+}

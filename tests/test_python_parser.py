@@ -156,3 +156,18 @@ def test_class_based_view_verb_methods_are_endpoints(parser, tmp_path):
     eps = _endpoints(parser, tmp_path, code)
     assert set(eps) == {"get", "post"}  # helper is not an endpoint
     assert eps["get"].framework_hints["method"] == "GET"
+
+
+def test_extracts_field_types_from_typed_init(parser, tmp_path):
+    """HIGH-3: self.x = annotated-ctor-param captures x's type for resolution."""
+    code = (
+        "class Handler:\n"
+        "    def __init__(self, order_service: OrderService, n: int):\n"
+        "        self.order_service = order_service\n"
+        "        self.count = n\n"
+    )
+    f = tmp_path / "h.py"; f.write_text(code)
+    cls = next(n for n in parser.parse_file(f) if n.node_type == "class")
+    ft = cls.framework_hints.get("field_types", {})
+    assert ft.get("order_service") == "OrderService"
+    assert ft.get("count") == "int"

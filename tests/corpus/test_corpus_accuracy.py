@@ -50,9 +50,15 @@ HARD_TARGETS = {
     ("aspnet-core-app", "call_edges"),
     ("express-app", "endpoints"),
     ("express-app", "call_edges"),
-    # HIGH-3 shipped: DI/receiver-type resolution eliminates the fan-out, so the
-    # no-false-edge guarantee is now a hard target, not just a baseline gauge.
+    # HIGH-3 shipped (Java + C# + Python): DI/receiver-type resolution eliminates
+    # the fan-out, so the no-false-edge guarantee is a hard target on every
+    # collision fixture, not just a baseline gauge.
     ("java-di-collision", "di_resolution"),
+    ("java-di-collision", "call_edges"),
+    ("csharp-di-collision", "di_resolution"),
+    ("csharp-di-collision", "call_edges"),
+    ("python-di-collision", "di_resolution"),
+    ("python-di-collision", "call_edges"),
 }
 
 

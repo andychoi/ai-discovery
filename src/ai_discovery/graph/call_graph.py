@@ -179,7 +179,10 @@ def _resolve_via_receiver_type(
     field_types = field_types_by_class.get(class_qn)
     if not field_types:
         return None
-    type_name = field_types.get(receiver)
+    # Match the receiver against a known field/param. Try the literal receiver
+    # (C# `_orderService`) then its final segment, so member-access receivers
+    # like Python's `self.order_service` resolve via the `order_service` field.
+    type_name = field_types.get(receiver) or field_types.get(receiver.rsplit(".", 1)[-1])
     if not type_name:
         return None
     for type_node in short_name_index.get(type_name, []):

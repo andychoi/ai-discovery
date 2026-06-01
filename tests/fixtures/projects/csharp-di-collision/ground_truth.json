@@ -1,0 +1,16 @@
+{
+  "_README": "C# name-collision fixture (mirror of java-di-collision). Two services define Process(); CheckoutHandler._orderService.Process() must resolve to OrderService only. Authored from source.",
+  "project": "csharp-di-collision",
+  "language": "csharp",
+  "framework": "aspnet",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "CheckoutHandler.Run", "callee_suffix": "Services.OrderService.Process", "min_confidence": 0.6}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "CheckoutHandler.Run", "callee_suffix": "Services.PaymentService.Process"}
+  ],
+  "_di_resolution_note": "HIGH-3 (C#): receiver _orderService has declared type OrderService, so Process() resolves to OrderService.Process only. di_resolution=1.0 with receiver-type resolution; was 0.0 (short-name fan-out)."
+}
