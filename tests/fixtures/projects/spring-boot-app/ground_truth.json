@@ -1,0 +1,32 @@
+{
+  "_README": "Human-labeled ground truth for the corpus accuracy harness (HIGH-10). Derived by READING SOURCE, not parser output — never regenerate this from the extractors, or the accuracy test becomes self-confirming. See docs/specs/2026-05-31-corpus-accuracy-harness.md.",
+  "project": "spring-boot-app",
+  "language": "java",
+  "framework": "spring",
+  "endpoints": [
+    {"handler": "CustomerController.getAll",       "method": "GET",  "path": "/api/customers"},
+    {"handler": "CustomerController.getById",       "method": "GET",  "path": "/api/customers/{id}"},
+    {"handler": "OrderController.getAll",            "method": "GET",  "path": "/api/orders"},
+    {"handler": "OrderController.getById",           "method": "GET",  "path": "/api/orders/{id}"},
+    {"handler": "OrderController.create",            "method": "POST", "path": "/api/orders"},
+    {"handler": "ProductController.getAll",          "method": "GET",  "path": "/api/catalog/products"},
+    {"handler": "ProductController.getById",         "method": "GET",  "path": "/api/catalog/products/{id}"},
+    {"handler": "ProductController.create",          "method": "POST", "path": "/api/catalog/products"},
+    {"handler": "ProductController.update",          "method": "PUT",  "path": "/api/catalog/products/{id}"}
+  ],
+  "entities": [
+    {"table": "products",    "fields": ["id", "name", "description", "price", "stock"]},
+    {"table": "customers",   "fields": ["id", "name", "email", "address"]},
+    {"table": "order_items", "fields": ["id", "product", "quantity"]},
+    {"table": "orders",      "fields": ["id", "customer", "items", "createdAt", "status"]}
+  ],
+  "relationships": [
+    {"from_entity": "orders",      "to_entity": "customers",   "cardinality": "N:1"},
+    {"from_entity": "orders",      "to_entity": "order_items", "cardinality": "1:N"},
+    {"from_entity": "order_items", "to_entity": "products",    "cardinality": "N:1"}
+  ],
+  "key_call_edges": [
+    {"caller": "com.example.controller.OrderController.create", "callee_suffix": "OrderService", "min_confidence": 0.6,
+     "note": "controller delegates to injected service (DI edge — currently a resolution weakness, HIGH-3)"}
+  ]
+}
