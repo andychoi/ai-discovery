@@ -429,6 +429,15 @@ class JavaScriptParser(LanguageParser):
         if method not in _HTTP_METHODS:
             return None
 
+        # Exclude OUTBOUND client calls (axios.post('https://...'), httpClient.get)
+        # — these are external requests, not route definitions. Detected by a
+        # known-client receiver; HIGH-8's registry is the single source of truth.
+        obj = func.child_by_field_name("object")
+        if obj is not None:
+            from ..extractors.external_system_extractor import _match_external
+            if _match_external(obj.text.decode()):
+                return None
+
         args = self._find_child(call_node, "arguments")
         if args is None:
             return None
@@ -437,6 +446,9 @@ class JavaScriptParser(LanguageParser):
         for arg_child in args.children:
             if arg_child.type in ("string", "template_string"):
                 route = arg_child.text.decode().strip("\"'`")
+                # A full URL is an outbound request target, not an Express route.
+                if route.startswith(("http://", "https://")):
+                    return None
                 return (method.upper(), route)
 
         return None

@@ -1,0 +1,16 @@
+{
+  "_README": "Spec-only fixture (no handler code) exercising OpenAPI ingestion (HIGH-7). All endpoints come from openapi.yaml — proving specs are an authoritative endpoint source even with no AST handlers. `language` is nominal (no code files exist). Authored from source.",
+  "project": "openapi-spec",
+  "language": "javascript",
+  "framework": "openapi",
+  "endpoints": [
+    {"handler": "listPets",   "method": "GET",    "path": "/api/v1/pets"},
+    {"handler": "createPet",  "method": "POST",   "path": "/api/v1/pets"},
+    {"handler": "getPet",     "method": "GET",    "path": "/api/v1/pets/{petId}"},
+    {"handler": "deletePet",  "method": "DELETE", "path": "/api/v1/pets/{petId}"}
+  ],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [],
+  "external_systems": []
+}
