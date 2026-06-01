@@ -132,3 +132,94 @@ def test_jsonyaml_detection_unchanged(tmp_path):
     )
     menu_items, screens = md.detect_and_build_screens(tmp_path)
     assert {s.label for s in screens} == {"B"}   # leaf rule preserved
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: React JSX
+# ---------------------------------------------------------------------------
+
+def test_detect_and_build_screens_react_endtoend(tmp_path):
+    # React detector looks for src/App.tsx
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "App.tsx").write_text((FIX / "react-jsx.tsx").read_text())
+    menu_items, screens = md.detect_and_build_screens(tmp_path)
+    assert menu_items is not None
+    labels = {s.label for s in screens}
+    assert "Customer List" in labels
+    assert "Not Found" not in labels            # catch-all dropped
+    cust = next(s for s in screens if s.label == "Customer List")
+    assert cust.path == "/customers"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: Angular routing
+# ---------------------------------------------------------------------------
+
+def test_detect_and_build_screens_angular_endtoend(tmp_path):
+    # Angular detector looks for src/app/app-routing.module.ts
+    (tmp_path / "src" / "app").mkdir(parents=True)
+    (tmp_path / "src" / "app" / "app-routing.module.ts").write_text(
+        (FIX / "angular-routing.module.ts").read_text()
+    )
+    menu_items, screens = md.detect_and_build_screens(tmp_path)
+    assert menu_items is not None
+    labels = {s.label for s in screens}
+    assert "Customers" in labels
+    cust = next(s for s in screens if s.label == "Customers")
+    assert cust.path == "/customers"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: TypeScript constant (Dashboard + Admin leaf screens)
+# ---------------------------------------------------------------------------
+
+def test_detect_and_build_screens_tsconst_endtoend(tmp_path):
+    # TS-const detector scans src/**/*.ts
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "menu.ts").write_text((FIX / "ts-const-menu.ts").read_text())
+    menu_items, screens = md.detect_and_build_screens(tmp_path)
+    assert menu_items is not None
+    labels = {s.label for s in screens}
+    assert "Dashboard" in labels
+    assert "Users" in labels    # Admin leaf screens
+    assert "Roles" in labels
+
+
+# ---------------------------------------------------------------------------
+# _resolve_component_hint: prefer route-resolved hint over path-segment glob
+# ---------------------------------------------------------------------------
+
+def test_resolve_component_hint_prefers_exact_file(tmp_path):
+    """CustomerList.vue at a path glob would MISS (no 'Customers.vue'), but the
+    hint './pages/CustomerList.vue' resolves it correctly."""
+    from ai_discovery.screen_mapper import ScreenMapper
+    from ai_discovery.menu_detector import Screen
+
+    # Create the real file at src/pages/CustomerList.vue
+    pages = tmp_path / "src" / "pages"
+    pages.mkdir(parents=True)
+    (pages / "CustomerList.vue").write_text("<template><div>Customers</div></template>")
+
+    mapper = ScreenMapper(tmp_path)
+    screen = Screen(
+        screen_id="customers",
+        menu_path=["Customers"],
+        label="Customers",
+        path="/customers",
+        fe_component="./pages/CustomerList.vue",
+    )
+
+    # _resolve_component_hint must find the file via the hint
+    resolved = mapper._resolve_component_hint(screen)
+    assert resolved is not None
+    assert "CustomerList.vue" in resolved
+
+    # _find_fe_component would NOT find it because the path /customers maps to
+    # 'Customers.vue', not 'CustomerList.vue'
+    glob_result = mapper._find_fe_component(screen)
+    assert glob_result is None or "CustomerList.vue" not in (glob_result or "")
+
+    # map_screen must use the resolved hint
+    mapping = mapper.map_screen(screen)
+    assert mapping.fe_component is not None
+    assert "CustomerList.vue" in mapping.fe_component

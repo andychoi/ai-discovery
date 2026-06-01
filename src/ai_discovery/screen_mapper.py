@@ -588,8 +588,8 @@ class ScreenMapper:
         """
         mapping = ScreenMapping(screen=screen)
 
-        # 1. Find FE component
-        mapping.fe_component = self._find_fe_component(screen)
+        # 1. Find FE component (prefer the route-resolved hint; fall back to glob)
+        mapping.fe_component = self._resolve_component_hint(screen) or self._find_fe_component(screen)
 
         # 2. Extract API calls
         if mapping.fe_component:
@@ -642,6 +642,28 @@ class ScreenMapper:
     def map_screens(self, screens: list[Screen]) -> list[ScreenMapping]:
         """Map multiple screens."""
         return [self.map_screen(screen) for screen in screens]
+
+    def _resolve_component_hint(self, screen: Screen) -> Optional[str]:
+        """Resolve Screen.fe_component (an import specifier from route parsing) to a
+        real repo file. Returns the same type _find_fe_component returns, or None."""
+        spec = getattr(screen, "fe_component", None)
+        if not spec:
+            return None
+        # 1) try the tail path verbatim (handles './pages/CustomerList.vue')
+        tail = spec.lstrip("./").lstrip("/")
+        if tail:
+            matches = list(self.repo_path.glob(f"**/{tail}"))
+            if matches:
+                return str(matches[0].relative_to(self.repo_path))
+        # 2) fall back to the component file stem across known extensions
+        from pathlib import Path as _P
+        stem = _P(spec).stem
+        if stem:
+            for ext in (".vue", ".tsx", ".jsx", ".ts", ".js"):
+                m = list(self.repo_path.glob(f"**/{stem}{ext}"))
+                if m:
+                    return str(m[0].relative_to(self.repo_path))
+        return None
 
     def _find_fe_component(self, screen: Screen) -> Optional[str]:
         """
