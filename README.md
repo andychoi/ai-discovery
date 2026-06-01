@@ -116,6 +116,8 @@ Phases 8 and 16 are opt-in. All phase numbers are integers — there are no deci
 
 Tier 3 has two slots — `tier3d` (dev-default, fast/cheap) and `tier3p` (prod-default, deeper). Pass `--prod` at scan time to switch in `tier3p`. Override any slot via `discovery.yaml` to pin Opus where you want it.
 
+> ⚠ **`--prod` caveat — set a `tier3p` model your Bedrock account can actually invoke.** `--prod` swaps in the `tier3p` slot. If its model id isn't enabled in your AWS account/region, **every Tier-3 doc rollup fails** with `ValidationException: The provided model identifier is invalid` (Tier-1/2 still run, so the scan completes — but ASIS/ASD/ASSC rollups are missing). Set `bedrock.tier3p` in `discovery.yaml` to a model you have access to (e.g. the same Sonnet you use for `tier2`, or a current Opus). Verify with `aws bedrock list-foundation-models` / your account's enabled models. (`tier3d`, used for non-`--prod` scans, is independent.)
+
 **Typical scan (2000 classes):** $5–15 end-to-end on Bedrock, depending on codebase complexity and tier3 selection.
 
 ## Production-Grade Discovery Workflow
@@ -224,7 +226,7 @@ bedrock:
   tier1: us.anthropic.claude-haiku-4-5-20251001-v1:0   # cheap: chunk summaries
   tier2: us.anthropic.claude-sonnet-4-6                # mid: flow analysis
   tier3d: us.anthropic.claude-haiku-4-5-20251001-v1:0  # dev doc generation (fast/cheap)
-  tier3p: us.anthropic.claude-sonnet-4-6               # prod doc generation (--prod)
+  tier3p: us.anthropic.claude-sonnet-4-6               # prod doc generation (--prod) — MUST be enabled in your account
 
 output_directory: ./data/discovery-output
 ```

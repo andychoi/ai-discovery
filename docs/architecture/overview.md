@@ -112,6 +112,8 @@ AI-Discovery reconstructs and documents business processes at multiple abstracti
 
 Tier 3 has two slots — `tier3d` (dev-default, cheap) and `tier3p` (prod-default, deeper). Pass `--prod` at scan time to swap in `tier3p`. Override any slot via `discovery.yaml` to pin Opus where you want it.
 
+> ⚠ **`--prod` requires a `tier3p` model enabled in your Bedrock account.** If the configured `tier3p` id isn't invokable, every Tier-3 doc rollup fails with `ValidationException: The provided model identifier is invalid` — the scan still completes (Tier-1/2 run) but ASIS/ASD/ASSC rollups are absent. Set `bedrock.tier3p` in `discovery.yaml` to a model you have access to. `tier3d` (non-`--prod`) is unaffected.
+
 Budget guard: each tier checks `total_cost_usd < budget_limit_usd` before running.
 
 ---
