@@ -112,3 +112,43 @@ def test_component_resolves_react_lazy_import():
     root = _parse_src(src)
     routes = rp._array_to_routes(_find_node(root, "array"), rp.FIELD_MAPS["vue"], {})
     assert routes[0].component_source == "./pages/UserList.vue"
+
+
+FIX = Path(__file__).parent / "fixtures" / "routes"
+
+
+def test_parse_ts_const_menu():
+    root = rp.parse_route_file(FIX / "ts-const-menu.ts", "ts-const")
+    assert root is not None
+    assert {c.path for c in root.children} == {"/dashboard", "/admin"}
+    admin = next(c for c in root.children if c.path == "/admin")
+    assert {c.title for c in admin.children} == {"Users", "Roles"}
+
+
+def test_parse_vue_routes():
+    root = rp.parse_route_file(FIX / "vue-routes.ts", "vue")
+    assert root is not None
+    top = {c.path: c for c in root.children}
+    assert top["/"].component == "Layout"
+    cust = next(c for c in top["/"].children if c.path == "customers")
+    assert cust.title == "Customers" and cust.roles == ["sales"]
+    assert cust.component_source == "./pages/CustomerList.vue"
+    assert top["/old"].redirect_to == "/customers"
+    assert any(c.is_catch_all for c in root.children)
+
+
+def test_parse_angular_routes():
+    root = rp.parse_route_file(FIX / "angular-routing.module.ts", "angular")
+    assert root is not None
+    paths = {c.path for c in root.children}
+    assert "customers" in paths and "orders" in paths
+    orders = next(c for c in root.children if c.path == "orders")
+    assert orders.component_source == "./orders/orders.module"
+
+
+def test_parse_react_data_router():
+    root = rp.parse_route_file(FIX / "react-data-router.tsx", "react")
+    assert root is not None
+    cust = next(c for c in root.children if c.path == "/customers")
+    assert cust.title == "Customers"
+    assert cust.component == "CustomerList"

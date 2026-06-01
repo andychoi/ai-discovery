@@ -219,6 +219,13 @@ def _resolve_component(value_node, imports) -> tuple[str | None, str | None]:
     if value_node.type == "identifier":
         name = value_node.text.decode("utf-8", "ignore") if value_node.text is not None else None
         return name, (imports.get(name) if name else None)
+    # JSX element: <ComponentName /> or <ComponentName>...</ComponentName>
+    if value_node.type in ("jsx_self_closing_element", "jsx_element", "jsx_opening_element"):
+        # For jsx_self_closing_element and jsx_element the identifier child is the tag name
+        for c in value_node.children:
+            if c.type == "identifier" and c.text is not None:
+                name = c.text.decode("utf-8", "ignore")
+                return name, imports.get(name)
     return None, None
 
 
@@ -251,3 +258,84 @@ def _object_to_route(object_node, field_map, imports, depth=0) -> RouteNode:
     comp_node = _first(pairs, field_map.get("component", []))
     rn.component, rn.component_source = _resolve_component(comp_node, imports)
     return rn
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Framework adapters + parse_route_file
+# ---------------------------------------------------------------------------
+
+FIELD_MAPS["react"] = {
+    "path": ["path"], "component": ["element", "Component", "lazy"],
+    "title": ["handle.title"], "children": ["children"], "redirect": [],
+}
+
+
+def _find_named_array(root, var_names: set[str]):
+    """Find an array assigned to a `const <name> = [...]` / `<name>: [...]`."""
+    for n in _iter(root):
+        if n.type == "variable_declarator":
+            name = n.child_by_field_name("name")
+            val = n.child_by_field_name("value")
+            if name is not None and val is not None and val.type == "array" \
+               and name.text is not None and name.text.decode("utf-8", "ignore") in var_names:
+                return val
+        if n.type == "pair":
+            key = n.child_by_field_name("key")
+            val = n.child_by_field_name("value")
+            if key is not None and val is not None and val.type == "array" \
+               and key.text is not None and key.text.decode("utf-8", "ignore").strip("'\"") in var_names:
+                return val
+    return None
+
+
+def _find_call_array(root, fn_names: set[str]):
+    """Find the first array argument of a call like createBrowserRouter([...])."""
+    for n in _iter(root):
+        if n.type == "call_expression":
+            fn = n.child_by_field_name("function")
+            if fn is None or fn.text is None:
+                continue
+            fn_text = fn.text.decode("utf-8", "ignore").split(".")[-1]
+            if fn_text in fn_names:
+                args = n.child_by_field_name("arguments")
+                if args is not None:
+                    for a in args.named_children:
+                        if a.type == "array":
+                            return a
+    return None
+
+
+def parse_route_file(path: Path, framework: str) -> RouteNode | None:
+    lang = _grammar_for_ext(path)
+    if lang is None:
+        return None
+    try:
+        source = path.read_bytes()
+        root = Parser(lang).parse(source).root_node
+    except Exception:
+        logger.debug("route_parser: failed to read/parse %s", path)
+        return None
+
+    imports = _collect_imports(root)
+    field_map = FIELD_MAPS.get(framework, FIELD_MAPS["ts-const"])
+    array = None
+    if framework == "ts-const":
+        array = _find_named_array(root, {"MENU", "NAVIGATION", "ROUTES", "SIDEBAR", "menu", "navigation"})
+    elif framework == "vue":
+        array = _find_named_array(root, {"routes"}) or _find_call_array(root, {"createRouter"})
+    elif framework == "angular":
+        array = _find_named_array(root, {"routes"}) or _find_call_array(root, {"forRoot", "forChild"})
+    elif framework == "react":
+        array = _find_call_array(root, {"createBrowserRouter", "createHashRouter", "useRoutes"})
+        if array is None:
+            jsx_routes = _jsx_to_routes(root, imports)  # Task 5
+            if jsx_routes:
+                return RouteNode(children=jsx_routes)
+
+    if array is None:
+        return None
+    return RouteNode(children=_array_to_routes(array, field_map, imports))
+
+
+def _jsx_to_routes(node, imports) -> list[RouteNode]:
+    return []  # implemented in Task 5
