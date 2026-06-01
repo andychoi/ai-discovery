@@ -1,0 +1,20 @@
+type Customer {
+  id: ID!
+  name: String
+  email: String
+}
+
+type Order {
+  id: ID!
+  customer: Customer
+  total: Float
+}
+
+type Query {
+  customer(id: ID!): Customer
+  orders: [Order]
+}
+
+type Mutation {
+  createOrder(customerId: ID!): Order
+}

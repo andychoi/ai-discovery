@@ -15,6 +15,8 @@ from .relationship_extractor import extract_relationships
 from .external_system_extractor import extract_external_systems
 from .openapi_extractor import extract_openapi_endpoints, read_openapi_files
 from .infra_extractor import read_infra_files
+from .graphql_extractor import extract_graphql, read_graphql_files
+from .proto_extractor import extract_proto, read_proto_files
 
 __all__ = [
     "extract_sql_entities",
@@ -25,4 +27,8 @@ __all__ = [
     "extract_openapi_endpoints",
     "read_openapi_files",
     "read_infra_files",
+    "extract_graphql",
+    "read_graphql_files",
+    "extract_proto",
+    "read_proto_files",
 ]

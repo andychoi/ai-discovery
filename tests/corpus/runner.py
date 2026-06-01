@@ -19,8 +19,10 @@ from pathlib import Path
 from ai_discovery.extractors import (
     extract_external_systems,
     extract_relationships,
+    read_graphql_files,
     read_infra_files,
     read_openapi_files,
+    read_proto_files,
 )
 from ai_discovery.graph.call_graph import build_call_graph
 from ai_discovery.graph.models import CallEdge, CodeNode, EntityRelationship
@@ -92,14 +94,28 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
             nodes.extend(parser.parse_file(f))
         except Exception:  # a single unparseable file must not abort the run
             continue
-    # HIGH-7: merge OpenAPI/Swagger spec endpoints (dedup vs AST by method+route).
+    # HIGH-7: merge contract-declared endpoints/entities (OpenAPI + GraphQL +
+    # proto), deduped against AST by (method, route) for endpoints and by
+    # qualified_name for entities.
+    repo = Path(repo_path)
     ast_routes = {
         (n.framework_hints.get("method"), n.framework_hints.get("route"))
         for n in nodes if n.node_type == "endpoint"
     }
-    for n in read_openapi_files(Path(repo_path)):
-        if (n.framework_hints.get("method"), n.framework_hints.get("route")) not in ast_routes:
-            nodes.append(n)
+    existing_qns = {n.qualified_name for n in nodes}
+    contract_nodes = (
+        read_openapi_files(repo) + read_graphql_files(repo) + read_proto_files(repo)
+    )
+    for n in contract_nodes:
+        if n.qualified_name in existing_qns:
+            continue
+        if n.node_type == "endpoint":
+            key = (n.framework_hints.get("method"), n.framework_hints.get("route"))
+            if key in ast_routes:
+                continue
+            ast_routes.add(key)
+        existing_qns.add(n.qualified_name)
+        nodes.append(n)
     edges = build_call_graph(nodes)
     relationships = extract_relationships(nodes)
     ext_nodes, ext_edges = extract_external_systems(nodes)

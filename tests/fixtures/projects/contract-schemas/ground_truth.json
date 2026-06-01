@@ -1,0 +1,22 @@
+{
+  "_README": "Contract-only fixture (HIGH-7): GraphQL SDL + proto. Object types/messages become entities; Query/Mutation fields and service RPCs become endpoints. No handler code — all from the contracts. Authored from source.",
+  "project": "contract-schemas",
+  "language": "javascript",
+  "framework": "graphql",
+  "endpoints": [
+    {"handler": "customer",    "method": "QUERY",    "path": "/customer"},
+    {"handler": "orders",      "method": "QUERY",    "path": "/orders"},
+    {"handler": "createOrder", "method": "MUTATION", "path": "/createOrder"},
+    {"handler": "Charge",      "method": "RPC",      "path": "/PaymentService/Charge"},
+    {"handler": "Refund",      "method": "RPC",      "path": "/PaymentService/Refund"}
+  ],
+  "entities": [
+    {"table": "Customer",        "fields": ["id", "name", "email"]},
+    {"table": "Order",           "fields": ["id", "customer", "total"]},
+    {"table": "ChargeRequest",   "fields": ["order_id", "amount"]},
+    {"table": "ChargeResponse",  "fields": ["success"]}
+  ],
+  "relationships": [],
+  "key_call_edges": [],
+  "external_systems": []
+}

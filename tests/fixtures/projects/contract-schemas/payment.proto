@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+message ChargeRequest {
+  string order_id = 1;
+  int64 amount = 2;
+}
+
+message ChargeResponse {
+  bool success = 1;
+}
+
+service PaymentService {
+  rpc Charge(ChargeRequest) returns (ChargeResponse);
+  rpc Refund(ChargeRequest) returns (ChargeResponse);
+}
