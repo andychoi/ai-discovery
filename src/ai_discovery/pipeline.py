@@ -1504,6 +1504,19 @@ def run_pipeline(
                 f"[yellow]{_sr_totals['unverified']} unverified[/]"
             )
 
+            # CRIT-3: screen specs are generated in Phase 2 (before RAG exists),
+            # so they're claim-verified here instead — RAG is available now. Gated
+            # on --prod (one review pass per screen). Updates each spec's
+            # confidence + patches its on-disk provenance banner.
+            if config.prod and _budget_ok(llm_client, config, "Screen verification"):
+                from .ai.screen_spec_generator import verify_screen_specs
+                try:
+                    n_verified = verify_screen_specs(db_path, scan_id, llm_client, docs_dir)
+                    if n_verified:
+                        console.print(f"  Screen specs source-verified: [green]{n_verified}[/]")
+                except Exception as exc:
+                    logger.warning("Screen verification phase failed: %s", exc)
+
     # ------------------------------------------------------------------
     # 18. Render markdown files (after self-review so annotations are included)
     # ------------------------------------------------------------------

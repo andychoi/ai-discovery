@@ -403,6 +403,85 @@ def persist_screen_specs(
         conn.close()
 
 
+def _screen_narrative(spec: dict) -> str:
+    """Assemble the LLM-authored prose of a screen spec for claim verification."""
+    parts = [spec.get("purpose", ""), spec.get("when_used", ""), spec.get("rules_narrative", "")]
+    for r in spec.get("rules") or []:
+        if isinstance(r, dict):
+            parts.append(f"{r.get('name', '')}: {r.get('description', '')}")
+    for f in spec.get("fields_description") or []:
+        if isinstance(f, dict):
+            parts.append(f"{f.get('name', '')}: {f.get('description', '')}")
+    return "\n".join(p for p in parts if p)
+
+
+def _patch_screen_doc(path: Path, confidence: float) -> None:
+    """Rewrite a screen doc's confidence + provenance to reflect verification."""
+    import re
+
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"discovery_confidence: .*", f"discovery_confidence: {round(confidence, 2)}", text, count=1)
+    text = text.replace("content_provenance: llm-narrative-unverified",
+                        "content_provenance: llm-narrative-source-verified")
+    text = text.replace(
+        "> ⚠ **LLM-authored, not source-verified.**",
+        "> ✓ **Source-verified.** Claims below were checked against source code via RAG —",
+    )
+    path.write_text(text, encoding="utf-8")
+
+
+def verify_screen_specs(db_path: Path, scan_id: int, llm_client, docs_dir) -> int:
+    """CRIT-3: claim-verify each persisted screen spec against RAG-indexed source,
+    replace its unverified confidence with a blended score, and patch the on-disk
+    markdown (confidence + provenance banner). Returns the count verified.
+
+    Runs in the self-review phase (RAG available), since screen generation itself
+    happens before embedding. LLM-heavy (one review per screen) so callers gate it
+    (prod scans). Per-screen failures are swallowed — a screen keeps its capped
+    unverified confidence rather than a fake one.
+    """
+    from .self_review import review_document, get_review_summary
+    from .rollup import blend_confidence
+
+    conn = get_conn(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT screen_id, spec_json FROM screen_specs WHERE scan_id = ?", (scan_id,)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    verified = 0
+    for row in rows:
+        try:
+            spec = json.loads(row["spec_json"])
+        except Exception:
+            continue
+        narrative = _screen_narrative(spec)
+        if not narrative.strip():
+            continue
+        try:
+            claims = review_document(narrative, db_path, llm_client, max_claims=15)
+            conf = blend_confidence(0, get_review_summary(claims))
+        except Exception as exc:
+            logger.warning("Screen verification failed for %s: %s", row["screen_id"], exc)
+            continue
+        conn = get_conn(db_path)
+        try:
+            conn.execute(
+                "UPDATE screen_specs SET confidence = ? WHERE scan_id = ? AND screen_id = ?",
+                (conf, scan_id, row["screen_id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        _patch_screen_doc(Path(docs_dir) / "screens" / f"{row['screen_id']}.md", conf)
+        verified += 1
+    return verified
+
+
 def _build_spec_context(db_path: Path) -> dict:
     """
     Query DB for domain/service/table info to seed screen specs.
