@@ -563,10 +563,11 @@ def run_pipeline(
     from .parsers.csharp import CSharpParser
     from .parsers.java import JavaParser
     from .parsers.javascript import JavaScriptParser
+    from .parsers.webforms import WebFormsParser
 
     if _phase_should_run(6, start_phase, skip_phases):
         with _with_checkpoint(db_path, scan_id, 6, "parse"):
-            parsers = [PythonParser(), CSharpParser(), JavaParser(), JavaScriptParser()]
+            parsers = [PythonParser(), CSharpParser(), JavaParser(), JavaScriptParser(), WebFormsParser()]
             all_nodes: list = []
             parse_errors = 0
 

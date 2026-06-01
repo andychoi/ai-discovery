@@ -12,6 +12,7 @@ _LANG_EXTENSIONS: dict[str, frozenset[str]] = {
     "java": frozenset({".java"}),
     "python": frozenset({".py"}),
     "javascript": frozenset({".js", ".ts", ".tsx", ".jsx"}),
+    "webforms": frozenset({".aspx", ".ascx"}),
 }
 
 # Union of all recognized extensions for the "yield all" case.
