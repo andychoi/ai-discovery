@@ -16,6 +16,8 @@ ambiguous local call.
 
 from __future__ import annotations
 
+import re
+
 from ..graph.models import CallEdge, CodeNode
 
 # receiver token (lowercased) -> (display name, kind)
@@ -86,6 +88,18 @@ def _match_external(receiver: str | None) -> str | None:
     return None
 
 
+def _extract_target(source: str, receiver: str, name: str) -> str:
+    """Best-effort URL/path passed to an outbound HTTP call, from the caller's
+    source. Enables cross-repo correlation (a consumer's outbound target matched
+    against a provider's inbound endpoint). Returns "" when not a string literal.
+    """
+    if not source:
+        return ""
+    pat = re.escape(receiver) + r"\.\s*" + re.escape(name) + r"\s*\(\s*[`'\"]([^`'\"]+)[`'\"]"
+    m = re.search(pat, source)
+    return m.group(1) if m else ""
+
+
 def extract_external_systems(nodes: list[CodeNode]) -> tuple[list[CodeNode], list[CallEdge]]:
     """Return (external_system nodes, external_call edges) synthesized from calls
     whose receiver matches a known client library."""
@@ -113,9 +127,15 @@ def extract_external_systems(nodes: list[CodeNode]) -> tuple[list[CodeNode], lis
             if key in seen_edges:
                 continue
             seen_edges.add(key)
+            meta = {"resolved_by": "external_system", "client": token, "operation": operation}
+            # For HTTP clients, capture the outbound target URL/path so the
+            # cross-repo correlator can match it to a provider's inbound endpoint.
+            if kind == "http_api":
+                target = _extract_target(node.source_code, site.get("receiver") or "", operation)
+                if target:
+                    meta["target"] = target
             edges.append(CallEdge(
                 caller=node.qualified_name, callee=qn,
-                edge_type="external_call", confidence=0.9,
-                metadata={"resolved_by": "external_system", "client": token, "operation": operation},
+                edge_type="external_call", confidence=0.9, metadata=meta,
             ))
     return list(systems.values()), edges

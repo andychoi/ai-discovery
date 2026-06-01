@@ -545,7 +545,8 @@ def federate(
         f"[green]{len(federation['fsms'])}[/] entities "
         f"([yellow]{merged_count}[/] merged across repos), "
         f"[green]{len(federation['cross_links'])}[/] links, "
-        f"[green]{len(federation['conditions'])}[/] conditions"
+        f"[green]{len(federation['conditions'])}[/] conditions, "
+        f"[green]{len(federation.get('integration_edges', []))}[/] integration edges"
     )
     for name, path in paths.items():
         console.print(f"  {name}: {path}")
