@@ -150,7 +150,7 @@ def test_build_rollup_prompt_as_is():
     assert "Current-State" in prompt or "As-Is" in prompt
     assert "Architecture" in prompt
     assert "Technical Debt" in prompt
-    assert "Dependencies" in prompt
+    assert "Cross-Domain & Outbound Calls" in prompt
 
     # Confidence instruction
     assert "Confidence" in prompt
@@ -188,7 +188,9 @@ def test_build_rollup_prompt_external_edges():
     """Verify external edges appear in the prompt."""
     domain = _make_domain()
     prompt = _build_rollup_prompt(domain, "as-is", {}, [])
-    assert "External Dependencies" in prompt
+    # HIGH-8: relabeled from "External Dependencies" — these are cross-domain /
+    # outbound calls, not necessarily external systems.
+    assert "Cross-Domain & Outbound Calls" in prompt
     assert "payments.PaymentGateway.charge" in prompt
 
 

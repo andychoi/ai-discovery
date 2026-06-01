@@ -331,7 +331,14 @@ def _build_rollup_prompt(
 
     if domain.external_edges:
         sorted_external = sorted(domain.external_edges, key=lambda e: getattr(e, 'confidence', 0.0), reverse=True)
-        lines.append("## External Dependencies")
+        # HIGH-8: these are calls leaving this domain — mostly to OTHER internal
+        # domains, plus unresolved calls. They are not necessarily external
+        # *systems*; labeling them "External Dependencies" overstated the system's
+        # outward surface. (First-class external-system nodes are future work.)
+        lines.append("## Cross-Domain & Outbound Calls")
+        lines.append("")
+        lines.append("*Calls that leave this domain — to other internal domains or unresolved targets. Not necessarily external systems.*")
+        lines.append("")
         for edge in sorted_external[:_EDGE_LIMIT]:
             callee_info = ""
             if edge.callee in summaries:
