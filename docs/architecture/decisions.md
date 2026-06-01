@@ -22,8 +22,17 @@ first-match-wins cascade of four resolution stages. Edges are deduped per
 |-------|-----------|-----------|---------------|
 | 1 | Exact qualified-name match | 1.0 | `exact` |
 | 2 | Import-scoped (receiver matches a caller import) | 0.95 | `import_scope` |
-| 3 | Short-name contextual — same class (0.95), same file unique (0.90), same module unique (0.85), unique suffix (0.85), best prefix overlap (0.65–0.75), short-name fan-out (0.6) | 0.95 … 0.6 | `short_name` |
-| 4 | Unresolved — no candidate | 0.5 | `unresolved` |
+| 3 | **Receiver-type (DI)** — receiver is a field/ctor-param of a known type `T` and `T` defines the method; pin to `T.method` | 0.93 | `receiver_type` |
+| 4 | Short-name contextual — same class (0.95), same file unique (0.90), same module unique (0.85), unique suffix (0.85), best prefix overlap (0.65–0.75), short-name fan-out (0.6) | 0.95 … 0.6 | `short_name` |
+| 5 | Unresolved — no candidate | 0.5 | `unresolved` |
+
+**Stage 3 (receiver-type, HIGH-3, added 2026-05-31)** consumes the field/
+constructor-param types the parsers extract, so `orderService.process()` resolves
+to `OrderService.process` only — instead of the short-name stage fanning out to
+every `process()` in the codebase. It returns no match (falls through) when the
+receiver's type is unknown or the method isn't defined on it (e.g. framework-
+inherited `repository.findAll()`), so it never invents an edge. Measured by the
+`di_resolution` dimension of the corpus harness (`tests/corpus/`).
 
 ### Legacy 7-level framing (historical)
 The original prose ranked levels exact → prefix → suffix → external →

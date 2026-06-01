@@ -5,7 +5,7 @@
 
 **Phase 1 result (baseline):** spring-boot & aspnet endpoints/entities/relationships = 1.0; express endpoints = 1.0, **entities = 0.0** (surfaced gap: JS parser doesn't extract Mongoose schemas), relationships = 1.0. HIGH-4/5/6 regression-locked.
 
-**Phase 2 result (call-edge resolution + DI gauge):** `call_edges` recall = 1.0 on all real fixtures (controller/route→service chains resolve correctly at ≥0.8). A dedicated **`java-di-collision`** fixture makes HIGH-3 measurable: two services share a `process()` method, and `orderService.process()` currently fans out to *both* services — so its **`di_resolution = 0.0`** today. That score flips to 1.0 when DI/receiver-type resolution (HIGH-3) lands, with the harness proving the fix. It is baseline-guarded (can't regress) and will be promoted to a hard target once HIGH-3 ships.
+**Phase 2 result (call-edge resolution + DI gauge):** `call_edges` recall = 1.0 on all real fixtures (controller/route→service chains resolve correctly at ≥0.8). A dedicated **`java-di-collision`** fixture made HIGH-3 measurable: two services share a `process()` method, and `orderService.process()` used to fan out to *both*. **HIGH-3 shipped** (Stage-3 `receiver_type` resolution) and the gauge flipped **`di_resolution` 0.0 → 1.0** — the harness proved the fix and it is now a **hard target** (regression-locked).
 
 **Dimensions now scored:** endpoints, entities (+fields), relationships (FK), call_edges (resolution recall), di_resolution (no-fan-out / HIGH-3 gauge).
 **Relates to:** Assessment `04-reverse-spec-solution-review.md` → HIGH-10 (faithfulness untested; accuracy targets are fiction)

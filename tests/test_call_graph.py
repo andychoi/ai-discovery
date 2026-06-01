@@ -261,3 +261,57 @@ def test_suffix_match_resolves_partially_qualified_call():
     assert len(edges) == 1
     assert edges[0].callee == "billing.PaymentService.charge"
     assert edges[0].confidence == 0.85
+
+
+def test_receiver_type_resolution_pins_di_call_no_fanout():
+    """HIGH-3: a call on an injected field resolves to the field's declared type,
+    not every same-named method. orderService.process() -> OrderService.process
+    only (NOT PaymentService.process)."""
+    def cls(qn, name, field_types=None):
+        return CodeNode(file_path="x.java", language="java", node_type="class",
+                        name=name, qualified_name=qn, source_code="", line_start=1, line_end=9,
+                        framework_hints={"field_types": field_types} if field_types else {})
+
+    def method(qn, name):
+        return CodeNode(file_path="x.java", language="java", node_type="method",
+                        name=name, qualified_name=qn, source_code="", line_start=1, line_end=3)
+
+    nodes = [
+        cls("com.x.OrderService", "OrderService"),
+        cls("com.x.PaymentService", "PaymentService"),
+        method("com.x.OrderService.process", "process"),
+        method("com.x.PaymentService.process", "process"),
+        cls("com.x.CheckoutController", "CheckoutController",
+            field_types={"orderService": "OrderService"}),
+        CodeNode(file_path="x.java", language="java", node_type="method",
+                 name="view", qualified_name="com.x.CheckoutController.view",
+                 source_code="", line_start=1, line_end=3,
+                 call_sites=[{"name": "process", "receiver": "orderService"}]),
+    ]
+    edges = build_call_graph(nodes)
+    process_edges = [(e.callee, e.confidence, e.metadata.get("resolved_by"))
+                     for e in edges if e.caller == "com.x.CheckoutController.view"]
+    assert ("com.x.OrderService.process", 0.93, "receiver_type") in process_edges
+    # The fan-out false edge must be gone.
+    assert not any(c == "com.x.PaymentService.process" for c, _, _ in process_edges)
+
+
+def test_receiver_type_falls_through_for_unknown_method():
+    """A method not defined on the receiver's type (e.g. framework-inherited)
+    is NOT force-resolved — it falls through to unresolved, no false edge."""
+    repo = CodeNode(file_path="x.java", language="java", node_type="class",
+                    name="OrderRepository", qualified_name="com.x.OrderRepository",
+                    source_code="", line_start=1, line_end=2)
+    svc = CodeNode(file_path="x.java", language="java", node_type="method",
+                   name="getOrders", qualified_name="com.x.OrderService.getOrders",
+                   source_code="", line_start=1, line_end=3,
+                   framework_hints={},
+                   call_sites=[{"name": "findAll", "receiver": "orderRepository"}])
+    svc_cls = CodeNode(file_path="x.java", language="java", node_type="class",
+                       name="OrderService", qualified_name="com.x.OrderService",
+                       source_code="", line_start=1, line_end=9,
+                       framework_hints={"field_types": {"orderRepository": "OrderRepository"}})
+    edges = build_call_graph([repo, svc, svc_cls])
+    findall = [e for e in edges if e.caller == "com.x.OrderService.getOrders"]
+    # findAll isn't defined on OrderRepository in source -> stays unresolved.
+    assert all(e.metadata.get("resolved_by") == "unresolved" for e in findall)

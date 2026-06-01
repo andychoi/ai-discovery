@@ -179,6 +179,11 @@ class JavaParser(LanguageParser):
                 if relationships:
                     framework_hints["relationships"] = relationships
 
+            # Field/ctor-param types for DI/receiver-type call resolution (HIGH-3).
+            field_types = self._extract_field_types(cls_node)
+            if field_types:
+                framework_hints["field_types"] = field_types
+
             nodes.append(CodeNode(
                 file_path=fp,
                 language="java",
@@ -527,6 +532,46 @@ class JavaParser(LanguageParser):
             t = t[t.index("<") + 1 : t.rindex(">")]
             t = t.split(",")[-1].strip()  # Map<K,V> → V
         return t.split(".")[-1].strip()
+
+    @classmethod
+    def _extract_field_types(cls, cls_node) -> dict:
+        """Map field / constructor-param names to their declared (bare) type.
+
+        Enables DI/receiver-type call resolution (HIGH-3): a call
+        `orderService.process()` whose receiver `orderService` is a field of type
+        `OrderService` can be pinned to `OrderService.process` instead of fanning
+        out to every `process` in the codebase. Covers both field injection
+        (`@Autowired private OrderService orderService;`) and constructor
+        injection (`CheckoutController(OrderService orderService)`).
+        """
+        out: dict[str, str] = {}
+        body = next((c for c in cls_node.children if c.type == "class_body"), None)
+        if body is not None:
+            for member in body.children:
+                if member.type != "field_declaration":
+                    continue
+                type_node = member.child_by_field_name("type")
+                if type_node is None:
+                    continue
+                tname = cls._unwrap_type(type_node.text.decode())
+                for child in member.children:
+                    if child.type == "variable_declarator":
+                        nn = child.child_by_field_name("name")
+                        if nn is not None:
+                            out[nn.text.decode()] = tname
+        for match in _matches(_CONSTRUCTOR_QUERY, cls_node):
+            ctor = match["ctor.def"][0]
+            for child in ctor.children:
+                if child.type != "formal_parameters":
+                    continue
+                for p in child.children:
+                    if p.type != "formal_parameter":
+                        continue
+                    tn = p.child_by_field_name("type")
+                    nn = p.child_by_field_name("name")
+                    if tn is not None and nn is not None:
+                        out.setdefault(nn.text.decode(), cls._unwrap_type(tn.text.decode()))
+        return out
 
     @classmethod
     def _extract_relationships(cls, cls_node) -> list[dict]:

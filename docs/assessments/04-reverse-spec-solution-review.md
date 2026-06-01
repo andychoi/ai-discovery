@@ -20,7 +20,7 @@ Findings from this review were implemented in waves (each its own commit, full s
 | **CRIT-3** screen specs over-confident | ◑ Interim | Confidence capped + `content_provenance` + banner. *Remaining:* same as CRIT-2. |
 | **HIGH-1** blend_confidence 1.0 trap | ✅ Done | Unverifiable docs → 0.3, not 1.0. |
 | **HIGH-2** self-review trust holes | ✅ Done | Evidence-gated verdicts (abstain on weak/absent RAG), re-verify regenerated prose, claim cap 10→50. |
-| **HIGH-3** no DI/receiver-type resolution | ☐ Deferred (now measurable) | The `java-di-collision` corpus fixture pins the fan-out gap at `di_resolution=0.0`; the harness will prove the fix (→1.0) once DI resolution lands. Ready to implement against a real gauge. |
+| **HIGH-3** no DI/receiver-type resolution | ✅ Done | Stage-3 `receiver_type` resolution consumes parser-extracted field/ctor types: `orderService.process()` → `OrderService.process` (0.93), no fan-out. Harness gauge flipped `di_resolution` 0.0→1.0 (now a hard target); framework-inherited calls still fall through unresolved. Java; other languages emit field types as a follow-up. |
 | **HIGH-4** C# route prefix dropped | ✅ Done | Composes `[Route]` + `[controller]`/`[action]` tokens. |
 | **HIGH-5** Python Flask/CBV endpoints | ✅ Done | `methods=[]`, default GET, class-based views; Python endpoint tests added. |
 | **HIGH-6** no FK/relationship extraction | ✅ Done | FK extraction (SQL + JPA) + `db_relationship` table + `.sql`/migrations reading (FK-aware docs Phase 1–2). |
