@@ -86,3 +86,24 @@ def test_build_screen_map_redirect_alias():
     assert {s.label for s in screens} == {"Customers"}
     cust = screens[0]
     assert "/old" in cust.metadata.get("redirect_aliases", [])
+
+
+def test_build_screen_map_relative_redirect_alias():
+    tree = [_mi("/app", "App", is_screen=False, children=[
+        _mi("home", "Home", is_screen=True),
+        _mi("start", "Start", is_screen=False, redirect_to="home"),  # relative target
+    ])]
+    screens = md.build_screen_map(tree, Path("."))
+    home = next(s for s in screens if s.label == "Home")
+    assert "/app/start" in home.metadata.get("redirect_aliases", [])
+
+
+def test_build_screen_map_unique_ids_no_collision():
+    # two screens whose ids would collide -> second gets a -2 suffix, not "-2"
+    tree = [
+        md.MenuItem(id="dup", label="A", path="/a", metadata={"is_screen": True}),
+        md.MenuItem(id="dup", label="B", path="/b", metadata={"is_screen": True}),
+    ]
+    screens = md.build_screen_map(tree, Path("."))
+    ids = {s.screen_id for s in screens}
+    assert ids == {"dup", "dup-2"}

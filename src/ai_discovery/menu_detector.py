@@ -345,7 +345,7 @@ def build_screen_map(menu_items: list[MenuItem], repo_path: Path) -> list[Screen
     metadata['redirect_aliases'].
     """
     screens: list[Screen] = []
-    redirects: list[tuple[str, str]] = []
+    redirects: list[tuple[str, str, str]] = []
     by_full_path: dict[str, Screen] = {}
     seen_ids: set[str] = set()
 
@@ -356,10 +356,12 @@ def build_screen_map(menu_items: list[MenuItem], repo_path: Path) -> list[Screen
         return not item.children
 
     def unique_id(base: str) -> str:
-        sid = base or "screen"
+        base_id = base or "screen"
+        sid = base_id
         i = 2
         while sid in seen_ids:
-            sid = f"{base}-{i}"; i += 1
+            sid = f"{base_id}-{i}"
+            i += 1
         seen_ids.add(sid)
         return sid
 
@@ -368,9 +370,10 @@ def build_screen_map(menu_items: list[MenuItem], repo_path: Path) -> list[Screen
             meta = item.metadata or {}
             full_path = _join_path(parent_path, item.path)
             current_crumb = crumb + [item.label]
-            if meta.get("redirect_to"):
-                redirects.append((full_path, meta["redirect_to"]))
-            if is_screen(item):
+            is_redirect = bool(meta.get("redirect_to"))
+            if is_redirect:
+                redirects.append((full_path, parent_path, meta["redirect_to"]))
+            if is_screen(item) and not is_redirect:
                 sid = unique_id(item.id or JsonYamlDetector._slugify(full_path))
                 screen = Screen(
                     screen_id=sid, menu_path=current_crumb, label=item.label, path=full_path,
@@ -385,8 +388,9 @@ def build_screen_map(menu_items: list[MenuItem], repo_path: Path) -> list[Screen
 
     traverse(menu_items, [], "")
 
-    for src_path, target in redirects:
-        target_screen = by_full_path.get(target) or by_full_path.get(_join_path("", target))
+    for src_path, src_parent, target in redirects:
+        resolved = target if target.startswith("/") else _join_path(src_parent, target)
+        target_screen = by_full_path.get(resolved) or by_full_path.get(target)
         if target_screen is not None:
             target_screen.metadata.setdefault("redirect_aliases", []).append(src_path)
     return screens
