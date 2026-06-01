@@ -107,3 +107,28 @@ def test_build_screen_map_unique_ids_no_collision():
     screens = md.build_screen_map(tree, Path("."))
     ids = {s.screen_id for s in screens}
     assert ids == {"dup", "dup-2"}
+
+
+# ---------------------------------------------------------------------------
+# End-to-end tests (Task 8)
+# ---------------------------------------------------------------------------
+
+def test_detect_and_build_screens_vue_endtoend(tmp_path):
+    router = (tmp_path / "src" / "router"); router.mkdir(parents=True)
+    (router / "index.ts").write_text((FIX / "vue-routes.ts").read_text())
+    menu_items, screens = md.detect_and_build_screens(tmp_path)
+    assert menu_items is not None
+    labels = {s.label for s in screens}
+    assert "Customers" in labels
+    assert "Not Found" not in labels            # catch-all dropped
+    cust = next(s for s in screens if s.label == "Customers")
+    assert "Root" in cust.menu_path             # wrapper contributes breadcrumb
+    assert cust.fe_component == "./pages/CustomerList.vue"
+
+
+def test_jsonyaml_detection_unchanged(tmp_path):
+    (tmp_path / "menu.json").write_text(
+        '[{"label":"A","path":"/a","children":[{"label":"B","path":"/a/b"}]}]'
+    )
+    menu_items, screens = md.detect_and_build_screens(tmp_path)
+    assert {s.label for s in screens} == {"B"}   # leaf rule preserved
