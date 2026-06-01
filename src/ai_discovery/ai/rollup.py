@@ -108,13 +108,14 @@ def _build_verified_api_table(domain: Domain) -> tuple[str, int] | None:
     lines = [
         "## API Surface (verified)",
         "",
-        "*Extracted directly from source AST annotations. HTTP verbs and paths are authoritative.*",
+        "*Extracted verbatim from source AST annotations — `✓ AST` marks provenance "
+        "(faithful to source), not independent validation of correctness.*",
         "",
-        "| Handler | HTTP | Path | Source | Conf |",
+        "| Handler | HTTP | Path | Source | Provenance |",
         "|---|---|---|---|---|",
     ]
     for qn, method, route, src in rows:
-        lines.append(f"| `{qn}` | {method} | `{route}` | `{src}` | ✓ 1.00 |")
+        lines.append(f"| `{qn}` | {method} | `{route}` | `{src}` | ✓ AST |")
     lines.append("")
     return "\n".join(lines), len(rows)
 
@@ -142,12 +143,13 @@ def _build_verified_schema_table(domain: Domain) -> tuple[str, int] | None:
     lines = [
         "## Entity Schema (verified)",
         "",
-        "*Extracted directly from source AST. Entity names and field lists are authoritative.*",
+        "*Extracted verbatim from source AST — `✓ AST` marks provenance (faithful "
+        "to source), not independent validation of correctness.*",
         "",
     ]
     for qn, name, fields, bases, src in entries:
         extends = f" — extends `{', '.join(bases)}`" if bases else ""
-        lines.append(f"### `{name}` &nbsp;<sub>✓ 1.00</sub>")
+        lines.append(f"### `{name}` &nbsp;<sub>✓ AST</sub>")
         lines.append(f"Source: `{src}`{extends}")
         lines.append("")
         lines.append("**Fields:**")

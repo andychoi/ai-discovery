@@ -80,7 +80,7 @@ def test_verified_api_table_renders_extracted_routes():
     assert "/user/register" not in table
     assert "PUT" not in table  # ProductController.updateProduct is POST, not PUT
     # Track 4: every verified row carries an explicit confidence marker.
-    assert "✓ 1.00" in table
+    assert "✓ AST" in table
 
 
 def test_verified_api_table_includes_source_citation():
@@ -125,7 +125,7 @@ def test_verified_schema_table_lists_entity_fields():
     assert "totalPrice" in table
     assert "extends `BaseEntity`" in table
     # Track 4: entity heading carries a confidence marker
-    assert "✓ 1.00" in table
+    assert "✓ AST" in table
 
 
 def test_verified_schema_table_returns_none_when_no_entities_with_fields():

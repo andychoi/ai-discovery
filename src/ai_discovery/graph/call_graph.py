@@ -110,7 +110,17 @@ def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
                 )
             )
 
-    return edges
+    # Dedup (MED-3): the same (caller, callee, edge_type) triple can be emitted
+    # by multiple call sites — a method called twice, or short-name fan-out
+    # reaching one target via two sites — which inflates apparent coupling.
+    # Keep the highest-confidence edge per triple (preserving its evidence).
+    deduped: dict[tuple[str, str, str], CallEdge] = {}
+    for e in edges:
+        k = (e.caller, e.callee, e.edge_type)
+        cur = deduped.get(k)
+        if cur is None or e.confidence > cur.confidence:
+            deduped[k] = e
+    return list(deduped.values())
 
 
 def _build_import_index(caller: CodeNode) -> dict[str, dict]:

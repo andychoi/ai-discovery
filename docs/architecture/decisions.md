@@ -4,10 +4,31 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
 
 ---
 
-## Call Graph Resolution: 7-Level Confidence Scoring
+## Call Graph Resolution: 4-Stage Graded Confidence
+
+> **Reconciled 2026-05-31 (MED-1):** earlier revisions of this doc described a
+> "7-level" table. The implementation (`graph/call_graph.py:build_call_graph`)
+> is a **4-stage** resolver; the graded confidences below are produced *within*
+> stage 3. This section now matches the code.
 
 ### Decision
-Multi-signal confidence scoring (7 levels: exact → prefix → suffix → external → unresolved) instead of boolean match/no-match.
+Graded confidence (a continuum, not boolean match/no-match), assigned by a
+first-match-wins cascade of four resolution stages. Edges are deduped per
+`(caller, callee, edge_type)` keeping the highest confidence.
+
+### Stages (as implemented)
+
+| Stage | Condition | Confidence | `resolved_by` |
+|-------|-----------|-----------|---------------|
+| 1 | Exact qualified-name match | 1.0 | `exact` |
+| 2 | Import-scoped (receiver matches a caller import) | 0.95 | `import_scope` |
+| 3 | Short-name contextual — same class (0.95), same file unique (0.90), same module unique (0.85), unique suffix (0.85), best prefix overlap (0.65–0.75), short-name fan-out (0.6) | 0.95 … 0.6 | `short_name` |
+| 4 | Unresolved — no candidate | 0.5 | `unresolved` |
+
+### Legacy 7-level framing (historical)
+The original prose ranked levels exact → prefix → suffix → external →
+unresolved. Those *signals* still exist, but they are sub-cases of stage 3
+rather than discrete top-level tiers.
 
 ### Why
 - **Binary resolution is fragile**: A function might be callable even if we can't find it—it might be dynamically imported, passed as argument, or in an unmapped namespace.
@@ -230,13 +251,22 @@ Convert execution scenarios to JSON event logs compatible with PM4Py and other p
 
 ---
 
-## Confidence Scoring: Multi-Signal Approach
+## Node Ranking Score: Multi-Signal Approach
+
+> **Reconciled 2026-05-31 (MED-1):** this score ranks nodes *within* an
+> execution slice; it is distinct from call-edge confidence (0.5–1.0, above).
+> `call_graph._score_node` returns the **raw, unnormalized** sum below (range
+> ~0–17) and stores it on `ExecutionNode.confidence` purely for ordering
+> (primary_path = top-N by this score). The `min(1.0, …)/10` normalization in
+> earlier revisions of this doc was **never implemented**; do not compare this
+> field against a 0–1 threshold — it is a ranking key, not a probability.
 
 ### Decision
-Confidence = sum of independent signals (depth, state transition, data boundary, external call, state dependency):
+Rank = sum of independent signals (depth, state transition, data boundary, external call, state dependency):
 
 ```
-confidence = min(1.0, max(0, 5 - depth) + state_transition*4 + boundary*3 + external*2 + dependency*3) / 10
+# As implemented (raw ranking score, NOT normalized to 0–1):
+rank = max(0, 5 - depth) + state_transition*4 + boundary*3 + external*2 + dependency*3   # 0..17
 ```
 
 ### Why
