@@ -185,6 +185,11 @@ class CSharpParser(LanguageParser):
             class_fields = self._extract_class_fields(cls_node)
             class_bases = self._extract_bases(cls_node)
 
+            # Field/property/ctor-param types for DI/receiver-type resolution (HIGH-3).
+            field_types = self._extract_field_types(cls_node)
+            if field_types:
+                framework_hints["field_types"] = field_types
+
             class_code_node = CodeNode(
                 file_path=fp,
                 language="csharp",
@@ -485,6 +490,59 @@ class CSharpParser(LanguageParser):
                 if next_sib is not None and next_sib.type == "identifier":
                     return child.text.decode()
         return None
+
+    @staticmethod
+    def _bare_type(text: str) -> str:
+        """Reduce a C# type to its bare name: `List<Product>`→`List`,
+        `App.Services.OrderService`→`OrderService`, `OrderService?`→`OrderService`."""
+        t = (text or "").strip().rstrip("?")
+        t = t.split("<", 1)[0]
+        return t.rsplit(".", 1)[-1].strip()
+
+    @classmethod
+    def _extract_field_types(cls, cls_node) -> dict:
+        """Map field / property / constructor-param names to their declared type
+        for DI/receiver-type call resolution (HIGH-3). Covers field injection
+        (`private readonly OrderService _svc;`), auto-properties, and constructor
+        injection (`Handler(OrderService svc)`)."""
+        out: dict[str, str] = {}
+        body = next((c for c in cls_node.children if c.type == "declaration_list"), None)
+        if body is not None:
+            for member in body.children:
+                if member.type == "property_declaration":
+                    tnode = member.child_by_field_name("type")
+                    nnode = member.child_by_field_name("name")
+                    if tnode is not None and nnode is not None:
+                        out[nnode.text.decode()] = cls._bare_type(tnode.text.decode())
+                elif member.type == "field_declaration":
+                    for sub in member.children:
+                        if sub.type != "variable_declaration":
+                            continue
+                        tnode = sub.child_by_field_name("type")
+                        tname = cls._bare_type(tnode.text.decode()) if tnode is not None else ""
+                        if not tname:
+                            continue
+                        for decl in sub.children:
+                            if decl.type != "variable_declarator":
+                                continue
+                            nn = decl.child_by_field_name("name") or next(
+                                (c for c in decl.children if c.type == "identifier"), None
+                            )
+                            if nn is not None:
+                                out[nn.text.decode()] = tname
+        for match in _matches(_CONSTRUCTOR_QUERY, cls_node):
+            ctor = match["ctor.def"][0]
+            for child in ctor.children:
+                if child.type != "parameter_list":
+                    continue
+                for p in child.children:
+                    if p.type != "parameter":
+                        continue
+                    tnode = p.child_by_field_name("type")
+                    nnode = p.child_by_field_name("name")
+                    if tnode is not None and nnode is not None:
+                        out.setdefault(nnode.text.decode(), cls._bare_type(tnode.text.decode()))
+        return out
 
     @staticmethod
     def _extract_constructor_di(cls_node) -> list[str]:

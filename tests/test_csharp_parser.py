@@ -133,3 +133,19 @@ def test_endpoint_params(parser: CSharpParser, controller_file: Path):
     by_name = {e.name: e for e in endpoints}
     assert "request" in by_name["CreatePayment"].params
     assert "id" in by_name["GetPayment"].params
+
+
+def test_extracts_field_types_for_di(parser: CSharpParser, tmp_path: Path):
+    """HIGH-3: field + ctor-param types captured for receiver-type resolution."""
+    code = (
+        "namespace App {\n"
+        "  public class Handler {\n"
+        "    private readonly OrderService _svc;\n"
+        "    public Handler(OrderService svc) { _svc = svc; }\n"
+        "  }\n}\n"
+    )
+    f = tmp_path / "Handler.cs"; f.write_text(code)
+    cls = next(n for n in parser.parse_file(f) if n.node_type == "class")
+    ft = cls.framework_hints.get("field_types", {})
+    assert ft.get("_svc") == "OrderService"
+    assert ft.get("svc") == "OrderService"

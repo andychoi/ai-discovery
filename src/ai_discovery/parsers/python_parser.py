@@ -168,6 +168,9 @@ class PythonParser(LanguageParser):
                 for b in class_bases
             )
 
+            # Field/ctor-param types for DI/receiver-type resolution (HIGH-3).
+            field_types = self._extract_field_types(cls_node)
+
             nodes.append(CodeNode(
                 file_path=fp,
                 language="python",
@@ -180,6 +183,7 @@ class PythonParser(LanguageParser):
                 imports=imports,
                 fields=class_fields,
                 bases=class_bases,
+                framework_hints={"field_types": field_types} if field_types else {},
             ))
 
             # methods inside this class
@@ -537,6 +541,68 @@ class PythonParser(LanguageParser):
                     continue
                 names.append(attr_nodes[0].text.decode())
         return names
+
+    @staticmethod
+    def _bare_type(text: str) -> str:
+        """Reduce a Python type annotation to a bare class name:
+        `Optional[OrderService]`→`OrderService`, `svc.OrderService`→`OrderService`."""
+        t = (text or "").strip()
+        if "[" in t and "]" in t:  # Optional[X] / List[X] → innermost arg
+            t = t[t.index("[") + 1 : t.rindex("]")].split(",")[-1].strip()
+        return t.split(".")[-1].strip()
+
+    @classmethod
+    def _extract_field_types(cls, cls_node) -> dict:
+        """Map instance-attribute names to their declared type for DI/receiver-type
+        call resolution (HIGH-3). Sources, both inside ``__init__``:
+
+          - ``self.x: OrderService = ...``  (annotated attribute)
+          - ``self.x = order_service``  where the ctor param ``order_service`` is
+            annotated ``OrderService`` (the common typed-DI pattern)
+        """
+        out: dict[str, str] = {}
+        for m_match in _matches(_FUNCTION_QUERY, cls_node):
+            if m_match["func.name"][0].text.decode() != "__init__":
+                continue
+            init = m_match["func.def"][0]
+            # Constructor param annotations: {param_name: bare_type}.
+            ann: dict[str, str] = {}
+            params = init.child_by_field_name("parameters")
+            if params is not None:
+                for p in params.children:
+                    if p.type != "typed_parameter":
+                        continue
+                    nm = next((c for c in p.children if c.type == "identifier"), None)
+                    ty = p.child_by_field_name("type")
+                    if nm is not None and ty is not None:
+                        ann[nm.text.decode()] = cls._bare_type(ty.text.decode())
+            # self.X assignments inside __init__.
+            body = init.child_by_field_name("body")
+            if body is not None:
+                for stmt in body.children:
+                    if stmt.type != "expression_statement":
+                        continue
+                    for a in stmt.children:
+                        if a.type != "assignment":
+                            continue
+                        left = a.child_by_field_name("left")
+                        if left is None or left.type != "attribute":
+                            continue
+                        obj = left.child_by_field_name("object")
+                        attr = left.child_by_field_name("attribute")
+                        if obj is None or obj.text.decode() != "self" or attr is None:
+                            continue
+                        fname = attr.text.decode()
+                        tnode = a.child_by_field_name("type")
+                        if tnode is not None:  # self.x: T = ...
+                            out[fname] = cls._bare_type(tnode.text.decode())
+                            continue
+                        right = a.child_by_field_name("right")
+                        if right is not None and right.type == "identifier":
+                            rv = right.text.decode()
+                            if rv in ann:
+                                out[fname] = ann[rv]
+        return out
 
     @staticmethod
     def _extract_imports(root) -> list[dict]:
