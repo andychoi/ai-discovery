@@ -155,6 +155,58 @@ def test_analyze_domain_with_summaries():
     assert "Validates stock before creating order" in prompt
 
 
+def test_build_flow_prompt_includes_rag_source_when_provided():
+    """P1-d: when source context is retrieved, it is embedded in the prompt with
+    a grounding instruction so Tier-2 flows are anchored to real code."""
+    domain = _make_domain()
+    rag = "### orders.OrderService.process (src/orders/OrderService.java)\n```\nvoid process(){ charge(); }\n```"
+    prompt = _build_flow_prompt(domain, {}, rag_context=rag)
+    assert "void process(){ charge(); }" in prompt
+    assert "Source Code Context" in prompt
+    # a grounding directive must be present
+    assert "ground" in prompt.lower() or "do not invent" in prompt.lower()
+
+
+def test_build_flow_prompt_no_source_section_when_empty():
+    """Backward compat: no source section when nothing was retrieved."""
+    domain = _make_domain()
+    prompt = _build_flow_prompt(domain, {}, rag_context="")
+    assert "Source Code Context" not in prompt
+
+
+def test_analyze_domain_grounds_with_rag(monkeypatch):
+    """P1-d: with a db_path, analyze_domain retrieves source and the retrieved
+    snippet reaches the Tier-2 prompt."""
+    domain = _make_domain()
+    client = _mock_llm_response(SAMPLE_FLOWS)
+
+    def _fake_search(query, db_path, llm_client, top_k=5):
+        return [{
+            "qualified_name": "orders.OrderService.process",
+            "file_path": "src/orders/OrderService.java",
+            "chunk_text": "UNIQUE_RAG_MARKER void process(){}",
+        }]
+
+    monkeypatch.setattr("ai_discovery.rag.retriever.search", _fake_search)
+    analyze_domain(domain, {}, client, db_path=Path("/tmp/x.db"))
+    prompt = client.invoke_with_advisor.call_args[0][1]
+    assert "UNIQUE_RAG_MARKER" in prompt
+
+
+def test_analyze_domain_no_db_path_no_retrieval(monkeypatch):
+    """db_path=None: no retrieval attempted, no crash, prompt has no source section."""
+    domain = _make_domain()
+    client = _mock_llm_response(SAMPLE_FLOWS)
+
+    def _boom(*a, **k):
+        raise AssertionError("search must not be called without db_path")
+
+    monkeypatch.setattr("ai_discovery.rag.retriever.search", _boom)
+    analyze_domain(domain, {}, client)  # no db_path
+    prompt = client.invoke_with_advisor.call_args[0][1]
+    assert "Source Code Context" not in prompt
+
+
 def test_analyze_all_domains_processes_each():
     domain1 = _make_domain("orders")
     domain2 = _make_domain("payments")
