@@ -7,6 +7,16 @@ from ai_discovery.route_parser import RouteNode
 pytestmark = pytest.mark.skipif(not rp._TS_AVAILABLE, reason="tree-sitter grammars not installed")
 
 
+def _find_node(node, node_type):
+    if node.type == node_type:
+        return node
+    for c in node.children:
+        r = _find_node(c, node_type)
+        if r:
+            return r
+    return None
+
+
 def _parse_src(src: bytes, ext: str = ".ts"):
     """Parse a raw source string with the right grammar and return the root node."""
     lang = rp._grammar_for_ext(Path(f"x{ext}"))
@@ -29,12 +39,7 @@ def test_grammar_for_ext_selects_grammar():
 
 def test_str_value_strips_quotes():
     root = _parse_src(b"const x = '/users'")
-    def find(n, t):
-        if n.type == t: return n
-        for c in n.children:
-            r = find(c, t)
-            if r: return r
-    s = find(root, "string")
+    s = _find_node(root, "string")
     assert rp._str_value(s) == "/users"
 
 
@@ -59,12 +64,7 @@ def test_array_to_routes_ts_const_menu():
     src = (b"const MENU=[{path:'/users',label:'Users',roles:['admin'],"
            b"children:[{path:'/users/:id',label:'Detail'}]}]")
     root = _parse_src(src)
-    def find(n, t):
-        if n.type == t: return n
-        for c in n.children:
-            r = find(c, t)
-            if r: return r
-    arr = find(root, "array")
+    arr = _find_node(root, "array")
     routes = rp._array_to_routes(arr, rp.FIELD_MAPS["ts-const"], {})
     assert len(routes) == 1
     top = routes[0]
@@ -79,10 +79,12 @@ def test_array_to_routes_ts_const_menu():
 def test_object_to_route_detects_catch_all():
     src = b"const R=[{path:'*',label:'NotFound'}]"
     root = _parse_src(src)
-    def find(n, t):
-        if n.type == t: return n
-        for c in n.children:
-            r = find(c, t)
-            if r: return r
-    routes = rp._array_to_routes(find(root, "array"), rp.FIELD_MAPS["ts-const"], {})
+    routes = rp._array_to_routes(_find_node(root, "array"), rp.FIELD_MAPS["ts-const"], {})
     assert routes[0].is_catch_all is True
+
+
+def test_string_list_skips_non_literals():
+    src = b"const R=[{path:'/x',label:'X',roles:['a', SOME_CONST, 'b']}]"
+    root = _parse_src(src)
+    routes = rp._array_to_routes(_find_node(root, 'array'), rp.FIELD_MAPS['ts-const'], {})
+    assert routes[0].roles == ['a', 'b']

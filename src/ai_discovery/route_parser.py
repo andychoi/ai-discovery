@@ -56,7 +56,7 @@ def _grammar_for_ext(path: Path) -> "Language | None":
 
 def _str_value(node) -> str | None:
     """Return the text of a string node without its quote delimiters."""
-    if node is None:
+    if node is None or node.text is None:
         return None
     if node.type in ("string", "template_string"):
         for c in node.named_children:
@@ -160,12 +160,11 @@ def _object_pairs(object_node) -> dict[str, "object"]:
         if key is None or val is None:
             continue
         # Keys may be quoted strings (e.g. "path") or bare identifiers (path).
-        if key.type in ("string", "template_string"):
-            key_name = _str_value(key)
-        else:
-            key_name = key.text.decode("utf-8", "ignore")
-        if key_name is not None:
-            pairs[key_name] = val
+        # _str_value handles both string nodes and identifiers safely.
+        key_name = _str_value(key)
+        if not key_name:
+            continue
+        pairs[key_name] = val
     return pairs
 
 
@@ -191,7 +190,13 @@ def _first(pairs: dict, keys: list[str]):
 def _string_list(node) -> list[str]:
     if node is None or node.type != "array":
         return []
-    return [_str_value(c) for c in node.named_children if c.type in ("string", "template_string")]
+    out: list[str] = []
+    for c in node.named_children:
+        if c.type in ("string", "template_string"):
+            v = _str_value(c)
+            if v is not None:
+                out.append(v)
+    return out
 
 
 def _array_to_routes(array_node, field_map, imports, depth=0) -> list[RouteNode]:
