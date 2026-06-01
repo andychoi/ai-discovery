@@ -1,7 +1,9 @@
 # Scope: Corpus Accuracy Harness (HIGH-10)
 
 **Date:** 2026-05-31
-**Status:** Scope / design — branch `feat/corpus-accuracy-harness`
+**Status:** Phase 1 IMPLEMENTED (`tests/corpus/`, 3 fixtures, baseline recorded) — Phases 2–3 pending. Branch `feat/corpus-accuracy-harness`.
+
+**Phase 1 result (baseline):** spring-boot endpoints/entities/relationships = 1.0; aspnet endpoints/entities/relationships = 1.0; express endpoints = 1.0, **entities = 0.0** (surfaced gap: JS parser doesn't extract Mongoose schemas), relationships = 1.0. The HIGH-4/5/6 fixes are now regression-locked.
 **Relates to:** Assessment `04-reverse-spec-solution-review.md` → HIGH-10 (faithfulness untested; accuracy targets are fiction)
 **Why first:** This harness is the precondition for the other deferred items. DI resolution (HIGH-3), external-system modeling (HIGH-8), and OpenAPI/IaC ingestion (HIGH-7) all change extraction accuracy — without a measured baseline they can't be validated, only asserted. Build the ruler before reshaping the thing it measures.
 

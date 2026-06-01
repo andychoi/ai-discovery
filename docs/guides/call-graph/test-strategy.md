@@ -166,6 +166,19 @@ def test_spring_dependency_injection():
 
 ## Batch Validation: Testing a Corpus
 
+> **⚠ Updated 2026-05-31 (HIGH-10).** The corpus harness now EXISTS and is the
+> source of truth: `tests/corpus/` (runner + metrics + `test_corpus_accuracy.py`),
+> with human-labeled `tests/fixtures/projects/*/ground_truth.json` and a recorded
+> `tests/corpus/baseline.json`. It is built on the **real** API
+> (`parse_file` → `build_call_graph` / `extract_relationships`) — there is no
+> `CallGraphResolver` / `CallGraphResolver.from_code()` / `expected_calls.json`;
+> those were aspirational and never existed. Run it with
+> `pytest tests/corpus/ -m accuracy`. Design rationale:
+> `docs/specs/2026-05-31-corpus-accuracy-harness.md`.
+>
+> The Step 1–3 pseudo-code below is **superseded** and kept only as conceptual
+> background — do not treat its API as real.
+
 For systematic validation, use a **test corpus**—a set of real repositories with known call patterns.
 
 ### Step 1: Create Test Corpus
