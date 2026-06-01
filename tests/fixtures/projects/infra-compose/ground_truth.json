@@ -1,0 +1,15 @@
+{
+  "_README": "IaC fixture (HIGH-7): docker-compose declares postgres/redis/kafka backing services, which become external_system nodes. The `api` app service is not a backing service and is ignored. Authored from source.",
+  "project": "infra-compose",
+  "language": "javascript",
+  "framework": "docker-compose",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [],
+  "external_systems": [
+    {"name": "PostgreSQL", "kind": "database"},
+    {"name": "Redis",      "kind": "cache"},
+    {"name": "Kafka",      "kind": "queue"}
+  ]
+}

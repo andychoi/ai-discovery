@@ -19,6 +19,7 @@ from pathlib import Path
 from ai_discovery.extractors import (
     extract_external_systems,
     extract_relationships,
+    read_infra_files,
     read_openapi_files,
 )
 from ai_discovery.graph.call_graph import build_call_graph
@@ -102,7 +103,11 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
     edges = build_call_graph(nodes)
     relationships = extract_relationships(nodes)
     ext_nodes, ext_edges = extract_external_systems(nodes)
+    # HIGH-7: merge deployment-declared backing services, deduped by identity.
+    by_qn = {n.qualified_name: n for n in ext_nodes}
+    for n in read_infra_files(Path(repo_path)):
+        by_qn.setdefault(n.qualified_name, n)
     return ExtractionResult(
         nodes=nodes, edges=edges + ext_edges, relationships=relationships,
-        external_systems=ext_nodes,
+        external_systems=list(by_qn.values()),
     )

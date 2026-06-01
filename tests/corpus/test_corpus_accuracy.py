@@ -66,6 +66,8 @@ HARD_TARGETS = {
     ("external-systems", "external_systems"),
     # HIGH-7: OpenAPI spec endpoints are ingested as authoritative endpoint facts.
     ("openapi-spec", "endpoints"),
+    # HIGH-7: docker-compose / K8s backing services become external-system nodes.
+    ("infra-compose", "external_systems"),
 }
 
 

@@ -683,8 +683,15 @@ def run_pipeline(
             # HIGH-8: promote external-client calls (axios/kafka/redis/stripe/…)
             # to first-class typed external-system nodes + edges, so external
             # dependencies are queryable rather than dropped as unresolved strings.
-            from .extractors import extract_external_systems
+            from .extractors import extract_external_systems, read_infra_files
             ext_nodes, ext_edges = extract_external_systems(all_nodes)
+            # HIGH-7: merge deployment-declared backing services (docker-compose
+            # / K8s images: postgres/redis/kafka/…). Same node type + identity
+            # (external::token), so a system seen in both code and infra is one node.
+            ext_by_qn = {n.qualified_name: n for n in ext_nodes}
+            for n in read_infra_files(resolved.repo_path):
+                ext_by_qn.setdefault(n.qualified_name, n)
+            ext_nodes = list(ext_by_qn.values())
             if ext_nodes:
                 conn = get_conn(db_path)
                 try:

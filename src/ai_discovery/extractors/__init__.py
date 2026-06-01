@@ -14,6 +14,7 @@ from .sql_extractor import (
 from .relationship_extractor import extract_relationships
 from .external_system_extractor import extract_external_systems
 from .openapi_extractor import extract_openapi_endpoints, read_openapi_files
+from .infra_extractor import read_infra_files
 
 __all__ = [
     "extract_sql_entities",
@@ -23,4 +24,5 @@ __all__ = [
     "extract_external_systems",
     "extract_openapi_endpoints",
     "read_openapi_files",
+    "read_infra_files",
 ]
