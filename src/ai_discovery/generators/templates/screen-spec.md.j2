@@ -179,6 +179,14 @@ _No open items detected._
 - [{{ table }}](#/docs/database/{{ table | lower }})
 {% endfor %}
 
+### Source Files
+
+*This screen's mappings are derived from these source files (CRIT-3: auditable provenance for the LLM-authored narrative above):*
+
+{% for f in source_hashes.keys() %}
+- `{{ f }}`
+{% endfor %}
+
 ---
 
 {% if manual_blocks.get('business-context') -%}

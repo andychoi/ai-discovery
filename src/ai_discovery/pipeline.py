@@ -1101,11 +1101,20 @@ def run_pipeline(
                 for scenario in scenarios:
                     try:
                         flow = flow_inference.infer_flow(scenario, summaries_dict)
+                        # CRIT-2: prod scans verify each flow's narrative against
+                        # RAG source so PF confidence is earned, not capped. Gated
+                        # on --prod because it adds an LLM review pass per scenario.
+                        if config.prod and _budget_ok(llm_client, config, "PF verification"):
+                            flow_inference.verify_flow(flow, db_path)
                         scenario_flows.append(flow)
                     except Exception as e:
                         logger.warning(f"Failed to infer flow for {scenario.scenario_id}: {e}")
                     progress.advance(task)
-            console.print(f"  Scenario flows: [green]{len(scenario_flows)}[/] reconstructed")
+            verified_n = sum(1 for f in scenario_flows if getattr(f, "verified", False))
+            console.print(
+                f"  Scenario flows: [green]{len(scenario_flows)}[/] reconstructed"
+                + (f" ([green]{verified_n}[/] source-verified)" if verified_n else "")
+            )
     else:
         console.print("[dim]Phase 13 (scenario_flow_inference): rebuilding (cheap)...[/]")
         scenario_flows = []

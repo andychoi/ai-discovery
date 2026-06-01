@@ -421,3 +421,55 @@ def test_persist_and_load_scenario_flows(tmp_path: Path):
     la = loaded_artifacts["scenario_create_1"]
     assert "sequenceDiagram" in la["mermaid"]
     assert la["bpmn"] == "<bpmn/>"
+
+
+# ---------------------------------------------------------------------------
+# CRIT-2: source-fed prompts, source citations, and flow verification.
+# ---------------------------------------------------------------------------
+
+def _scenario_with_source() -> Scenario:
+    node = ExecutionNode(
+        id="orders.OrderService.create", type="ENTRY", name="create",
+        qualified_name="orders.OrderService.create",
+        file_path="src/orders/service.py", line_number=42,
+    )
+    return Scenario(
+        scenario_id="s1", name="Flow: create", entry_point="orders.OrderService.create",
+        trigger_type="HTTP", nodes=[node], domain="orders",
+    )
+
+
+def test_steps_prompt_includes_source_locations():
+    scenario = _scenario_with_source()
+    inference = ScenarioFlowInference(MagicMock())
+    prompt = inference._build_steps_prompt(scenario, {})
+    assert "src/orders/service.py:42" in prompt  # CRIT-2: source-fed prompt
+
+
+def test_infer_flow_populates_source_refs():
+    scenario = _scenario_with_source()
+    flow = ScenarioFlowInference(_mock_inference_client()).infer_flow(scenario, {})
+    assert any(r["source"] == "src/orders/service.py:42" for r in flow.source_refs)
+
+
+def test_verify_flow_sets_verified_confidence(monkeypatch):
+    import ai_discovery.ai.self_review as sr
+    import ai_discovery.ai.rollup as rollup
+    monkeypatch.setattr(sr, "review_document", lambda *a, **k: ["claim"])
+    monkeypatch.setattr(sr, "get_review_summary", lambda claims: {"verified": 1, "unverified": 0, "contradicted": 0, "total": 1})
+    monkeypatch.setattr(rollup, "blend_confidence", lambda n, s: 0.82)
+
+    flow = ScenarioFlow(scenario_id="s1", steps=[{"name": "Save", "description": "persist order"}])
+    inference = ScenarioFlowInference(MagicMock())
+    inference.verify_flow(flow, db_path=None)
+    assert flow.verified is True
+    assert flow.confidence == 0.82
+
+
+def test_verify_flow_failure_leaves_low_unverified(monkeypatch):
+    import ai_discovery.ai.self_review as sr
+    monkeypatch.setattr(sr, "review_document", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no rag")))
+    flow = ScenarioFlow(scenario_id="s1", steps=[{"name": "Save", "description": "x"}])
+    ScenarioFlowInference(MagicMock()).verify_flow(flow, db_path=None)
+    assert flow.verified is False
+    assert flow.confidence == 0.4
