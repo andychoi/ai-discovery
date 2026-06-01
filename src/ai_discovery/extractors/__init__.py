@@ -6,6 +6,16 @@ GraphQL schemas, etc. — and produces synthetic classless CodeNodes that
 plug into the same Phase 2d consolidator as regular class definitions.
 """
 
-from .sql_extractor import extract_sql_entities
+from .sql_extractor import (
+    extract_sql_entities,
+    extract_sql_relationships,
+    read_sql_file_nodes,
+)
+from .relationship_extractor import extract_relationships
 
-__all__ = ["extract_sql_entities"]
+__all__ = [
+    "extract_sql_entities",
+    "extract_sql_relationships",
+    "read_sql_file_nodes",
+    "extract_relationships",
+]

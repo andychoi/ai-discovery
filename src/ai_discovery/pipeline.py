@@ -764,15 +764,32 @@ def run_pipeline(
         write_entity_state_machines_json,
     )
     from .graph.fsm_persistence import persist_entity_state_machines
-    from .extractors import extract_sql_entities
+    from .extractors import (
+        extract_sql_entities, extract_relationships, read_sql_file_nodes,
+    )
+    from .db import persist_relationships
 
     # Phase 2e-1: synthesize classless CodeNodes for tables/views referenced
     # in raw SQL string literals, plus placeholder FSMs for each. The Phase
     # 2d consolidator treats `sql_table` / `sql_view` as class-like, so a
     # synthetic FSM for `orders` (fields from SQL) merges with the classful
     # `Order` FSM (transitions from Python) when stems + fields overlap.
+    # Standalone .sql files (incl. migrations/) are read here too — they are
+    # the canonical schema + FK source but aren't tree-sitter-parsed.
     with _timed("sql extract"), console.status("[bold cyan]Extracting SQL entities..."):
-        sql_nodes = extract_sql_entities(all_nodes)
+        sql_file_nodes = read_sql_file_nodes(resolved.repo_path)
+        nodes_for_sql = all_nodes + sql_file_nodes
+        sql_nodes = extract_sql_entities(nodes_for_sql)
+
+    # FK-aware table docs (Phase 1): extract foreign-key edges from SQL DDL and
+    # ORM associations (JPA @JoinColumn, EF nav props) and persist them.
+    with _timed("relationship extract"), console.status("[bold cyan]Extracting entity relationships..."):
+        relationships = extract_relationships(nodes_for_sql)
+        if relationships:
+            persist_relationships(db_path, scan_id, relationships)
+            console.print(
+                f"  Entity relationships: [green]{len(relationships)}[/] FK edges"
+            )
     sql_fsms = build_fsms_from_sql_nodes(sql_nodes) if sql_nodes else []
     if sql_nodes:
         view_count = sum(1 for n in sql_nodes if n.node_type == "sql_view")

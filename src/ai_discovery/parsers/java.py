@@ -173,6 +173,12 @@ class JavaParser(LanguageParser):
             class_fields = self._extract_class_fields(cls_node)
             class_bases = self._extract_bases(cls_node)
 
+            # JPA association fields (@ManyToOne/@JoinColumn etc.) → FK edges.
+            if node_type == "db_model":
+                relationships = self._extract_relationships(cls_node)
+                if relationships:
+                    framework_hints["relationships"] = relationships
+
             nodes.append(CodeNode(
                 file_path=fp,
                 language="java",
@@ -500,6 +506,85 @@ class JavaParser(LanguageParser):
                         names.append(name)
                         seen.add(name)
         return names
+
+    _REL_CARDINALITY = {
+        "ManyToOne": "N:1",
+        "OneToMany": "1:N",
+        "OneToOne": "1:1",
+        "ManyToMany": "N:M",
+    }
+
+    @staticmethod
+    def _unwrap_type(type_text: str) -> str:
+        """Reduce a Java type to its bare entity name.
+
+        `List<OrderItem>` → `OrderItem`, `Map<Long, Product>` → `Product`,
+        `com.app.Order` → `Order`. Used to resolve a JPA association field's
+        target entity from its declared type.
+        """
+        t = (type_text or "").strip()
+        if "<" in t and ">" in t:
+            t = t[t.index("<") + 1 : t.rindex(">")]
+            t = t.split(",")[-1].strip()  # Map<K,V> → V
+        return t.split(".")[-1].strip()
+
+    @classmethod
+    def _extract_relationships(cls, cls_node) -> list[dict]:
+        """Extract JPA association fields as relationship descriptors.
+
+        Each entry: {from_field, to_entity, cardinality}. `to_entity` is the
+        field's (element) type; `from_field` is the @JoinColumn name when given,
+        else the field name. Only fields annotated @ManyToOne/@OneToMany/
+        @OneToOne/@ManyToMany produce edges. FK-aware table docs, Phase 1.
+        """
+        body = next((c for c in cls_node.children if c.type == "class_body"), None)
+        if body is None:
+            return []
+        rels: list[dict] = []
+        for member in body.children:
+            if member.type != "field_declaration":
+                continue
+            ann_names: list[str] = []
+            join_column = ""
+            for child in member.children:
+                if child.type != "modifiers":
+                    continue
+                for ann in child.children:
+                    if ann.type not in ("annotation", "marker_annotation"):
+                        continue
+                    nm_node = ann.child_by_field_name("name")
+                    if nm_node is None:
+                        continue
+                    nm = nm_node.text.decode()
+                    ann_names.append(nm)
+                    if nm == "JoinColumn":
+                        args = ann.child_by_field_name("arguments")
+                        if args is not None:
+                            jc = cls._extract_string_arg(args.text.decode(), "name")
+                            if jc:
+                                join_column = jc
+            cardinality = next(
+                (cls._REL_CARDINALITY[a] for a in ann_names if a in cls._REL_CARDINALITY), ""
+            )
+            if not cardinality:
+                continue
+            type_node = member.child_by_field_name("type")
+            target = cls._unwrap_type(type_node.text.decode()) if type_node else ""
+            if not target:
+                continue
+            field_name = ""
+            for child in member.children:
+                if child.type == "variable_declarator":
+                    nn = child.child_by_field_name("name")
+                    if nn is not None:
+                        field_name = nn.text.decode()
+                    break
+            rels.append({
+                "from_field": join_column or field_name,
+                "to_entity": target,
+                "cardinality": cardinality,
+            })
+        return rels
 
     def _extract_autowired_deps(self, cls_node) -> list[str]:
         """Find @Autowired constructor parameters and return their type names."""

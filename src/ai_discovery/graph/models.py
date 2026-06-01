@@ -42,6 +42,36 @@ class CodeNode:
 
 
 @dataclass
+class EntityRelationship:
+    """A foreign-key / association edge between two entities (tables/models).
+
+    Phase 1 of the FK-aware table-docs design (docs/specs/2026-05-31-fk-aware-table-docs.md):
+    extracted deterministically from SQL `REFERENCES`, JPA `@JoinColumn`/`@ManyToOne`,
+    or EF navigation properties, so table docs can reason over a table's FK
+    neighborhood instead of documenting each table in isolation.
+
+    Entity names are bare (schema/package stripped) to match how db_model and
+    sql_table nodes are keyed elsewhere. `inferred=True` marks edges guessed from
+    naming convention (e.g. `order_id` → `orders`) rather than a declared FK;
+    those carry lower confidence and must be rendered as inferred, never verified.
+    """
+    from_entity: str
+    to_entity: str
+    from_field: str = ""        # FK column / owning field
+    to_field: str = ""          # referenced column (usually the PK)
+    cardinality: str = ""       # "N:1" | "1:N" | "1:1" | "N:M" | ""
+    source: str = "sql"         # "sql" | "jpa" | "ef"
+    source_file: str = ""
+    source_line: int = 0
+    confidence: float = 1.0
+    inferred: bool = False
+
+    def key(self) -> tuple[str, str, str, str]:
+        """Dedup key: a relationship is identified by its endpoints + columns."""
+        return (self.from_entity, self.from_field, self.to_entity, self.to_field)
+
+
+@dataclass
 class CodeChunk:
     text: str
     chunk_index: int
