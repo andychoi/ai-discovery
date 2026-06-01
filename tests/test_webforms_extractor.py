@@ -58,3 +58,11 @@ def test_client_side_handlers_skipped():
     content = '<asp:Button ID="b" runat="server" OnClientClick="doJs" OnClick="b_Click" />'
     events = _extract_events(content)
     assert {(e["event"], e["handler"]) for e in events} == {("Click", "b_Click")}
+
+
+def test_events_self_closing_tag_with_slash_in_attr():
+    # Self-closing tag with a '/' inside an attribute value must still yield the event.
+    from ai_discovery.webforms_extractor import _extract_events
+    content = '<asp:Button ID="b" runat="server" OnClick="b_Click" NavigateUrl="~/Pages/Edit.aspx" />'
+    events = _extract_events(content)
+    assert {(e["control_id"], e["event"], e["handler"]) for e in events} == {("b", "Click", "b_Click")}

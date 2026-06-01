@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 _DIRECTIVE_RE = re.compile(r"<%@\s*(?P<kind>Page|Control)\b(?P<body>.*?)%>", re.DOTALL | re.IGNORECASE)
 _ATTR_RE = re.compile(r'([\w:.-]+)\s*=\s*"([^"]*)"')
 _TITLE_TAG_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.DOTALL | re.IGNORECASE)
+# Opening <asp:*> tag, capturing its attribute string. `[^>]*` correctly spans
+# self-closing `/>` tags and `/` inside attribute values (e.g. ~/Pages/x.aspx).
+# Known limitation: a literal `>` inside an attribute value would truncate the
+# captured attributes — rare in practice and accepted for this regex approach.
 _ASP_TAG_RE = re.compile(r"<asp:[\w.]+\b([^>]*)>", re.DOTALL | re.IGNORECASE)
 _EVENT_RE = re.compile(r'\bOn([A-Z]\w*)\s*=\s*"(\w+)"')
 _ID_RE = re.compile(r'\bID\s*=\s*"([^"]*)"', re.IGNORECASE)
