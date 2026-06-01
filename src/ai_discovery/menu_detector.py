@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any, Optional
 import yaml
 from .route_parser import parse_route_file, RouteNode
+from .webforms_extractor import extract_webforms_page
+from .repo.lang_detector import _SKIP_DIRS
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +294,61 @@ class FrameworkRoutingDetector(MenuDetector):
         return None
 
 
+class WebFormsMenuDetector(MenuDetector):
+    """Build screens from ASP.NET WebForms .aspx pages (folder hierarchy = menu).
+
+    Fallback for apps with no JS menu/router. .ascx user controls are excluded
+    (they are partial components, not top-level screens)."""
+
+    def detect(self, repo_path: Path) -> Optional[list[MenuItem]]:
+        repo = Path(repo_path)
+        aspx = [
+            p for p in sorted(repo.rglob("*.aspx"))
+            if not (_SKIP_DIRS & set(p.parts))
+        ]
+        if not aspx:
+            return None
+
+        root: dict = {"_dirs": {}, "_pages": []}
+        for path in aspx:
+            rel = path.relative_to(repo)
+            parts = rel.parts[:-1]
+            node = root
+            for seg in parts:
+                node = node["_dirs"].setdefault(seg, {"_dirs": {}, "_pages": []})
+            node["_pages"].append(path)
+
+        def build(node: dict, url_prefix: str) -> list[MenuItem]:
+            items: list[MenuItem] = []
+            for seg, child in sorted(node["_dirs"].items()):
+                items.append(MenuItem(
+                    id=JsonYamlDetector._slugify(seg),
+                    label=_humanize(seg),
+                    path=f"{url_prefix}/{seg}",
+                    metadata={"is_screen": False},
+                    children=build(child, f"{url_prefix}/{seg}"),
+                ))
+            for path in sorted(node["_pages"]):
+                page = extract_webforms_page(path)
+                rel = path.relative_to(repo)
+                label = (page.title if page and page.title else None) or _humanize(path.stem)
+                items.append(MenuItem(
+                    id=JsonYamlDetector._slugify(str(rel)),
+                    label=label,
+                    path=f"{url_prefix}/{path.name}",
+                    metadata={
+                        "is_screen": True,
+                        "component_source": str(rel),
+                        "code_behind_class": page.code_behind_class if page else None,
+                        "master_page": page.master_page if page else None,
+                        "framework": "webforms",
+                    },
+                ))
+            return items
+
+        return build(root, "")
+
+
 class HybridMenuDetector:
     """
     Hybrid detector that tries multiple strategies.
@@ -304,6 +361,7 @@ class HybridMenuDetector:
             JsonYamlDetector(),
             TypeScriptConstantDetector(),
             FrameworkRoutingDetector(),
+            WebFormsMenuDetector(),
         ]
 
     def detect(self, repo_path: Path) -> Optional[list[MenuItem]]:
