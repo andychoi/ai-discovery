@@ -107,6 +107,7 @@ The existing `build_screen_map` (Task 7) then yields `Screen`s: `fe_component` =
 - `Inherits` with assembly suffix (`"MyApp.Default, MyApp, Version=..."`): strip at the first comma.
 - Duplicate page filenames in different folders: distinct `qualified_name` (full relative path) and distinct screen paths prevent collision; `build_screen_map`'s `unique_id` covers id clashes.
 - Master pages / user-control includes are recorded as flat hints, not followed transitively.
+- The page node's `qualified_name` is the file path as received by `parse_file` (absolute when `walk_repo` yields absolute paths). This is cosmetically long in `call_edge`/viewer output but keeps the qn unique and never collides with the code-behind class qn. The page's *domain* is set explicitly from the code-behind class (so the page co-locates with its handler) rather than inferred from this path; `infer_domain` skips path-like qns. The code-behind link is carried in `Screen.metadata` and as a real call edge — surfacing it in the screen-spec template is a follow-up (ScreenMapper/template rewrite is out of scope here).
 
 ## Test plan
 
