@@ -205,6 +205,27 @@ def _build_rag_chunks(chunks: list, config: DiscoveryConfig) -> list:
     return chunk_for_rag(source, config.rag.chunk_size, config.rag.chunk_overlap)
 
 
+def _release_node_source(nodes: list) -> int:
+    """Free in-memory `source_code` once chunking (phase 9) is complete.
+
+    P0-3 (memory): each in-memory CodeNode carries its full source text, which on
+    a 100k-class / 500k-method corpus is the dominant sustained memory term. The
+    source is durably persisted in `code_nodes` (phase 7) and the only in-memory
+    consumers — the SQL/external extractors and the chunker — have all run by the
+    end of phase 9. Releasing it here bounds memory across the LLM-heavy phases
+    10–19 (where embeddings and LLM buffers accumulate) and is invisible to every
+    downstream `all_nodes` consumer (they read structural fields only). Returns
+    the approximate number of bytes freed. Idempotent.
+    """
+    freed = 0
+    for n in nodes:
+        sc = getattr(n, "source_code", "")
+        if sc:
+            freed += len(sc)
+            n.source_code = ""
+    return freed
+
+
 def _budget_ok(llm_client, config: DiscoveryConfig, phase_label: str) -> bool:
     """Return True if budget still has room; print warning and return False otherwise.
 
@@ -1047,6 +1068,13 @@ def run_pipeline(
         console.print("[dim]Phase 9 (chunk): rebuilding (cheap)...[/]")
         chunks = chunk_code_nodes(all_nodes)
         rag_chunks = _build_rag_chunks(chunks, config)
+
+    # P0-3 (memory): chunking is the last in-memory consumer of node.source_code.
+    # Release it now (it stays in code_nodes) so phases 10–19 don't carry the
+    # full corpus source alongside embeddings and LLM buffers.
+    freed_mb = _release_node_source(all_nodes) // (1024 * 1024)
+    if freed_mb >= 1:
+        console.print(f"  [dim]Released ~{freed_mb} MB of in-memory source after chunking[/]")
 
     # ------------------------------------------------------------------
     # 10. Embed for RAG
