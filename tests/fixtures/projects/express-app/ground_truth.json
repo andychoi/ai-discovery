@@ -16,5 +16,14 @@
   ],
   "_entities_note": "KNOWN GAP (surfaced by this harness): the JS parser does not extract Mongoose schemas as db_model nodes, so entity recall is currently 0 for this fixture. Baseline-only dimension; not a hard target until JS entity extraction lands.",
   "relationships": [],
-  "key_call_edges": []
+  "_key_call_edges_note": "Route handlers delegate to injected service singletons; service->model calls (find/save) are Mongoose methods absent from source, correctly unresolved. Caller names are anonymous route handlers, so matched on callee + confidence.",
+  "key_call_edges": [
+    {"callee_suffix": "OrderService.getAllOrders",     "min_confidence": 0.8},
+    {"callee_suffix": "OrderService.getOrder",          "min_confidence": 0.8},
+    {"callee_suffix": "OrderService.createOrder",        "min_confidence": 0.8},
+    {"callee_suffix": "ProductService.getAllProducts",   "min_confidence": 0.8},
+    {"callee_suffix": "ProductService.searchProducts",   "min_confidence": 0.8},
+    {"callee_suffix": "ProductService.getProduct",       "min_confidence": 0.8},
+    {"callee_suffix": "ProductService.createProduct",    "min_confidence": 0.8}
+  ]
 }

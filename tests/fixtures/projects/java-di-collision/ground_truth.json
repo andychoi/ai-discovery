@@ -1,0 +1,18 @@
+{
+  "_README": "Minimal name-collision fixture: two @Service classes both define process(); CheckoutController.view() calls orderService.process() only. Authored from source. Its purpose is to MEASURE the HIGH-3 DI-resolution gap — see _di_resolution_note.",
+  "project": "java-di-collision",
+  "language": "java",
+  "framework": "spring",
+  "endpoints": [
+    {"handler": "CheckoutController.view", "method": "GET", "path": "/checkout"}
+  ],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "CheckoutController.view", "callee_suffix": "svc.OrderService.process", "min_confidence": 0.6}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "CheckoutController.view", "callee_suffix": "svc.PaymentService.process"}
+  ],
+  "_di_resolution_note": "KNOWN GAP this harness measures: the receiver of orderService.process() is the field `orderService` of declared type OrderService, so the call must resolve to OrderService.process ONLY. Short-name resolution instead fans out to PaymentService.process too (a false edge). di_resolution scores 1.0 only when NO forbidden edge is emitted; it is 0.0 today and rises to 1.0 when HIGH-3 (DI/receiver-type resolution) lands. Baseline-guarded, not a hard target."
+}

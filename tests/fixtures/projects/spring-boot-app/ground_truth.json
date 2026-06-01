@@ -25,8 +25,15 @@
     {"from_entity": "orders",      "to_entity": "order_items", "cardinality": "1:N"},
     {"from_entity": "order_items", "to_entity": "products",    "cardinality": "N:1"}
   ],
+  "_key_call_edges_note": "Curated controller->service delegations (the meaningful resolvable chains; service->repository calls like findAll/save are framework-inherited Spring Data methods absent from source, correctly unresolved). Phase 2 measures resolution RECALL: did the resolver reach the right target at >= min_confidence. These currently resolve at 0.80 via unique-short-name; DI/receiver-type resolution (HIGH-3) would raise them.",
   "key_call_edges": [
-    {"caller": "com.example.controller.OrderController.create", "callee_suffix": "OrderService", "min_confidence": 0.6,
-     "note": "controller delegates to injected service (DI edge — currently a resolution weakness, HIGH-3)"}
+    {"caller_suffix": "CustomerController.list",   "callee_suffix": "service.CustomerService.getCustomers",   "min_confidence": 0.8},
+    {"caller_suffix": "CustomerController.get",     "callee_suffix": "service.CustomerService.getCustomer",     "min_confidence": 0.8},
+    {"caller_suffix": "OrderController.list",       "callee_suffix": "service.OrderService.getOrders",          "min_confidence": 0.8},
+    {"caller_suffix": "OrderController.get",         "callee_suffix": "service.OrderService.getOrder",           "min_confidence": 0.8},
+    {"caller_suffix": "OrderController.create",      "callee_suffix": "service.OrderService.createOrder",        "min_confidence": 0.8},
+    {"caller_suffix": "ProductController.list",      "callee_suffix": "service.ProductService.getAllProducts",   "min_confidence": 0.8},
+    {"caller_suffix": "ProductController.get",       "callee_suffix": "service.ProductService.getProduct",       "min_confidence": 0.8},
+    {"caller_suffix": "ProductController.create",    "callee_suffix": "service.ProductService.createProduct",    "min_confidence": 0.8}
   ]
 }

@@ -1,9 +1,13 @@
 # Scope: Corpus Accuracy Harness (HIGH-10)
 
 **Date:** 2026-05-31
-**Status:** Phase 1 IMPLEMENTED (`tests/corpus/`, 3 fixtures, baseline recorded) — Phases 2–3 pending. Branch `feat/corpus-accuracy-harness`.
+**Status:** Phases 1 + 2 IMPLEMENTED (`tests/corpus/`, 4 fixtures, baseline recorded) — Phase 3 (external repos) pending.
 
-**Phase 1 result (baseline):** spring-boot endpoints/entities/relationships = 1.0; aspnet endpoints/entities/relationships = 1.0; express endpoints = 1.0, **entities = 0.0** (surfaced gap: JS parser doesn't extract Mongoose schemas), relationships = 1.0. The HIGH-4/5/6 fixes are now regression-locked.
+**Phase 1 result (baseline):** spring-boot & aspnet endpoints/entities/relationships = 1.0; express endpoints = 1.0, **entities = 0.0** (surfaced gap: JS parser doesn't extract Mongoose schemas), relationships = 1.0. HIGH-4/5/6 regression-locked.
+
+**Phase 2 result (call-edge resolution + DI gauge):** `call_edges` recall = 1.0 on all real fixtures (controller/route→service chains resolve correctly at ≥0.8). A dedicated **`java-di-collision`** fixture makes HIGH-3 measurable: two services share a `process()` method, and `orderService.process()` currently fans out to *both* services — so its **`di_resolution = 0.0`** today. That score flips to 1.0 when DI/receiver-type resolution (HIGH-3) lands, with the harness proving the fix. It is baseline-guarded (can't regress) and will be promoted to a hard target once HIGH-3 ships.
+
+**Dimensions now scored:** endpoints, entities (+fields), relationships (FK), call_edges (resolution recall), di_resolution (no-fan-out / HIGH-3 gauge).
 **Relates to:** Assessment `04-reverse-spec-solution-review.md` → HIGH-10 (faithfulness untested; accuracy targets are fiction)
 **Why first:** This harness is the precondition for the other deferred items. DI resolution (HIGH-3), external-system modeling (HIGH-8), and OpenAPI/IaC ingestion (HIGH-7) all change extraction accuracy — without a measured baseline they can't be validated, only asserted. Build the ruler before reshaping the thing it measures.
 
