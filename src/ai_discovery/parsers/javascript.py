@@ -170,6 +170,9 @@ class JavaScriptParser(LanguageParser):
         # 3. Express endpoints from call expressions
         self._extract_endpoints(root, file_stem, fp, nodes, imports)
 
+        # 4. Mongoose models (new mongoose.Schema({...}) + mongoose.model(...)).
+        nodes.extend(self._extract_mongoose_models(root, file_stem, fp))
+
         return nodes
 
     # ── class processing ──────────────────────────────────────────────
@@ -200,6 +203,8 @@ class JavaScriptParser(LanguageParser):
 
         class_fields = self._extract_class_fields(cls_node)
         class_bases = self._extract_bases(cls_node)
+        # Constructor `this.x = new Y()` types for DI/receiver-type resolution (HIGH-3).
+        field_types = self._extract_field_types(cls_node)
 
         nodes.append(
             CodeNode(
@@ -214,6 +219,7 @@ class JavaScriptParser(LanguageParser):
                 imports=imports,
                 fields=class_fields,
                 bases=class_bases,
+                framework_hints={"field_types": field_types} if field_types else {},
             )
         )
 
@@ -434,6 +440,121 @@ class JavaScriptParser(LanguageParser):
                 return (method.upper(), route)
 
         return None
+
+    @staticmethod
+    def _descendants(node, type_name: str) -> list:
+        """All descendants of `node` with the given tree-sitter type."""
+        out, stack = [], list(node.children)
+        while stack:
+            n = stack.pop()
+            if n.type == type_name:
+                out.append(n)
+            stack.extend(n.children)
+        return out
+
+    @classmethod
+    def _extract_field_types(cls, cls_node) -> dict:
+        """Map instance fields to their type from constructor `this.x = new Y()`
+        assignments, for DI/receiver-type call resolution (HIGH-3). JS has no
+        static types, so instantiation is the available signal; module-level
+        functional DI (require + call) is out of scope (no class to key on)."""
+        out: dict[str, str] = {}
+        body = cls._find_child(cls_node, "class_body")
+        if body is None:
+            return out
+        for member in body.children:
+            if member.type != "method_definition":
+                continue
+            name = cls._find_child(member, "property_identifier")
+            if name is None or name.text.decode() != "constructor":
+                continue
+            for assign in cls._descendants(member, "assignment_expression"):
+                left = assign.child_by_field_name("left")
+                right = assign.child_by_field_name("right")
+                if left is None or right is None or left.type != "member_expression":
+                    continue
+                obj = left.child_by_field_name("object")
+                prop = left.child_by_field_name("property")
+                if obj is None or obj.text.decode() != "this" or prop is None:
+                    continue
+                if right.type != "new_expression":
+                    continue
+                ctor = right.child_by_field_name("constructor")
+                if ctor is not None:
+                    out[prop.text.decode()] = ctor.text.decode().rsplit(".", 1)[-1]
+        return out
+
+    @staticmethod
+    def _object_keys(obj_node) -> list[str]:
+        """Property names from an object literal `{ a: ..., b: ... }`."""
+        keys: list[str] = []
+        for child in obj_node.children:
+            if child.type == "pair":
+                k = child.child_by_field_name("key")
+                if k is not None:
+                    keys.append(k.text.decode().strip("'\"`"))
+        return keys
+
+    @staticmethod
+    def _enclosing_declarator_name(node):
+        p = node.parent
+        while p is not None:
+            if p.type == "variable_declarator":
+                nm = p.child_by_field_name("name")
+                return nm.text.decode() if nm is not None else None
+            p = p.parent
+        return None
+
+    @classmethod
+    def _extract_mongoose_models(cls, root, file_stem: str, fp: str) -> list:
+        """Emit db_model nodes for Mongoose schemas.
+
+        Pairs `const xSchema = new mongoose.Schema({...})` (fields = object keys)
+        with `mongoose.model('Name', xSchema)` to name the entity. Closes the
+        express-fixture entity gap (was 0.0 — Mongoose schemas weren't extracted).
+        """
+        schema_fields: dict[str, tuple[list[str], int]] = {}
+        for new_expr in cls._descendants(root, "new_expression"):
+            ctor = new_expr.child_by_field_name("constructor")
+            if ctor is None or not ctor.text.decode().endswith("Schema"):
+                continue
+            args = new_expr.child_by_field_name("arguments")
+            obj = next((c for c in (args.children if args else []) if c.type == "object"), None)
+            if obj is None:
+                continue
+            keys = cls._object_keys(obj)
+            var = cls._enclosing_declarator_name(new_expr)
+            if keys and var:
+                schema_fields[var] = (keys, new_expr.start_point.row + 1)
+
+        out: list = []
+        seen: set[str] = set()
+        for call in cls._descendants(root, "call_expression"):
+            func = call.child_by_field_name("function")
+            if func is None or not func.text.decode().endswith(".model"):
+                continue
+            args = call.child_by_field_name("arguments")
+            if args is None:
+                continue
+            strings = [c for c in args.children if c.type == "string"]
+            idents = [c for c in args.children if c.type == "identifier"]
+            if not strings or not idents:
+                continue
+            name = strings[0].text.decode().strip("'\"`")
+            var = idents[0].text.decode()
+            if name in seen or var not in schema_fields:
+                continue
+            keys, line = schema_fields[var]
+            seen.add(name)
+            out.append(
+                CodeNode(
+                    file_path=fp, language="javascript", node_type="db_model",
+                    name=name, qualified_name=f"{file_stem}.{name}", source_code="",
+                    line_start=line, line_end=line, fields=list(keys),
+                    framework_hints={"table": name},
+                )
+            )
+        return out
 
     @staticmethod
     def _extract_bases(cls_node) -> list[str]:

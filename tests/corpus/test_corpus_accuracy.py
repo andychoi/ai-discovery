@@ -49,6 +49,7 @@ HARD_TARGETS = {
     ("aspnet-core-app", "entities"),
     ("aspnet-core-app", "call_edges"),
     ("express-app", "endpoints"),
+    ("express-app", "entities"),  # JS Mongoose entity extraction shipped
     ("express-app", "call_edges"),
     # HIGH-3 shipped (Java + C# + Python): DI/receiver-type resolution eliminates
     # the fan-out, so the no-false-edge guarantee is a hard target on every
@@ -59,6 +60,8 @@ HARD_TARGETS = {
     ("csharp-di-collision", "call_edges"),
     ("python-di-collision", "di_resolution"),
     ("python-di-collision", "call_edges"),
+    ("js-di-collision", "di_resolution"),
+    ("js-di-collision", "call_edges"),
 }
 
 

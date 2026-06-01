@@ -34,9 +34,11 @@ receiver's type is unknown or the method isn't defined on it (e.g. framework-
 inherited `repository.findAll()`), so it never invents an edge. The receiver is
 matched both literally (Java/C# field `_svc`) and by its final dotted segment
 (Python `self.order_service` → `order_service`). Field-type extraction is
-implemented for **Java, C#, and Python** (field injection, auto-properties, and
-typed-`__init__` DI). Measured by the `di_resolution` dimension of the corpus
-harness across per-language collision fixtures (`tests/corpus/`).
+implemented for **Java, C#, Python, and JS** (field injection, auto-properties,
+typed-`__init__` DI, and JS constructor `this.x = new Y()`). Measured by the
+`di_resolution` dimension of the corpus harness across per-language collision
+fixtures (`tests/corpus/`). JS module-level functional DI (require + call outside
+a class) is the one uncovered pattern — there is no enclosing class to key on.
 
 ### Legacy 7-level framing (historical)
 The original prose ranked levels exact → prefix → suffix → external →

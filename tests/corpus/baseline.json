@@ -60,9 +60,9 @@
       "f1": 1.0
     },
     "entities": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1": 0.0
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
     },
     "relationships": {
       "precision": 1.0,
@@ -81,6 +81,33 @@
     }
   },
   "java-di-collision": {
+    "endpoints": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "entities": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "relationships": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "call_edges": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "di_resolution": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "js-di-collision": {
     "endpoints": {
       "precision": 1.0,
       "recall": 1.0,
