@@ -8,6 +8,21 @@ import re
 from ..ai.flow_analyzer import ScenarioFlow
 from ..graph.models import CrossEntityTransitionLink, EntityStateMachine
 
+
+def _step_display_name(step: dict, default: str = "Step") -> str:
+    """Step name, annotated when it is an LLM-inferred manual task.
+
+    HIGH-9: USER_TASK steps are invented by the LLM (approval/review), not
+    grounded in source. They must render visibly distinct from code-grounded
+    steps so a business reader doesn't read an inferred step as a documented
+    fact. Other step types pass through unchanged.
+    """
+    name = step.get("name", default)
+    if step.get("type") == "USER_TASK":
+        return f"{name} ⚠ inferred"
+    return name
+
+
 # Map step types to Mermaid sequence diagram participants
 _STEP_ACTOR: dict[str, str] = {
     "USER_TASK": "User",
@@ -99,7 +114,7 @@ class BPMNGenerator:
         prev_actor = "User"
         for step in flow.steps:
             actor = self._step_actor(step)
-            name = step.get("name", "Step")
+            name = _step_display_name(step)
             desc = step.get("description", "")
             step_type = step.get("type", "")
 
@@ -171,7 +186,7 @@ class BPMNGenerator:
         prev_id = "StartEvent_1"
         for i, step in enumerate(flow.steps):
             step_id = f"Activity_{i}"
-            name_attr = html.escape(step.get("name", "Step"), quote=True)
+            name_attr = html.escape(_step_display_name(step), quote=True)
             step_type = step.get("type", "PROCESS")
             element = _BPMN_ELEMENT.get(step_type, _DEFAULT_BPMN_ELEMENT)
             xml.append(f'    <bpmn:{element} id="{step_id}" name="{name_attr}"/>')
@@ -206,7 +221,7 @@ class BPMNGenerator:
         prev_ids: list[str] = ["start"]
 
         for i, step in enumerate(flow.steps):
-            label = _mermaid_label(step.get("name", "Step"))
+            label = _mermaid_label(_step_display_name(step))
             if step.get("type") == "GATEWAY":
                 gw_id = f"gw_{i}"
                 yes_id = f"gw_{i}_yes"

@@ -840,7 +840,9 @@ def run_pipeline(
         # Phase 3b: cross-entity transition sequence mining. Drives BPMN
         # cross-lane sequence flows and impact analysis.
         with _timed("cross-entity mining"), console.status("[bold cyan]Mining cross-entity transition sequences..."):
-            cross_links = mine_cross_entity_transitions(fsms, scenarios)
+            # min_support=2 (MED): a single co-occurrence is coincidence, not a
+            # causal trigger; require the A→B sequence in at least 2 scenarios.
+            cross_links = mine_cross_entity_transitions(fsms, scenarios, min_support=2)
         if cross_links:
             cross_json_path = output_dir / "cross_entity_transitions.json"
             write_cross_entity_links_json(cross_links, cross_json_path)

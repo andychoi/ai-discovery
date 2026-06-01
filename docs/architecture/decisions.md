@@ -214,7 +214,16 @@ state_transition = { entity: "Order", field: "status", from: "?", to: "SUBMITTED
 ```
 
 ### Confidence
-Explicitly coded state transitions (assignments) are high confidence (0.9–1.0). Inferred transitions (function names) are lower confidence (0.6–0.8).
+Explicitly coded state transitions (literal assignments such as
+`order.status = APPROVED`) are extracted at confidence 1.0.
+
+> **Reconciled 2026-05-31 (HIGH-9):** earlier prose here claimed a separate
+> *name-inferred* transition path scored 0.6–0.8. That path is **not
+> implemented** — every transition currently extracted comes from an explicit
+> assignment and is confidence 1.0. The LLM does, separately, invent `USER_TASK`
+> steps (approval/review) during flow analysis; those are not state transitions
+> and are now rendered with a `⚠ inferred` marker in BPMN/Mermaid so they are
+> never read as code-grounded facts.
 
 ---
 

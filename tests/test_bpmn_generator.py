@@ -368,3 +368,13 @@ def test_backbone_sanitizes_unsafe_identifiers(gen: BPMNGenerator):
     out = gen.generate_entity_backbone_mermaid([fsm])
     assert "src_billing_Order_node" in out
     assert "src.billing.Order_node" not in out
+
+
+def test_user_task_steps_marked_inferred():
+    """HIGH-9: LLM-invented USER_TASK steps render visibly distinct from
+    code-grounded steps so they aren't read as documented fact."""
+    from ai_discovery.generators.bpmn_generator import _step_display_name
+    assert _step_display_name({"name": "Manager Approval", "type": "USER_TASK"}) == "Manager Approval ⚠ inferred"
+    # Code-grounded step types are unchanged.
+    assert _step_display_name({"name": "Save Order", "type": "DB"}) == "Save Order"
+    assert _step_display_name({"name": "Validate", "type": "PROCESS"}) == "Validate"
