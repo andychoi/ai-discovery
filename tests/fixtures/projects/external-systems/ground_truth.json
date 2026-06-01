@@ -1,0 +1,16 @@
+{
+  "_README": "Fixture exercising external-system node synthesis (HIGH-8). PaymentService.charge() calls axios (HTTP), stripe (payment), and redis (cache) clients, which must become first-class typed external-system nodes. Authored from source.",
+  "project": "external-systems",
+  "language": "javascript",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [],
+  "external_systems": [
+    {"name": "HTTP API", "kind": "http_api"},
+    {"name": "Stripe",   "kind": "payment"},
+    {"name": "Redis",    "kind": "cache"}
+  ],
+  "_external_systems_note": "HIGH-8: receivers axios / stripe(.charges) / redis match the external-client registry and are promoted to external_system nodes with external_call edges, instead of being dropped as 0.5-confidence unresolved strings."
+}

@@ -658,6 +658,36 @@ def run_pipeline(
                 edges = build_call_graph(all_nodes)
             console.print(f"  Call graph: [green]{len(edges)}[/] edges")
 
+            # HIGH-8: promote external-client calls (axios/kafka/redis/stripe/…)
+            # to first-class typed external-system nodes + edges, so external
+            # dependencies are queryable rather than dropped as unresolved strings.
+            from .extractors import extract_external_systems
+            ext_nodes, ext_edges = extract_external_systems(all_nodes)
+            if ext_nodes:
+                conn = get_conn(db_path)
+                try:
+                    for en in ext_nodes:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO code_nodes "
+                            "(scan_id, file_path, language, node_type, name, qualified_name, "
+                            "line_start, line_end, source_code, annotations, params, "
+                            "return_type, framework_hints, domain) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (scan_id, en.file_path, en.language, en.node_type, en.name,
+                             en.qualified_name, en.line_start, en.line_end, en.source_code,
+                             json.dumps(en.annotations), json.dumps(en.params),
+                             en.return_type, json.dumps(en.framework_hints), None),
+                        )
+                    conn.commit()
+                finally:
+                    conn.close()
+                edges = edges + ext_edges
+                kinds = sorted({n.framework_hints.get("kind", "?") for n in ext_nodes})
+                console.print(
+                    f"  External systems: [green]{len(ext_nodes)}[/] "
+                    f"({', '.join(kinds)}); [green]{len(ext_edges)}[/] external-call edges"
+                )
+
             # Distribute call edges to domains
             node_domain_map = {n.qualified_name: n.domain for n in all_nodes}
             for edge in edges:

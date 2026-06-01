@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ai_discovery.extractors import extract_relationships
+from ai_discovery.extractors import extract_external_systems, extract_relationships
 from ai_discovery.graph.call_graph import build_call_graph
 from ai_discovery.graph.models import CallEdge, CodeNode, EntityRelationship
 from ai_discovery.repo.file_walker import walk_repo
@@ -35,6 +35,14 @@ class ExtractionResult:
     nodes: list[CodeNode] = field(default_factory=list)
     edges: list[CallEdge] = field(default_factory=list)
     relationships: list[EntityRelationship] = field(default_factory=list)
+    external_systems: list[CodeNode] = field(default_factory=list)
+
+    def external_system_pairs(self) -> set[tuple[str, str]]:
+        """{(system display name, kind)} for synthesized external-system nodes."""
+        return {
+            (n.framework_hints.get("system", n.name), n.framework_hints.get("kind", ""))
+            for n in self.external_systems
+        }
 
     # ---- derived views the metrics layer matches against ground truth ----
 
@@ -81,4 +89,8 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
             continue
     edges = build_call_graph(nodes)
     relationships = extract_relationships(nodes)
-    return ExtractionResult(nodes=nodes, edges=edges, relationships=relationships)
+    ext_nodes, ext_edges = extract_external_systems(nodes)
+    return ExtractionResult(
+        nodes=nodes, edges=edges + ext_edges, relationships=relationships,
+        external_systems=ext_nodes,
+    )

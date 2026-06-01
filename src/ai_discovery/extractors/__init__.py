@@ -12,10 +12,12 @@ from .sql_extractor import (
     read_sql_file_nodes,
 )
 from .relationship_extractor import extract_relationships
+from .external_system_extractor import extract_external_systems
 
 __all__ = [
     "extract_sql_entities",
     "extract_sql_relationships",
     "read_sql_file_nodes",
     "extract_relationships",
+    "extract_external_systems",
 ]
