@@ -35,3 +35,10 @@ def test_vue_detector_parses_fixture(tmp_path):
     items = md.FrameworkRoutingDetector().detect(tmp_path)
     assert items is not None
     assert any(i.path == "/" for i in items)
+
+
+def test_humanize_cases():
+    assert md._humanize("CustomerListPage") == "Customer List"
+    assert md._humanize("OrderScreen") == "Order"
+    assert md._humanize("customer-detail") == "Customer Detail"
+    assert md._humanize("Page") == "Page"  # bare suffix preserved

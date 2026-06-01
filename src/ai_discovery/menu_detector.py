@@ -73,11 +73,14 @@ class Screen:
 
 
 def _humanize(name: str) -> str:
-    import re as _re
-    s = _re.sub(r"(Page|View|Screen|Component)$", "", name)
-    s = _re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", s)
-    s = s.replace("-", " ").replace("_", " ")
-    return s.strip().title() or name
+    """Turn a component identifier into a human label, e.g.
+    'CustomerListPage' -> 'Customer List'. Generic UI suffixes
+    (Page/View/Screen/Component) are dropped only when other words remain."""
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name).replace("-", " ").replace("_", " ")
+    words = [w for w in spaced.split() if w]
+    if len(words) > 1 and words[-1] in ("Page", "View", "Screen", "Component"):
+        words = words[:-1]
+    return " ".join(words).title() or name
 
 
 def _routenode_to_menuitem(rn: RouteNode, is_route_format: bool) -> "MenuItem":
