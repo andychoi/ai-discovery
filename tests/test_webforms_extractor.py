@@ -39,3 +39,22 @@ def test_no_codebehind_still_a_page():
 
 def test_non_page_returns_none():
     assert extract_webforms_page(FIX / "notaspage.txt") is None
+
+
+def test_events_extracted_with_id_and_handler():
+    page = extract_webforms_page(FIX / "Default.aspx")
+    pairs = {(e["control_id"], e["event"], e["handler"]) for e in page.events}
+    assert ("btnSave", "Click", "btnSave_Click") in pairs
+    assert ("lnkCancel", "Click", "lnkCancel_Click") in pairs
+
+
+def test_events_row_command():
+    page = extract_webforms_page(FIX / "Pages" / "Customer.aspx")
+    assert {(e["event"], e["handler"]) for e in page.events} == {("RowCommand", "grid_RowCommand")}
+
+
+def test_client_side_handlers_skipped():
+    from ai_discovery.webforms_extractor import _extract_events
+    content = '<asp:Button ID="b" runat="server" OnClientClick="doJs" OnClick="b_Click" />'
+    events = _extract_events(content)
+    assert {(e["event"], e["handler"]) for e in events} == {("Click", "b_Click")}

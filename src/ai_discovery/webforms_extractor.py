@@ -69,6 +69,16 @@ def extract_webforms_page(path: Path) -> WebFormsPage | None:
 
 
 def _extract_events(content: str) -> list[dict]:
-    """Server-control event wiring: On<Event>="Handler" on <asp:*> tags. Skips
-    client-side OnClient* handlers. (Implemented in Task 2.)"""
-    return []
+    """Server-control event wiring: On<Event>="Handler" on <asp:*> opening tags.
+    Skips client-side OnClient* handlers (their value is JS, not a method)."""
+    events: list[dict] = []
+    for tag in _ASP_TAG_RE.finditer(content):
+        attr_str = tag.group(1)
+        id_match = _ID_RE.search(attr_str)
+        control_id = id_match.group(1) if id_match else None
+        for ev in _EVENT_RE.finditer(attr_str):
+            event_name, handler = ev.group(1), ev.group(2)
+            if event_name.startswith("Client"):
+                continue  # OnClientClick etc. are client-side JS hooks
+            events.append({"control_id": control_id, "event": event_name, "handler": handler})
+    return events
