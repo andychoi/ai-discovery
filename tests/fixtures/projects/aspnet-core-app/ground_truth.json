@@ -17,5 +17,8 @@
   ],
   "relationships": [],
   "_relationships_note": "Order.CustomerId is a raw int with no EF navigation property / [ForeignKey], so there is NO declared FK relationship to extract. Phase 1 does not infer FKs from naming convention, so the correct ground truth is empty.",
-  "key_call_edges": []
+  "_key_call_edges_note": "ProductsController injects ProductService (constructor DI). OrdersController uses an in-memory list (no service). Controller actions call ASP.NET helpers (Ok/CreatedAtAction) and ProductService calls repository methods (GetAllAsync) that are framework/interface methods absent from source — correctly unresolved.",
+  "key_call_edges": [
+    {"caller_suffix": "Controllers.ProductsController", "callee_suffix": "Services.ProductService", "min_confidence": 0.8}
+  ]
 }

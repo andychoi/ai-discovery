@@ -22,24 +22,34 @@ from pathlib import Path
 
 import pytest
 
-from .metrics import score_entity_fields, score_sets
+from .metrics import (
+    score_call_edges,
+    score_entity_fields,
+    score_forbidden_edges,
+    score_sets,
+)
 from .runner import run_fixture
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "projects"
 BASELINE_PATH = Path(__file__).resolve().parent / "baseline.json"
 
 _HARD_TARGET = 0.80
+_CALL_EDGE_TARGET = 0.85  # CLAUDE.md call-resolution goal
 
-# (project, dimension) pairs held to the absolute >=0.80 bar. Dimensions with a
+# (project, dimension) pairs held to the absolute bar. Dimensions with a
 # documented extraction gap (see each ground_truth.json's *_note) are omitted
-# here — they are still regression-guarded against the baseline.
+# here — they are still regression-guarded against the baseline. Call-edge
+# dimensions use _CALL_EDGE_TARGET (0.85); the rest use _HARD_TARGET (0.80).
 HARD_TARGETS = {
     ("spring-boot-app", "endpoints"),
     ("spring-boot-app", "entities"),
     ("spring-boot-app", "relationships"),
+    ("spring-boot-app", "call_edges"),
     ("aspnet-core-app", "endpoints"),
     ("aspnet-core-app", "entities"),
+    ("aspnet-core-app", "call_edges"),
     ("express-app", "endpoints"),
+    ("express-app", "call_edges"),
 }
 
 
@@ -64,6 +74,8 @@ def _score_project(repo_path: Path, gt: dict) -> dict:
             res.relationship_pairs(),
             {(r["from_entity"], r["to_entity"]) for r in gt["relationships"]},
         ),
+        "call_edges": score_call_edges(res.edges, gt.get("key_call_edges", [])),
+        "di_resolution": score_forbidden_edges(res.edges, gt.get("forbidden_call_edges", [])),
     }
 
 
@@ -88,8 +100,9 @@ def test_fixture_accuracy(repo_path: Path, gt: dict):
 
     for dim, sc in scores.items():
         if (project, dim) in HARD_TARGETS:
-            assert sc.f1 >= _HARD_TARGET, (
-                f"{project}/{dim}: F1 {sc.f1:.2f} < absolute target {_HARD_TARGET}. "
+            target = _CALL_EDGE_TARGET if dim == "call_edges" else _HARD_TARGET
+            assert sc.f1 >= target, (
+                f"{project}/{dim}: F1 {sc.f1:.2f} < absolute target {target}. "
                 f"missing={sc.missing} extra={sc.extra}"
             )
         if dim in base:

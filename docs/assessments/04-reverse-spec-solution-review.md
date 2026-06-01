@@ -20,14 +20,14 @@ Findings from this review were implemented in waves (each its own commit, full s
 | **CRIT-3** screen specs over-confident | ◑ Interim | Confidence capped + `content_provenance` + banner. *Remaining:* same as CRIT-2. |
 | **HIGH-1** blend_confidence 1.0 trap | ✅ Done | Unverifiable docs → 0.3, not 1.0. |
 | **HIGH-2** self-review trust holes | ✅ Done | Evidence-gated verdicts (abstain on weak/absent RAG), re-verify regenerated prose, claim cap 10→50. |
-| **HIGH-3** no DI/receiver-type resolution | ☐ Deferred | Large; risk of broadly perturbing the call graph. Needs corpus accuracy harness first. |
+| **HIGH-3** no DI/receiver-type resolution | ☐ Deferred (now measurable) | The `java-di-collision` corpus fixture pins the fan-out gap at `di_resolution=0.0`; the harness will prove the fix (→1.0) once DI resolution lands. Ready to implement against a real gauge. |
 | **HIGH-4** C# route prefix dropped | ✅ Done | Composes `[Route]` + `[controller]`/`[action]` tokens. |
 | **HIGH-5** Python Flask/CBV endpoints | ✅ Done | `methods=[]`, default GET, class-based views; Python endpoint tests added. |
 | **HIGH-6** no FK/relationship extraction | ✅ Done | FK extraction (SQL + JPA) + `db_relationship` table + `.sql`/migrations reading (FK-aware docs Phase 1–2). |
 | **HIGH-7** non-code artifacts ignored | ☐ Deferred | OpenAPI/proto/IaC ingestion — large, new subsystem. |
 | **HIGH-8** external systems / federation | ◑ Partial | Relabeled "External Dependencies". *Remaining (large):* first-class external-system nodes; cross-repo integration correlator. |
 | **HIGH-9** inferred USER_TASK steps | ✅ Done | `⚠ inferred` marker in BPMN/Mermaid; transition-provenance doc reconciled. |
-| **HIGH-10** faithfulness untested / no corpus | ◑ Phase 1 done | `tests/corpus/` accuracy gate (endpoints/entities/FK) over 3 fixtures, deterministic, baseline-recorded; test-strategy.md fiction replaced. Surfaced a real gap: JS Mongoose entities (0.0). *Remaining:* Phase 2 call-edge baseline, Phase 3 external repos. |
+| **HIGH-10** faithfulness untested / no corpus | ◑ Phases 1–2 done | `tests/corpus/` accuracy gate over 4 fixtures (endpoints/entities/FK/call-edges/di-resolution), deterministic, baseline-recorded; test-strategy.md fiction replaced. Surfaced two measured gaps: JS Mongoose entities (0.0) and DI fan-out (`di_resolution`=0.0). *Remaining:* Phase 3 external repos. |
 | **MED-1** confidence doc≠code | ✅ Done | decisions.md/CLAUDE.md reconciled to the 4-stage resolver + raw ranking score. |
 | **MED-3** edge dedup | ✅ Done | Edges deduped per (caller, callee, edge_type), max confidence. |
 | triggers min_support=1 | ✅ Done | Raised to 2 (single co-occurrence ≠ causal). |
