@@ -1308,6 +1308,27 @@ def run_pipeline(
                 scan_id=scan_id,
             )
 
+        # P0-4: deterministic structural check (no LLM). Flag file:line citations
+        # and qualified symbols in the generated prose that are absent from the
+        # parsed graph — likely fabrications — and annotate the doc so readers see
+        # the warning before relying on it.
+        try:
+            from .ai.prose_validator import build_known_graph, validate_prose, annotate
+            known_graph = build_known_graph(all_nodes)
+            flagged_total = 0
+            for r in rollups:
+                v = validate_prose(r.content_md, known_graph)
+                if not v.is_clean:
+                    r.content_md = annotate(r.content_md, v)
+                    flagged_total += v.count
+            if flagged_total:
+                console.print(
+                    f"  [yellow]Unverified code references flagged:[/] {flagged_total} "
+                    "(annotated in docs)"
+                )
+        except Exception as exc:  # annotation is non-critical: warn, don't lose docs
+            console.print(f"  [yellow]Prose validation skipped:[/] {exc}")
+
         persist_rollups(rollups, scan_id, db_path, project_slug)
         console.print(f"  Documents: [green]{len(rollups)}[/] generated")
 
