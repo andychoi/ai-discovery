@@ -42,3 +42,47 @@ def test_humanize_cases():
     assert md._humanize("OrderScreen") == "Order"
     assert md._humanize("customer-detail") == "Customer Detail"
     assert md._humanize("Page") == "Page"  # bare suffix preserved
+
+
+# ---------------------------------------------------------------------------
+# build_screen_map tests (Task 7)
+# ---------------------------------------------------------------------------
+
+def _mi(path, label, children=None, is_screen=None, **meta):
+    m = {"component_source": None, "redirect_to": None, "is_catch_all": False, **meta}
+    if is_screen is not None:
+        m["is_screen"] = is_screen
+    return md.MenuItem(id=label.lower(), label=label, path=path, children=children or [], metadata=m)
+
+
+def test_build_screen_map_route_rules():
+    tree = [_mi("/", "Root", is_screen=False, children=[
+        _mi("customers", "Customers", is_screen=True, component_source="./C.vue"),
+        _mi("orders", "Orders", is_screen=True),
+    ])]
+    screens = md.build_screen_map(tree, Path("."))
+    labels = {s.label for s in screens}
+    assert labels == {"Customers", "Orders"}
+    cust = next(s for s in screens if s.label == "Customers")
+    assert cust.path == "/customers"
+    assert cust.menu_path == ["Root", "Customers"]
+    assert cust.fe_component == "./C.vue"
+
+
+def test_build_screen_map_leaf_rule_backward_compat():
+    tree = [md.MenuItem(id="a", label="A", path="/a", children=[
+        md.MenuItem(id="b", label="B", path="/a/b"),
+    ])]
+    screens = md.build_screen_map(tree, Path("."))
+    assert {s.label for s in screens} == {"B"}
+
+
+def test_build_screen_map_redirect_alias():
+    tree = [
+        _mi("/customers", "Customers", is_screen=True),
+        _mi("/old", "Old", is_screen=False, redirect_to="/customers"),
+    ]
+    screens = md.build_screen_map(tree, Path("."))
+    assert {s.label for s in screens} == {"Customers"}
+    cust = screens[0]
+    assert "/old" in cust.metadata.get("redirect_aliases", [])

@@ -325,34 +325,70 @@ class HybridMenuDetector:
         return None
 
 
+def _join_path(parent: str, child: str) -> str:
+    if not child:
+        return parent or ""
+    if child.startswith("/"):
+        return child
+    if not parent or parent == "/":
+        return "/" + child.lstrip("/")
+    return parent.rstrip("/") + "/" + child.lstrip("/")
+
+
 def build_screen_map(menu_items: list[MenuItem], repo_path: Path) -> list[Screen]:
-    """
-    Build list of Screen objects from menu items.
+    """Build Screen objects from a MenuItem tree.
 
-    Traverses menu tree and creates a Screen for each leaf menu item.
+    Format-aware: a MenuItem with metadata['is_screen'] honors that flag (route
+    formats); without it, the leaf rule applies (JSON/YAML + TS-const menus).
+    Pathless/component-less wrappers become breadcrumb ancestors. Redirect items
+    are not screens; their source path is attached to the target screen's
+    metadata['redirect_aliases'].
     """
-    screens = []
+    screens: list[Screen] = []
+    redirects: list[tuple[str, str]] = []
+    by_full_path: dict[str, Screen] = {}
+    seen_ids: set[str] = set()
 
-    def traverse(items: list[MenuItem], path: list[str]):
+    def is_screen(item: MenuItem) -> bool:
+        meta = item.metadata or {}
+        if "is_screen" in meta:
+            return bool(meta["is_screen"])
+        return not item.children
+
+    def unique_id(base: str) -> str:
+        sid = base or "screen"
+        i = 2
+        while sid in seen_ids:
+            sid = f"{base}-{i}"; i += 1
+        seen_ids.add(sid)
+        return sid
+
+    def traverse(items: list[MenuItem], crumb: list[str], parent_path: str):
         for item in items:
-            current_path = path + [item.label]
-
-            if item.children:
-                # Non-leaf: recurse
-                traverse(item.children, current_path)
-            else:
-                # Leaf: create screen
+            meta = item.metadata or {}
+            full_path = _join_path(parent_path, item.path)
+            current_crumb = crumb + [item.label]
+            if meta.get("redirect_to"):
+                redirects.append((full_path, meta["redirect_to"]))
+            if is_screen(item):
+                sid = unique_id(item.id or JsonYamlDetector._slugify(full_path))
                 screen = Screen(
-                    screen_id=item.id,
-                    menu_path=current_path,
-                    label=item.label,
-                    path=item.path,
+                    screen_id=sid, menu_path=current_crumb, label=item.label, path=full_path,
+                    fe_component=meta.get("component_source") or None,
                     permissions=item.roles,
-                    metadata=item.metadata,
+                    metadata={k: v for k, v in meta.items() if k not in ("is_screen",)},
                 )
                 screens.append(screen)
+                by_full_path[full_path] = screen
+            if item.children:
+                traverse(item.children, current_crumb, full_path)
 
-    traverse(menu_items, [])
+    traverse(menu_items, [], "")
+
+    for src_path, target in redirects:
+        target_screen = by_full_path.get(target) or by_full_path.get(_join_path("", target))
+        if target_screen is not None:
+            target_screen.metadata.setdefault("redirect_aliases", []).append(src_path)
     return screens
 
 
