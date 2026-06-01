@@ -55,6 +55,11 @@ dev = [
 [project.scripts]
 discover = "ai_discovery.cli:app"
 
+[tool.pytest.ini_options]
+markers = [
+    "accuracy: corpus-based extraction accuracy gate (deterministic, no LLM/network)",
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

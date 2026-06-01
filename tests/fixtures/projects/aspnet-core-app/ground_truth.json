@@ -1,0 +1,21 @@
+{
+  "_README": "Human-labeled from SOURCE (Controllers/*.cs [Route]+[Http*], Models/*.cs). Never regenerate from the parser. See docs/specs/2026-05-31-corpus-accuracy-harness.md.",
+  "project": "aspnet-core-app",
+  "language": "csharp",
+  "framework": "aspnet",
+  "endpoints": [
+    {"handler": "OrdersController.GetOrders",     "method": "GET",  "path": "/api/Orders"},
+    {"handler": "OrdersController.GetOrder",       "method": "GET",  "path": "/api/Orders/{id}"},
+    {"handler": "OrdersController.CreateOrder",     "method": "POST", "path": "/api/Orders"},
+    {"handler": "ProductsController.GetProducts",   "method": "GET",  "path": "/api/Products"},
+    {"handler": "ProductsController.GetProduct",    "method": "GET",  "path": "/api/Products/{id}"},
+    {"handler": "ProductsController.CreateProduct", "method": "POST", "path": "/api/Products"}
+  ],
+  "entities": [
+    {"table": "orders",   "fields": ["Id", "CustomerId", "CreatedAt", "Status"]},
+    {"table": "products", "fields": ["Id", "Name", "Description", "Price", "Stock"]}
+  ],
+  "relationships": [],
+  "_relationships_note": "Order.CustomerId is a raw int with no EF navigation property / [ForeignKey], so there is NO declared FK relationship to extract. Phase 1 does not infer FKs from naming convention, so the correct ground truth is empty.",
+  "key_call_edges": []
+}

@@ -1,0 +1,20 @@
+{
+  "_README": "Human-labeled from SOURCE (src/routes/*.js, src/models/*.js). Never regenerate from the parser. See docs/specs/2026-05-31-corpus-accuracy-harness.md.",
+  "project": "express-app",
+  "language": "javascript",
+  "framework": "express",
+  "endpoints": [
+    {"handler": "orders.list",    "method": "GET",  "path": "/"},
+    {"handler": "orders.getById", "method": "GET",  "path": "/:id"},
+    {"handler": "orders.create",  "method": "POST", "path": "/"},
+    {"handler": "products.search","method": "GET",  "path": "/search"}
+  ],
+  "_endpoints_note": "Routes are declared on a Router with no app.use() mount in this fixture, so the declared paths ARE the faithful ground truth (no /api prefix exists to compose). Matched as a set, so the cross-file duplicate `GET /` collapses to one.",
+  "entities": [
+    {"table": "Order",   "fields": ["customerId", "items", "status", "createdAt"]},
+    {"table": "Product", "fields": ["name", "description", "price", "stock", "createdAt"]}
+  ],
+  "_entities_note": "KNOWN GAP (surfaced by this harness): the JS parser does not extract Mongoose schemas as db_model nodes, so entity recall is currently 0 for this fixture. Baseline-only dimension; not a hard target until JS entity extraction lands.",
+  "relationships": [],
+  "key_call_edges": []
+}
