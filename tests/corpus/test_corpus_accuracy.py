@@ -62,6 +62,8 @@ HARD_TARGETS = {
     ("python-di-collision", "call_edges"),
     ("js-di-collision", "di_resolution"),
     ("js-di-collision", "call_edges"),
+    # HIGH-8: external-client calls become first-class typed external-system nodes.
+    ("external-systems", "external_systems"),
 }
 
 
@@ -88,6 +90,10 @@ def _score_project(repo_path: Path, gt: dict) -> dict:
         ),
         "call_edges": score_call_edges(res.edges, gt.get("key_call_edges", [])),
         "di_resolution": score_forbidden_edges(res.edges, gt.get("forbidden_call_edges", [])),
+        "external_systems": score_sets(
+            res.external_system_pairs(),
+            {(s["name"], s["kind"]) for s in gt.get("external_systems", [])},
+        ),
     }
 
 

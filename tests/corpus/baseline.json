@@ -24,6 +24,11 @@
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0
+    },
+    "external_systems": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
     }
   },
   "csharp-di-collision": {
@@ -48,6 +53,11 @@
       "f1": 1.0
     },
     "di_resolution": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "external_systems": {
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0
@@ -78,6 +88,43 @@
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0
+    },
+    "external_systems": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "external-systems": {
+    "endpoints": {
+      "precision": 0.0,
+      "recall": 1.0,
+      "f1": 0.0
+    },
+    "entities": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "relationships": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "call_edges": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "di_resolution": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "external_systems": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
     }
   },
   "java-di-collision": {
@@ -102,6 +149,11 @@
       "f1": 1.0
     },
     "di_resolution": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "external_systems": {
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0
@@ -132,6 +184,11 @@
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0
+    },
+    "external_systems": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
     }
   },
   "python-di-collision": {
@@ -159,6 +216,11 @@
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0
+    },
+    "external_systems": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
     }
   },
   "spring-boot-app": {
@@ -183,6 +245,11 @@
       "f1": 1.0
     },
     "di_resolution": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "external_systems": {
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0
