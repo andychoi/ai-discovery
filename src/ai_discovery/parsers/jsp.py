@@ -27,19 +27,7 @@ class JspParser(LanguageParser):
             text = file_path.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             pass
-        # Derive domain from the bean class: use infer_domain with the class
-        # simple-name as a synthetic filename so strategy 1 (package namespace)
-        # fires first and — if all package parts are TLD/framework dirs — the
-        # fallback (strategy 3, class stem) matches what classify_domains will
-        # independently compute for the bean CodeNode.
-        domain = (
-            infer_domain(
-                page.bean_classes[0],
-                page.bean_classes[0].rsplit(".", 1)[-1] + ".java",
-            )
-            if page.bean_classes
-            else None
-        )
+        domain = infer_domain(page.bean_classes[0], str(file_path)) if page.bean_classes else None
         return [
             CodeNode(
                 file_path=str(file_path),

@@ -10,14 +10,14 @@ def test_login_bean_action_title():
     assert page is not None
     assert page.is_tag_file is False
     assert page.title == "Login"
-    assert page.bean_classes == ["com.app.UserBean"]
+    assert page.bean_classes == ["com.acme.UserBean"]
     assert page.form_actions == ["/doLogin"]
 
 
 def test_includes_and_nested():
     page = extract_jsp_page(FIX / "customer" / "list.jsp")
     assert page.title == "Customers"
-    assert page.bean_classes == ["com.app.CustomerService"]
+    assert page.bean_classes == ["com.acme.CustomerService"]
     assert page.form_actions == ["/customers/search"]
     assert set(page.includes) == {"../header.jsp", "nav.jsp"}
 

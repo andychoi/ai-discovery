@@ -1,5 +1,5 @@
 <%@ page contentType="text/html" %>
-<jsp:useBean id="user" class="com.app.UserBean" scope="request" />
+<jsp:useBean id="user" class="com.acme.UserBean" scope="request" />
 <html><head><title>Login</title></head>
 <body>
   <form action="/doLogin" method="post">
