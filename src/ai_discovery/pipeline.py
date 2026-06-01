@@ -244,6 +244,21 @@ def _budget_ok(llm_client, config: DiscoveryConfig, phase_label: str) -> bool:
     return True
 
 
+def _budget_exhausted_fn(llm_client, config: DiscoveryConfig):
+    """P1-e: a cheap, side-effect-free predicate for *mid-phase* budget checks.
+
+    `_budget_ok` gates phase entry but prints and is coarse; within a phase the
+    tier1/tier2/tier3 loops can spend far past the limit before the next boundary.
+    This returns a callable () -> bool (True once spend hits the limit) for those
+    loops, or None when there's nothing to enforce (non-bedrock, or no limit set)
+    so the loops skip the check entirely with zero overhead.
+    """
+    if config.provider != "bedrock" or not config.budget_limit_usd:
+        return None
+    limit = config.budget_limit_usd
+    return lambda: llm_client.total_cost_usd() >= limit
+
+
 def _find_previous_run(db_path: Path, repo: str, branch: str, commit_sha: str | None = None):
     """Find the most recent scan_run for the same repo.
 
@@ -821,8 +836,15 @@ def run_pipeline(
                     for edge in edges
                     if qn_to_id.get(edge.caller) is not None
                 ]
+                # P1-a: idempotent re-run. call_edges has no natural overwrite,
+                # so re-running phase 7 on the same scan_id (e.g. --resume-from=7)
+                # would otherwise duplicate every edge. Clear this scan's edges
+                # first (same pattern as db_relationship), and use INSERT OR IGNORE
+                # against the UNIQUE(scan_id, caller_id, callee_name, edge_type)
+                # constraint as defense-in-depth on databases that have it.
+                conn.execute("DELETE FROM call_edges WHERE scan_id = ?", (scan_id,))
                 conn.executemany(
-                    "INSERT INTO call_edges (scan_id, caller_id, callee_id, callee_name, edge_type, confidence) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO call_edges (scan_id, caller_id, callee_id, callee_name, edge_type, confidence) VALUES (?, ?, ?, ?, ?, ?)",
                     edge_rows,
                 )
                 conn.commit()
@@ -1174,6 +1196,7 @@ def run_pipeline(
                     scan_id=scan_id,
                     skip_rag=True,
                     skip_tests=True,
+                    budget_exhausted=_budget_exhausted_fn(llm_client, config),
                 )
 
             persist_summaries(summaries, scan_id, db_path)
@@ -1215,6 +1238,7 @@ def run_pipeline(
                 flows_by_domain = analyze_all_domains(
                     domains, summaries_dict, llm_client, on_progress=_on_flow_progress,
                     db_path=db_path, scan_id=scan_id,
+                    budget_exhausted=_budget_exhausted_fn(llm_client, config),
                 )
 
             total_flows = sum(len(v) for v in flows_by_domain.values())
@@ -1308,6 +1332,7 @@ def run_pipeline(
                 max_workers=config.max_concurrent,
                 db_path=db_path,
                 scan_id=scan_id,
+                budget_exhausted=_budget_exhausted_fn(llm_client, config),
             )
 
         # P0-4: deterministic structural check (no LLM). Flag file:line citations

@@ -225,7 +225,39 @@ class ScenarioFlowInference:
             return [] if key else {}
 
 
-def _build_flow_prompt(domain: Domain, summaries: dict[str, dict]) -> str:
+def _retrieve_flow_context(
+    domain_name: str,
+    db_path: Path,
+    llm_client: LLMClient,
+    top_k: int = 5,
+) -> str:
+    """Retrieve relevant source via RAG to ground Tier-2 flow analysis (P1-d).
+
+    Tier-2 otherwise sees only Tier-1 summaries + graph metadata, so its flows
+    are an inference over summaries with no source anchor. Pull the top-k code
+    chunks for the domain's business process and format them for the prompt.
+    Returns "" on any failure — grounding is best-effort, never fatal.
+    """
+    try:
+        from ..rag.retriever import search
+    except ImportError:
+        return ""
+    query = f"{domain_name} business process flow: control flow, state changes, side effects"
+    try:
+        results = search(query, db_path, llm_client, top_k=top_k)
+    except Exception:
+        logger.debug("RAG retrieval failed for flow analysis of %s", domain_name)
+        return ""
+    if not results:
+        return ""
+    snippets = [
+        f"### {r['qualified_name']} ({r['file_path']})\n```\n{r['chunk_text'][:800]}\n```"
+        for r in results
+    ]
+    return "\n\n".join(snippets)
+
+
+def _build_flow_prompt(domain: Domain, summaries: dict[str, dict], rag_context: str = "") -> str:
     """Build Tier 2 flow analysis prompt.
 
     Include:
@@ -279,8 +311,20 @@ def _build_flow_prompt(domain: Domain, summaries: dict[str, dict]) -> str:
         lines.append(f"- {model.qualified_name}")
     lines.append("")
 
+    # P1-d: retrieved source code, so flows are grounded in real code rather
+    # than inferred from summaries alone.
+    if rag_context:
+        lines.append("## Source Code Context (from RAG retrieval)")
+        lines.append(rag_context)
+        lines.append("")
+
     # Instructions
     lines.append("## Task")
+    if rag_context:
+        lines.append(
+            "Ground every flow in the source code and node evidence above; do not "
+            "invent flows or steps with no corresponding node or code.\n"
+        )
     lines.append(
         "Analyze the above domain and identify all business flows. "
         "Return a JSON array where each element has:\n"
@@ -337,6 +381,7 @@ def analyze_domain(
     domain: Domain,
     summaries: dict[str, dict],
     llm_client: LLMClient,
+    db_path: Path | None = None,
 ) -> list[BusinessFlow]:
     """Analyze a single domain for business flows using Tier 2 LLM.
 
@@ -344,10 +389,16 @@ def analyze_domain(
         domain: Domain with nodes, edges, entry_points
         summaries: dict mapping qualified_name -> Tier 1 summary dict
         llm_client: LLM client instance
+        db_path: when provided, retrieve source via RAG to ground the flows (P1-d)
 
     Returns list of BusinessFlow objects.
     """
-    prompt = _build_flow_prompt(domain, summaries)
+    rag_context = (
+        _retrieve_flow_context(domain.name, db_path, llm_client)
+        if db_path is not None
+        else ""
+    )
+    prompt = _build_flow_prompt(domain, summaries, rag_context=rag_context)
     response = llm_client.invoke_with_advisor(
         "tier2", prompt,
         context=AdvisorContext(domain="flow_analysis", max_advisor_cost_pct=0.3)
@@ -402,6 +453,7 @@ def analyze_all_domains(
     on_progress: Callable | None = None,
     db_path: Path | None = None,
     scan_id: int | None = None,
+    budget_exhausted: Callable[[], bool] | None = None,
 ) -> dict[str, list[BusinessFlow]]:
     """Analyze all domains sequentially (Tier 2 is expensive, no need for concurrency).
 
@@ -432,12 +484,24 @@ def analyze_all_domains(
     total = len(domains)
 
     for i, domain in enumerate(domains):
+        # P1-e: stop before starting another domain once the budget is spent.
+        # Already-analyzed domains (loaded from DB) are free, so only gate LLM work.
+        if (
+            domain.name not in done_domains
+            and budget_exhausted is not None
+            and budget_exhausted()
+        ):
+            logger.warning(
+                "Tier-2 budget limit reached after %d/%d domains; skipping the rest",
+                i, total,
+            )
+            break
         if domain.name in done_domains:
             # Load existing flows from DB instead of re-invoking LLM
             flows = _load_flows_from_db(domain.name, scan_id, db_path)
             results[domain.name] = flows
         else:
-            flows = analyze_domain(domain, summaries, llm_client)
+            flows = analyze_domain(domain, summaries, llm_client, db_path=db_path)
             results[domain.name] = flows
         if on_progress is not None:
             on_progress(i + 1, total)

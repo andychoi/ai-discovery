@@ -438,6 +438,23 @@ def blend_confidence(verified_row_count: int, review_summary: dict) -> float:
     return round(score / total, 2)
 
 
+# Confidence for a doc whose prose has NOT been claim-verified — self-review was
+# skipped (budget) or hasn't run yet. We must never publish the LLM's own
+# self-asserted "Confidence: X.XX" (P1-b): a model rating its own output is not a
+# trust signal. A doc backed by AST-verified facts but unreviewed prose earns a
+# capped, middling score; one with no facts at all is unverifiable.
+UNREVIEWED_WITH_FACTS_CONFIDENCE = 0.6
+
+
+def unreviewed_confidence(verified_row_count: int) -> float:
+    """Deterministic confidence for an as-yet-unreviewed doc (P1-b)."""
+    return (
+        UNREVIEWED_WITH_FACTS_CONFIDENCE
+        if (verified_row_count or 0) > 0
+        else UNVERIFIABLE_CONFIDENCE
+    )
+
+
 def _parse_rollup(text: str, domain_name: str, doc_type: str) -> tuple[str, float]:
     """Parse LLM rollup response.
     Extract markdown content and confidence score.
@@ -486,7 +503,10 @@ def _generate_single_doc(
             max_advisor_cost_pct=0.5  # willing to spend up to 50% on advisor for doc quality
         )
     )
-    content_md, confidence = _parse_rollup(response.text, domain.name, doc_type)
+    # _parse_rollup also strips the LLM's trailing "Confidence: X.XX" line from
+    # the content; we keep that but discard the self-asserted score (P1-b) — the
+    # published confidence is derived deterministically below.
+    content_md, _llm_self_confidence = _parse_rollup(response.text, domain.name, doc_type)
 
     # Track 1: prepend AST-verified facts to LLM output. Doc-type aware so each
     # doc gets the table that matches its purpose; `as-is` gets both as a quick
@@ -506,6 +526,11 @@ def _generate_single_doc(
             verified_row_count += schema_result[1]
     if verified_blocks:
         content_md = "\n\n".join(verified_blocks) + "\n\n" + content_md
+
+    # P1-b: publish a deterministic confidence, not the LLM's self-rating. When
+    # self-review (phase 17) runs it overwrites this with the full blended score;
+    # if it's skipped, this deterministic value stands instead of a fabricated 0.7.
+    confidence = unreviewed_confidence(verified_row_count)
 
     label = _DOC_TYPE_LABELS.get(doc_type, doc_type)
     title = f"{domain.name} \u2014 {label}"
@@ -597,6 +622,7 @@ def generate_all_docs(
     max_workers: int = 16,
     db_path: Path | None = None,
     scan_id: int | None = None,
+    budget_exhausted: Callable[[], bool] | None = None,
 ) -> list[RollupResult]:
     """Generate docs for all domains. All (domain, doc_type) pairs run concurrently.
     Calls on_progress(completed, total) where total = len(domains) * len(DOC_TYPES).
@@ -604,6 +630,10 @@ def generate_all_docs(
 
     If db_path and scan_id are provided, (domain, doc_type) pairs already present
     in generated_docs are skipped (resume support) and loaded from DB instead.
+
+    If budget_exhausted() is provided and returns True after a doc completes, stop
+    submitting/awaiting further docs (P1-e) — Tier-3 is the most expensive tier and
+    a large domain count could otherwise blow past the budget within this phase.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -660,6 +690,7 @@ def generate_all_docs(
         new_success = 0
         failures: list[str] = []
         last_exc: Exception | None = None
+        budget_stopped = False
         for future in as_completed(futures):
             domain, doc_type = futures[future]
             try:
@@ -672,13 +703,23 @@ def generate_all_docs(
             completed += 1
             if on_progress is not None:
                 on_progress(completed, total)
+            # P1-e: stop mid-phase once the budget is spent; cancel not-yet-started docs.
+            if budget_exhausted is not None and budget_exhausted():
+                budget_stopped = True
+                cancelled = sum(1 for f in futures if f.cancel())
+                logger.warning(
+                    "Tier-3 budget limit reached after %d/%d docs; skipping %d remaining",
+                    completed, total, cancelled,
+                )
+                break
 
     # Fatal guard: tasks were attempted but produced zero docs (no new success
     # and nothing resumed from a prior run). This is the "tier3 model id invalid"
     # signature. Returning [] here would let the pipeline record phase 14
     # complete and exit 0 with no docs (see RollupTotalFailureError). A partial
-    # failure (some succeeded, or resumed docs exist) is tolerated.
-    if tasks and not results:
+    # failure (some succeeded, or resumed docs exist) is tolerated; a budget stop
+    # (P1-e) is an intentional halt, not a failure, so it does not raise.
+    if tasks and not results and not budget_stopped:
         detail = failures[0] if failures else "unknown error"
         raise RollupTotalFailureError(
             f"All {len(tasks)} Tier-3 doc rollups failed (0 succeeded). "

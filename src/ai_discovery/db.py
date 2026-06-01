@@ -66,7 +66,9 @@ CREATE TABLE IF NOT EXISTS call_edges (
     callee_id   INTEGER REFERENCES code_nodes(id) ON DELETE SET NULL,
     callee_name TEXT,
     edge_type   TEXT,
-    confidence  REAL DEFAULT 1.0
+    confidence  REAL DEFAULT 1.0,
+    -- P1-a: prevent duplicate edges when phase 7 re-runs on the same scan_id.
+    UNIQUE(scan_id, caller_id, callee_name, edge_type)
 );
 CREATE INDEX IF NOT EXISTS idx_edges_caller ON call_edges(caller_id);
 CREATE INDEX IF NOT EXISTS idx_edges_callee ON call_edges(callee_id);

@@ -18,6 +18,9 @@ from typing import Any, Optional
 from .menu_detector import Screen
 from .framework_detector import FrameworkDetector
 from .entity_service_resolver import EntityServiceResolver, Entity as ResolverEntity
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -184,8 +187,8 @@ class ScreenMapper:
                                 tables_written_by_service[table] = []
                             tables_written_by_service[table].append(service.class_name)
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         # Detect orphaned tables (read but not written)
         for table in db_tables:
@@ -324,8 +327,8 @@ class ScreenMapper:
                         )
                         etl_jobs.append(etl_job)
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return etl_jobs
 
@@ -409,8 +412,8 @@ class ScreenMapper:
                         )
                         api_injections.append(api_injection)
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return api_injections
 
@@ -433,8 +436,8 @@ class ScreenMapper:
                 if "import" in content.lower() and table.lower() in content.lower():
                     sources.append(f"External data import ({service.class_name})")
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         if not sources:
             sources.append(f"Direct database connection (EAI/ETL)")
@@ -467,8 +470,8 @@ class ScreenMapper:
                             stored_procs[proc_name] = {"called_by": []}
                         stored_procs[proc_name]["called_by"].append(service.class_name)
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return stored_procs
 
@@ -497,8 +500,8 @@ class ScreenMapper:
                         if view_name not in views:
                             views.append(view_name)
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return views
 
@@ -526,8 +529,8 @@ class ScreenMapper:
                 if "HttpClient" in content or "HttpURLConnection" in content and "download" in content.lower():
                     imports.append({"type": "HTTP", "service": service.class_name})
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return imports
 
@@ -825,8 +828,8 @@ class ScreenMapper:
                             )
                         )
                         break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return controllers
 
@@ -930,8 +933,8 @@ class ScreenMapper:
                         )
                     )
 
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return services
 
@@ -970,8 +973,8 @@ class ScreenMapper:
                             entity_name = class_name.replace("Entity", "")
                             table_name = re.sub(r'([A-Z])', r'_\1', entity_name).upper().lstrip("_")
                             tables.add(table_name)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         # Also extract from service files
         for service in services:
@@ -988,8 +991,8 @@ class ScreenMapper:
                         entity_name = entity_ref.replace("Entity", "")
                         table_name = re.sub(r'([A-Z])', r'_\1', entity_name).upper().lstrip("_")
                         tables.add(table_name)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return sorted(list(tables))
 
@@ -1064,8 +1067,8 @@ class ScreenMapper:
                         # Mark as queue-triggered
                         jobs.add(f"{job_name}(Queue-triggered)")
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return sorted(list(jobs))
 
@@ -1200,8 +1203,8 @@ class ScreenMapper:
                     # Likely receiving authenticated webhooks
                     interfaces.add("Webhook-PULL-WithAuth")
 
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("screen_mapper: best-effort mapping step failed: %s", exc)
 
         return sorted(list(interfaces))
 
