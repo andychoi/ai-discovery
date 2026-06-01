@@ -434,14 +434,21 @@ Traditional discovery generates domain-centric docs ("Customer Domain", "Order D
 
 #### 1. Auto-Detect Menus
 
-Automatically discovers menu structure from:
-- JSON/YAML menu files (`menu.json`, `navigation.yaml`)
-- Framework routing configs (Vue Router, React Router, Angular routes)
-- TypeScript constants (`export const MENU = [...]`)
+Discovers menu structure from:
+- **JSON/YAML menu files** (`menu.json`, `navigation.yaml`) — fully supported
 
 ```bash
 discover detect-screens /path/to/repo --output ./data
 ```
+
+> ⚠ **Scope (current state).** Today, only **static JSON/YAML menu files** produce
+> screens, and only **leaf menu entries** become screens. Detectors for
+> framework routing (Vue Router, React Router, Angular) and TypeScript
+> `export const MENU` constants are scaffolded but **not yet functional**
+> (they return no screens — see `menu_detector.py`). Apps with **no static menu
+> file** — server-rendered or permission-built menus, and screens reached only
+> via popups, wizards, modals, or deep links — are **not detected**; screen
+> generation is silently skipped for them. These are tracked as roadmap items.
 
 **Output**: `screen_map.yaml` with detected screens and `menu_tree.json` with hierarchy.
 
@@ -452,8 +459,8 @@ For each screen, automatically maps:
 - Backend controllers/services (Java Spring, ASP.NET, Express)
 - Database tables accessed
 - Batch jobs triggered (ETL, scheduled tasks)
-- External system integrations (REST APIs, Kafka, FTP imports)
-- Data injection points (orphaned tables, stored procedures, views)
+- External system integrations (REST APIs, message brokers, FTP imports) — see the lineage caveat below
+- Data injection points (orphaned tables, views)
 
 ```yaml
 screens:
@@ -527,11 +534,19 @@ Drifted screens: 3 of 20
 
 ### Multi-Framework Support
 
-Screen-centric mode works with:
+Framework detection (`framework_detector.py`) recognizes:
 - **Java/Spring** — @RestController, @Service, @Entity, Spring Batch, @Scheduled
 - **.NET/ASP.NET** — [ApiController], [Service], DbSet<>, BackgroundService
 - **Node.js/Express** — Express routes, Mongoose models, node-schedule
-- **Extensible** — Add custom frameworks via `framework_detector.py`
+
+> ⚠ **Mapping depth (current state).** The deep screen→backend mapping
+> (controller → `@Autowired` service → `@Table` entity, plus ETL/interface/
+> injection-point detection) is implemented for **Java/Spring only** — it globs
+> `*.java` and matches Spring annotations regardless of the detected framework.
+> .NET and Node screens get framework *detection* but **shallow mapping**.
+> Backend mapping uses filename/regex heuristics (not call-graph data flow), and
+> HTTP methods are inferred from nearby text. Full .NET/Node parity is a roadmap
+> item.
 
 ### Data Lineage Visualization
 
@@ -550,6 +565,20 @@ REST Controller (PartnerController)
     ↓ (called by)
 Frontend Screen (Partner Search)
 ```
+
+> ⚠ **Lineage caveat (current state).** This view is assembled from outbound
+> boundary detection + table read/write heuristics, not full event tracing:
+> - **Message brokers (Kafka/MQ/SQS/JMS)** are detected as **outbound producer
+>   boundaries only** (e.g. `KafkaTemplate.send`). There is **no
+>   producer↔consumer (topic) correlation** and no consumer-side call-graph
+>   node — `@KafkaListener`/`@RabbitListener` are surfaced only as string
+>   labels in screen specs, not as lineage edges.
+> - **SQL analysis is inline DML/DDL only** (CREATE TABLE / INSERT / UPDATE /
+>   SELECT / ALTER / CREATE VIEW). **Stored procedures, PL/SQL packages, and
+>   triggers are not parsed** — business logic inside the database is not yet
+>   captured (roadmap).
+> - **Cross-service HTTP correlation** works only for **string-literal URLs**;
+>   URLs built at runtime (`` `${baseURL}/${path}` ``) are not matched.
 
 ### Example Command Sequence
 
