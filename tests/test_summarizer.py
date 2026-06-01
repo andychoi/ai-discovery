@@ -173,3 +173,18 @@ def test_summarize_chunks_progress_callback():
     assert all(t == 4 for _, t in progress_calls)
     # Completed counts should be 1..4 (in some order due to concurrency)
     assert sorted(c for c, _ in progress_calls) == [1, 2, 3, 4]
+
+
+def test_summarize_chunks_stops_on_budget():
+    """P1-e: Tier-1 stops summarizing once the budget predicate trips, returning
+    a partial result instead of running every chunk."""
+    chunks = [
+        _make_chunk(qualified_name=f"mod.fn{i}", text=f"def fn{i}(): pass")
+        for i in range(8)
+    ]
+    client = _make_llm_client()
+    results = summarize_chunks(
+        chunks, client, max_concurrent=1, skip_rag=True,
+        budget_exhausted=lambda: True,  # exhausted from the first completion
+    )
+    assert 0 < len(results) < len(chunks)

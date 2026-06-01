@@ -622,6 +622,7 @@ def generate_all_docs(
     max_workers: int = 16,
     db_path: Path | None = None,
     scan_id: int | None = None,
+    budget_exhausted: Callable[[], bool] | None = None,
 ) -> list[RollupResult]:
     """Generate docs for all domains. All (domain, doc_type) pairs run concurrently.
     Calls on_progress(completed, total) where total = len(domains) * len(DOC_TYPES).
@@ -629,6 +630,10 @@ def generate_all_docs(
 
     If db_path and scan_id are provided, (domain, doc_type) pairs already present
     in generated_docs are skipped (resume support) and loaded from DB instead.
+
+    If budget_exhausted() is provided and returns True after a doc completes, stop
+    submitting/awaiting further docs (P1-e) — Tier-3 is the most expensive tier and
+    a large domain count could otherwise blow past the budget within this phase.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -685,6 +690,7 @@ def generate_all_docs(
         new_success = 0
         failures: list[str] = []
         last_exc: Exception | None = None
+        budget_stopped = False
         for future in as_completed(futures):
             domain, doc_type = futures[future]
             try:
@@ -697,13 +703,23 @@ def generate_all_docs(
             completed += 1
             if on_progress is not None:
                 on_progress(completed, total)
+            # P1-e: stop mid-phase once the budget is spent; cancel not-yet-started docs.
+            if budget_exhausted is not None and budget_exhausted():
+                budget_stopped = True
+                cancelled = sum(1 for f in futures if f.cancel())
+                logger.warning(
+                    "Tier-3 budget limit reached after %d/%d docs; skipping %d remaining",
+                    completed, total, cancelled,
+                )
+                break
 
     # Fatal guard: tasks were attempted but produced zero docs (no new success
     # and nothing resumed from a prior run). This is the "tier3 model id invalid"
     # signature. Returning [] here would let the pipeline record phase 14
     # complete and exit 0 with no docs (see RollupTotalFailureError). A partial
-    # failure (some succeeded, or resumed docs exist) is tolerated.
-    if tasks and not results:
+    # failure (some succeeded, or resumed docs exist) is tolerated; a budget stop
+    # (P1-e) is an intentional halt, not a failure, so it does not raise.
+    if tasks and not results and not budget_stopped:
         detail = failures[0] if failures else "unknown error"
         raise RollupTotalFailureError(
             f"All {len(tasks)} Tier-3 doc rollups failed (0 succeeded). "

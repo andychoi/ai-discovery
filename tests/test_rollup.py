@@ -358,6 +358,21 @@ def test_generate_all_docs_all_fail_raises():
         generate_all_docs([_make_domain("orders")], SAMPLE_SUMMARIES, {}, client)
 
 
+def test_generate_all_docs_stops_on_budget():
+    """P1-e: when the budget predicate trips mid-phase, stop generating further
+    docs (partial result) instead of running every (domain, doc_type) pair. A
+    budget stop must NOT raise RollupTotalFailureError."""
+    domains = [_make_domain("d0"), _make_domain("d1")]
+    client = _mock_llm_client()
+    total = len(domains) * len(DOC_TYPES)
+    results = generate_all_docs(
+        domains, SAMPLE_SUMMARIES, {}, client,
+        max_workers=1,
+        budget_exhausted=lambda: True,  # exhausted from the first completion
+    )
+    assert 0 < len(results) < total
+
+
 def test_generate_all_docs_partial_failure_does_not_raise():
     """At least one rollup succeeds -> return the successes, do NOT raise.
 

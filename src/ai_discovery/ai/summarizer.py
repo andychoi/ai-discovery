@@ -169,6 +169,7 @@ def summarize_chunks(
     scan_id: int | None = None,
     skip_rag: bool = False,
     skip_tests: bool = False,
+    budget_exhausted: Callable[[], bool] | None = None,
 ) -> list[dict]:
     """Summarize multiple chunks concurrently using ThreadPoolExecutor.
 
@@ -312,6 +313,14 @@ def summarize_chunks(
             completed += 1
             if on_progress is not None:
                 on_progress(completed, total)
+            # P1-e: stop mid-phase once the budget is spent; cancel queued chunks.
+            if budget_exhausted is not None and budget_exhausted():
+                cancelled = sum(1 for f in future_to_chunk if f.cancel())
+                logger.warning(
+                    "Tier-1 budget limit reached after %d/%d chunks; skipping %d remaining",
+                    completed, total, cancelled,
+                )
+                break
 
     return results
 

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
 from ai_discovery.ai.chunker import chunk_code_nodes
 from ai_discovery.graph.models import CodeNode
-from ai_discovery.pipeline import _release_node_source
+from ai_discovery.pipeline import _release_node_source, _budget_exhausted_fn
 
 
 def _node(qn: str, src: str) -> CodeNode:
@@ -37,3 +40,27 @@ def test_chunks_capture_text_before_release():
     _release_node_source(nodes)               # then we release
     assert captured                            # chunk still holds the text
     assert nodes[0].source_code == ""          # node no longer does
+
+
+# ---------------------------------------------------------------------------
+# P1-e: in-phase budget predicate
+# ---------------------------------------------------------------------------
+
+def test_budget_exhausted_fn_none_for_local_provider():
+    cfg = SimpleNamespace(provider="ollama", budget_limit_usd=50.0)
+    assert _budget_exhausted_fn(MagicMock(), cfg) is None
+
+
+def test_budget_exhausted_fn_none_when_no_limit():
+    cfg = SimpleNamespace(provider="bedrock", budget_limit_usd=0.0)
+    assert _budget_exhausted_fn(MagicMock(), cfg) is None
+
+
+def test_budget_exhausted_fn_flips_at_limit():
+    cfg = SimpleNamespace(provider="bedrock", budget_limit_usd=10.0)
+    client = MagicMock()
+    client.total_cost_usd.return_value = 5.0
+    fn = _budget_exhausted_fn(client, cfg)
+    assert fn() is False
+    client.total_cost_usd.return_value = 10.0
+    assert fn() is True

@@ -453,6 +453,7 @@ def analyze_all_domains(
     on_progress: Callable | None = None,
     db_path: Path | None = None,
     scan_id: int | None = None,
+    budget_exhausted: Callable[[], bool] | None = None,
 ) -> dict[str, list[BusinessFlow]]:
     """Analyze all domains sequentially (Tier 2 is expensive, no need for concurrency).
 
@@ -483,6 +484,18 @@ def analyze_all_domains(
     total = len(domains)
 
     for i, domain in enumerate(domains):
+        # P1-e: stop before starting another domain once the budget is spent.
+        # Already-analyzed domains (loaded from DB) are free, so only gate LLM work.
+        if (
+            domain.name not in done_domains
+            and budget_exhausted is not None
+            and budget_exhausted()
+        ):
+            logger.warning(
+                "Tier-2 budget limit reached after %d/%d domains; skipping the rest",
+                i, total,
+            )
+            break
         if domain.name in done_domains:
             # Load existing flows from DB instead of re-invoking LLM
             flows = _load_flows_from_db(domain.name, scan_id, db_path)

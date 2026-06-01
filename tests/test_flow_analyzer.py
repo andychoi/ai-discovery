@@ -207,6 +207,19 @@ def test_analyze_domain_no_db_path_no_retrieval(monkeypatch):
     assert "Source Code Context" not in prompt
 
 
+def test_analyze_all_domains_stops_on_budget():
+    """P1-e: Tier-2 stops starting new domains once the budget predicate trips."""
+    domains = [_make_domain("orders"), _make_domain("payments"), _make_domain("billing")]
+    client = _mock_llm_response(SAMPLE_FLOWS)
+    # Trip the budget after the first domain's LLM call.
+    results = analyze_all_domains(
+        domains, {}, client,
+        budget_exhausted=lambda: client.invoke_with_advisor.call_count >= 1,
+    )
+    assert client.invoke_with_advisor.call_count == 1
+    assert len(results) == 1  # only the first domain analyzed; rest skipped
+
+
 def test_analyze_all_domains_processes_each():
     domain1 = _make_domain("orders")
     domain2 = _make_domain("payments")
