@@ -88,3 +88,20 @@ def test_string_list_skips_non_literals():
     root = _parse_src(src)
     routes = rp._array_to_routes(_find_node(root, 'array'), rp.FIELD_MAPS['ts-const'], {})
     assert routes[0].roles == ['a', 'b']
+
+
+def test_component_resolves_identifier_to_import_source():
+    src = (b"import UserList from './pages/UserList.vue'\n"
+           b"const R=[{path:'/u',component:UserList}]")
+    root = _parse_src(src)
+    imports = rp._collect_imports(root)
+    routes = rp._array_to_routes(_find_node(root, "array"), rp.FIELD_MAPS["vue"], imports)
+    assert routes[0].component == "UserList"
+    assert routes[0].component_source == "./pages/UserList.vue"
+
+
+def test_component_resolves_lazy_import():
+    src = b"const R=[{path:'/u',component:() => import('./pages/UserList.vue')}]"
+    root = _parse_src(src)
+    routes = rp._array_to_routes(_find_node(root, "array"), rp.FIELD_MAPS["vue"], {})
+    assert routes[0].component_source == "./pages/UserList.vue"
