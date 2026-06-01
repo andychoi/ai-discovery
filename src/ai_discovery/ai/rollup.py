@@ -16,6 +16,19 @@ from ..graph.models import Domain
 
 logger = logging.getLogger(__name__)
 
+
+class RollupTotalFailureError(RuntimeError):
+    """Raised when every attempted Tier-3 doc rollup fails (0 succeeded).
+
+    Total failure is almost always a misconfiguration (e.g. the tier3 model id
+    is not enabled in this Bedrock account/region — 'model identifier is
+    invalid'), not a per-document problem. Without this, generate_all_docs would
+    swallow each failure and return an empty list, the pipeline would record
+    phase 14 complete, and the scan would exit 0 with missing ASIS/ASD/ASSC
+    docs. Raising makes the failure loud and produces a non-zero exit.
+    """
+
+
 # Doc types generated per domain (Phase 0: Discovery)
 DOC_TYPES = ("as-is", "as-is-detail", "as-is-schema")
 
@@ -644,15 +657,36 @@ def generate_all_docs(
             ): (domain, doc_type)
             for domain, doc_type in tasks
         }
+        new_success = 0
+        failures: list[str] = []
+        last_exc: Exception | None = None
         for future in as_completed(futures):
             domain, doc_type = futures[future]
             try:
                 results.append(future.result())
+                new_success += 1
             except Exception as exc:
+                last_exc = exc
+                failures.append(f"{domain.name}/{doc_type}: {exc}")
                 logger.error("Rollup failed for %s/%s: %s", domain.name, doc_type, exc)
             completed += 1
             if on_progress is not None:
                 on_progress(completed, total)
+
+    # Fatal guard: tasks were attempted but produced zero docs (no new success
+    # and nothing resumed from a prior run). This is the "tier3 model id invalid"
+    # signature. Returning [] here would let the pipeline record phase 14
+    # complete and exit 0 with no docs (see RollupTotalFailureError). A partial
+    # failure (some succeeded, or resumed docs exist) is tolerated.
+    if tasks and not results:
+        detail = failures[0] if failures else "unknown error"
+        raise RollupTotalFailureError(
+            f"All {len(tasks)} Tier-3 doc rollups failed (0 succeeded). "
+            f"First error: {detail}. Common cause: the tier3 model id is not "
+            "enabled in this Bedrock account/region — check the scan log for "
+            "'model identifier is invalid' and set bedrock.tier3p/tier3d in "
+            "discovery.yaml to a model you can invoke."
+        ) from last_exc
 
     return results
 
