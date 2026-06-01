@@ -29,6 +29,10 @@ _EXT_MAP: dict[str, str] = {
     ".jsx": "javascript",
     ".aspx": "webforms",
     ".ascx": "webforms",
+    ".jsp": "jsp",
+    ".jspx": "jsp",
+    ".tag": "jsp",
+    ".tagx": "jsp",
 }
 
 _MANIFEST_MAP: dict[str, str] = {
