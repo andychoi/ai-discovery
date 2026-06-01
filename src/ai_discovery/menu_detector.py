@@ -10,12 +10,16 @@ Auto-detects which format applies and extracts screen definitions.
 """
 
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Optional
 import yaml
+from .route_parser import parse_route_file, RouteNode
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -66,6 +70,31 @@ class Screen:
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return asdict(self)
+
+
+def _humanize(name: str) -> str:
+    import re as _re
+    s = _re.sub(r"(Page|View|Screen|Component)$", "", name)
+    s = _re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", s)
+    s = s.replace("-", " ").replace("_", " ")
+    return s.strip().title() or name
+
+
+def _routenode_to_menuitem(rn: RouteNode, is_route_format: bool) -> "MenuItem":
+    label = rn.title or (_humanize(rn.component) if rn.component else None) \
+        or (rn.path.strip("/").split("/")[-1].replace(":", "") if rn.path else "") or "Untitled"
+    metadata = dict(rn.raw)
+    metadata["component_source"] = rn.component_source
+    metadata["redirect_to"] = rn.redirect_to
+    metadata["is_catch_all"] = rn.is_catch_all
+    if is_route_format:
+        has_component = bool(rn.component or rn.component_source)
+        metadata["is_screen"] = bool(has_component and not rn.is_catch_all and not rn.redirect_to)
+    children = [_routenode_to_menuitem(c, is_route_format) for c in rn.children]
+    return MenuItem(
+        id=JsonYamlDetector._slugify(rn.path or label),
+        label=label, path=rn.path or "", roles=rn.roles, children=children, metadata=metadata,
+    )
 
 
 class MenuDetector(ABC):
@@ -205,36 +234,10 @@ class TypeScriptConstantDetector(MenuDetector):
         return any(pattern in content for pattern in self.MENU_CONSTANT_PATTERNS)
 
     def _parse_file(self, filepath: Path) -> Optional[list[MenuItem]]:
-        """Extract menu constant from TypeScript/JavaScript file."""
-        content = filepath.read_text()
-
-        # Find menu constant declarations
-        for pattern in self.MENU_CONSTANT_PATTERNS:
-            if pattern not in content:
-                continue
-
-            # Extract the array/object literal (simplified)
-            match = re.search(rf"{pattern}\s*=\s*(\[.*?\]|\{{.*?\}})", content, re.DOTALL)
-            if match:
-                try:
-                    # This is a simplified approach; proper JS parsing would be better
-                    # For now, we'll return a placeholder
-                    return self._parse_ts_array(match.group(1))
-                except Exception:
-                    pass
-
-        return None
-
-    def _parse_ts_array(self, ts_code: str) -> list[MenuItem]:
-        """Parse TypeScript array literal (simplified)."""
-        # This is a simplified implementation
-        # In production, would use a proper JS parser
-        # For now, extract JSON-like structures from TS code
-
-        # Try to extract JSON-ish content
-        items = []
-        # Placeholder: return empty list (actual implementation would parse TS properly)
-        return items
+        root = parse_route_file(filepath, "ts-const")
+        if root is None or not root.children:
+            return None
+        return [_routenode_to_menuitem(c, is_route_format=False) for c in root.children]
 
 
 class FrameworkRoutingDetector(MenuDetector):
@@ -262,47 +265,27 @@ class FrameworkRoutingDetector(MenuDetector):
         return None
 
     def _detect_vue_router(self, repo: Path) -> Optional[list[MenuItem]]:
-        """Detect Vue Router routes."""
-        vue_router_files = [
-            repo / "src" / "router" / "routes.ts",
-            repo / "src" / "router" / "index.ts",
-            repo / "src" / "router" / "routes.js",
-        ]
-
-        for filepath in vue_router_files:
-            if filepath.exists():
-                # In production, would parse actual routes
-                # For now, return placeholder
-                pass
-
+        for fp in [repo/"src"/"router"/"routes.ts", repo/"src"/"router"/"index.ts", repo/"src"/"router"/"routes.js"]:
+            if fp.exists():
+                root = parse_route_file(fp, "vue")
+                if root and root.children:
+                    return [_routenode_to_menuitem(c, is_route_format=True) for c in root.children]
         return None
 
     def _detect_react_router(self, repo: Path) -> Optional[list[MenuItem]]:
-        """Detect React Router routes."""
-        # Similar to Vue, look for common route config files
-        react_router_files = [
-            repo / "src" / "router.tsx",
-            repo / "src" / "routes.tsx",
-            repo / "src" / "router" / "index.tsx",
-        ]
-
-        for filepath in react_router_files:
-            if filepath.exists():
-                pass
-
+        for fp in [repo/"src"/"router.tsx", repo/"src"/"routes.tsx", repo/"src"/"App.tsx", repo/"src"/"router"/"index.tsx"]:
+            if fp.exists():
+                root = parse_route_file(fp, "react")
+                if root and root.children:
+                    return [_routenode_to_menuitem(c, is_route_format=True) for c in root.children]
         return None
 
     def _detect_angular_routing(self, repo: Path) -> Optional[list[MenuItem]]:
-        """Detect Angular routing."""
-        angular_routing_files = [
-            repo / "src" / "app" / "app-routing.module.ts",
-            repo / "src" / "app" / "routing" / "app-routing.module.ts",
-        ]
-
-        for filepath in angular_routing_files:
-            if filepath.exists():
-                pass
-
+        for fp in [repo/"src"/"app"/"app-routing.module.ts", repo/"src"/"app"/"app.routes.ts"]:
+            if fp.exists():
+                root = parse_route_file(fp, "angular")
+                if root and root.children:
+                    return [_routenode_to_menuitem(c, is_route_format=True) for c in root.children]
         return None
 
 
