@@ -116,7 +116,9 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
             ast_routes.add(key)
         existing_qns.add(n.qualified_name)
         nodes.append(n)
-    edges = build_call_graph(nodes)
+    # LSP/SCIP tier: use an authoritative symbol index if the fixture ships one.
+    from ai_discovery.graph.symbol_index import load_symbol_index
+    edges = build_call_graph(nodes, symbol_index=load_symbol_index(repo))
     relationships = extract_relationships(nodes)
     ext_nodes, ext_edges = extract_external_systems(nodes)
     # HIGH-7: merge deployment-declared backing services, deduped by identity.

@@ -8,10 +8,13 @@ from pathlib import PurePosixPath
 from .models import CallEdge, CodeNode, ExecutionEdge, ExecutionNode, Scenario, StateTransition
 
 
-def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
+def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]:
     """Build call graph from CodeNode.calls / CodeNode.call_sites references.
 
     Resolution stages (first match wins, higher confidence earlier):
+      0. Symbol index (LSP/SCIP/compiler) — authoritative   → confidence 1.0
+         resolution when an index is present; resolves the
+         interface/polymorphic dispatch heuristics cannot.
       1. Exact qualified-name match                       → confidence 1.0
       2. Import-scoped — receiver matches a caller import → confidence 0.95
       3. Receiver-type (DI) — receiver is a field/param    → confidence 0.93
@@ -19,7 +22,9 @@ def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
       4. Short-name contextual (same class/file/module)   → confidence 0.95 … 0.6
       5. Unresolved — no match                            → confidence 0.5
 
-    Each edge carries evidence in `metadata["resolved_by"]` (stage name).
+    `symbol_index` (optional SymbolIndex) is the LSP/compiler tier — present only
+    when an authoritative index was supplied; absence leaves resolution fully
+    heuristic. Each edge carries evidence in `metadata["resolved_by"]`.
     """
     qualified_index: dict[str, CodeNode] = {}
     short_name_index: dict[str, list[CodeNode]] = defaultdict(list)
@@ -54,6 +59,23 @@ def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
             if not call_name:
                 continue
             receiver = site.get("receiver")
+
+            # Stage 0: authoritative symbol index (LSP/SCIP/compiler). When an
+            # index resolves this call, trust it over every heuristic — it is the
+            # only tier that can resolve interface/polymorphic dispatch.
+            if symbol_index is not None:
+                indexed = symbol_index.resolve(node.qualified_name, call_name, receiver)
+                if indexed and indexed in qualified_index and indexed != node.qualified_name:
+                    edges.append(
+                        CallEdge(
+                            caller=node.qualified_name,
+                            callee=indexed,
+                            edge_type="direct_call",
+                            confidence=1.0,
+                            metadata={"resolved_by": "index"},
+                        )
+                    )
+                    continue
 
             # Stage 1: exact qualified-name match
             if call_name in qualified_index:

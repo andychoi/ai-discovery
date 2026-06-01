@@ -32,11 +32,11 @@ Findings from this review were implemented in waves (each its own commit, full s
 | **MED-3** edge dedup | ✅ Done | Edges deduped per (caller, callee, edge_type), max confidence. |
 | triggers min_support=1 | ✅ Done | Raised to 2 (single co-occurrence ≠ causal). |
 | **LOW** ✓1.00 label / PF H1 / etc. | ✅ Done | `✓ AST` provenance label; PF body H1 uses scenario. |
-| **LSP/compiler resolver tier** | ☐ Deferred | The biggest architectural shift; multi-day, own effort. |
+| **LSP/compiler resolver tier** | ✅ Done (consumer side) | Stage-0 `index` resolution: `build_call_graph` consumes an authoritative `symbol_index.json` (SCIP/LSIF/compiler/DI-aware exporter format) when present, resolving interface/polymorphic dispatch heuristics can't — at confidence 1.0 — and falling through to heuristics when absent (purely additive). Gauged by `lsp-interface-dispatch` (two impls behind an interface: heuristics fan out to both; the index resolves to the exact impl). *Producing* the index (running a real SCIP indexer) is left to external tooling. |
 
 **Legend:** ✅ done & tested · ◑ interim/partial (active harm reduced; deeper fix scoped) · ☐ deferred (large architectural effort, documented for a focused future pass).
 
-The deferred items share a precondition the review itself names: a **corpus-based accuracy harness** (HIGH-10) should land first, so DI resolution (HIGH-3), external-system modeling (HIGH-8), and artifact ingestion (HIGH-7) can be measured rather than asserted. Rushing them at the tail of this pass would reproduce the very "under-tested sprawl" the review warns against.
+**Update:** the harness landed first and then nearly every finding was implemented against it — every CRITICAL and HIGH finding is now ✅, each regression-locked by the 12-fixture / 6-dimension corpus harness (`tests/corpus/`). The only remaining gaps are *producing* a real SCIP/LSIF index (the consumer tier is built and gauged) and adding pinned external repos to the corpus (HIGH-10 Phase 3) — both external-tooling/infra investments rather than code gaps.
 
 ---
 

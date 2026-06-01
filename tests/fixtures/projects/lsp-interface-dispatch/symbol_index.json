@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "tool": "scip",
+  "edges": [
+    {"caller": "com.ex.Checkout.run", "call": "process", "receiver": "processor",
+     "callee": "com.ex.StripeProcessor.process"}
+  ]
+}

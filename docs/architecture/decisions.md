@@ -20,6 +20,7 @@ first-match-wins cascade of four resolution stages. Edges are deduped per
 
 | Stage | Condition | Confidence | `resolved_by` |
 |-------|-----------|-----------|---------------|
+| 0 | **Symbol index (LSP/SCIP/compiler)** — authoritative resolution from a supplied `symbol_index.json`; the only tier that resolves interface/polymorphic dispatch | 1.0 | `index` |
 | 1 | Exact qualified-name match | 1.0 | `exact` |
 | 2 | Import-scoped (receiver matches a caller import) | 0.95 | `import_scope` |
 | 3 | **Receiver-type (DI)** — receiver is a field/ctor-param of a known type `T` and `T` defines the method; pin to `T.method` | 0.93 | `receiver_type` |
@@ -39,6 +40,15 @@ typed-`__init__` DI, and JS constructor `this.x = new Y()`). Measured by the
 `di_resolution` dimension of the corpus harness across per-language collision
 fixtures (`tests/corpus/`). JS module-level functional DI (require + call outside
 a class) is the one uncovered pattern — there is no enclosing class to key on.
+
+**Stage 0 (symbol index, LSP tier, added 2026-05-31)** is the assessment's
+headline architectural recommendation, consumer side: when a repo ships an
+authoritative `symbol_index.json` (a tool-agnostic edge list any SCIP/LSIF/
+compiler/DI-aware exporter can emit), `build_call_graph` trusts it over every
+heuristic. It is the only tier that can resolve interface/polymorphic dispatch —
+which the name/type heuristics fundamentally cannot. Absent an index, resolution
+is fully heuristic (the feature is purely additive). Producing the index is left
+to external tooling; gauged by the `lsp-interface-dispatch` corpus fixture.
 
 ### Legacy 7-level framing (historical)
 The original prose ranked levels exact → prefix → suffix → external →

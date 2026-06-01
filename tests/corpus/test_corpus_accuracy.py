@@ -62,6 +62,9 @@ HARD_TARGETS = {
     ("python-di-collision", "call_edges"),
     ("js-di-collision", "di_resolution"),
     ("js-di-collision", "call_edges"),
+    # LSP/SCIP tier resolves interface dispatch heuristics cannot.
+    ("lsp-interface-dispatch", "di_resolution"),
+    ("lsp-interface-dispatch", "call_edges"),
     # HIGH-8: external-client calls become first-class typed external-system nodes.
     ("external-systems", "external_systems"),
     # HIGH-7: OpenAPI spec endpoints are ingested as authoritative endpoint facts.

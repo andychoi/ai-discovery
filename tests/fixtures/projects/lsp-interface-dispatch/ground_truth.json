@@ -1,0 +1,16 @@
+{
+  "_README": "Interface-dispatch fixture gauging the LSP/SCIP resolver tier. Checkout.run() calls processor.process() where processor is a PaymentProcessor interface with two impls — heuristics fan out to BOTH (wrong). symbol_index.json (what a SCIP/DI-aware indexer emits) resolves it to StripeProcessor only. Authored from source.",
+  "project": "lsp-interface-dispatch",
+  "language": "java",
+  "framework": "spring",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "Checkout.run", "callee_suffix": "StripeProcessor.process", "min_confidence": 1.0}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "Checkout.run", "callee_suffix": "PaypalProcessor.process"}
+  ],
+  "_di_resolution_note": "LSP tier: only an authoritative index can resolve interface/polymorphic dispatch — type heuristics cannot tell which impl a PaymentProcessor reference binds to. With symbol_index.json present, di_resolution=1.0 and the call resolves to StripeProcessor at confidence 1.0 (resolved_by=index). Without it, heuristics fan out to both impls."
+}

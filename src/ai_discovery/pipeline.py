@@ -705,9 +705,17 @@ def run_pipeline(
                     conn.close()
             console.print(f"  Persisted [green]{len(all_nodes)}[/] code nodes")
 
+            # LSP/SCIP tier: use an authoritative symbol index if the repo ships
+            # one (symbol_index.json / *.scip.json). Absent → fully heuristic.
+            from .graph.symbol_index import load_symbol_index
+            symbol_index = load_symbol_index(resolved.repo_path)
             with _timed("call graph"), console.status("[bold cyan]Building call graph..."):
-                edges = build_call_graph(all_nodes)
-            console.print(f"  Call graph: [green]{len(edges)}[/] edges")
+                edges = build_call_graph(all_nodes, symbol_index=symbol_index)
+            n_indexed = sum(1 for e in edges if e.metadata.get("resolved_by") == "index")
+            console.print(
+                f"  Call graph: [green]{len(edges)}[/] edges"
+                + (f" ([green]{n_indexed}[/] via symbol index)" if symbol_index is not None else "")
+            )
 
             # HIGH-8: promote external-client calls (axios/kafka/redis/stripe/…)
             # to first-class typed external-system nodes + edges, so external
@@ -815,7 +823,8 @@ def run_pipeline(
         console.print("[dim]Phase 7 (domain_classify): loading from DB...[/]")
         domains_dict = _load_domains_from_db(db_path, scan_id, all_nodes)
         domains = list(domains_dict.values())
-        edges = build_call_graph(all_nodes)
+        from .graph.symbol_index import load_symbol_index
+        edges = build_call_graph(all_nodes, symbol_index=load_symbol_index(resolved.repo_path))
         console.print(f"  Loaded [green]{len(domains)}[/] domains, [green]{len(edges)}[/] edges from DB")
 
     # 8: Build Execution Slices
