@@ -105,3 +105,10 @@ def test_component_resolves_lazy_import():
     root = _parse_src(src)
     routes = rp._array_to_routes(_find_node(root, "array"), rp.FIELD_MAPS["vue"], {})
     assert routes[0].component_source == "./pages/UserList.vue"
+
+
+def test_component_resolves_react_lazy_import():
+    src = b"const R=[{path:'/u',component:React.lazy(() => import('./pages/UserList.vue'))}]"
+    root = _parse_src(src)
+    routes = rp._array_to_routes(_find_node(root, "array"), rp.FIELD_MAPS["vue"], {})
+    assert routes[0].component_source == "./pages/UserList.vue"

@@ -203,12 +203,12 @@ def _resolve_component(value_node, imports) -> tuple[str | None, str | None]:
     """Return (component_name, component_source) from a component/element/loadChildren value."""
     if value_node is None:
         return None, None
-    # lazy: () => import('x')  or  React.lazy(() => import('x'))  or  loadChildren: () => import('x')
+    # lazy: any inner dynamic import('x') — covers () => import(),
+    # React.lazy(() => import()), lazy(() => import()), loadChildren: () => import().
     for n in _iter(value_node):
         if n.type == "call_expression":
             fn = n.child_by_field_name("function")
-            if fn is not None and fn.text is not None and \
-               fn.text.decode("utf-8", "ignore") in ("import", "React.lazy", "lazy"):
+            if fn is not None and fn.text is not None and fn.text.decode("utf-8", "ignore") == "import":
                 args = n.child_by_field_name("arguments")
                 if args is not None:
                     for a in args.named_children:
