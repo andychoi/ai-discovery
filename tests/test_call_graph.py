@@ -315,3 +315,121 @@ def test_receiver_type_falls_through_for_unknown_method():
     findall = [e for e in edges if e.caller == "com.x.OrderService.getOrders"]
     # findAll isn't defined on OrderRepository in source -> stays unresolved.
     assert all(e.metadata.get("resolved_by") == "unresolved" for e in findall)
+
+
+def test_interface_to_impl_resolution_pins_di_call_no_fanout():
+    """P0-2: a call on an interface-typed injected field resolves to the concrete
+    implementation precisely, NOT fanning out across unrelated same-named methods.
+
+    OrderService is an interface; OrderServiceImpl (implements it) defines process().
+    PaymentService.process() is an unrelated distractor. orderService.process() must
+    resolve to OrderServiceImpl.process only — without interface->impl, short-name
+    resolution would also reach PaymentService.process."""
+    nodes = [
+        # interface node — declares no process() body
+        CodeNode(file_path="x.java", language="java", node_type="class",
+                 name="OrderService", qualified_name="com.x.OrderService",
+                 source_code="", line_start=1, line_end=2),
+        # concrete impl — bases includes the interface, defines process()
+        CodeNode(file_path="x.java", language="java", node_type="class",
+                 name="OrderServiceImpl", qualified_name="com.x.OrderServiceImpl",
+                 source_code="", line_start=1, line_end=9, bases=["OrderService"]),
+        CodeNode(file_path="x.java", language="java", node_type="method",
+                 name="process", qualified_name="com.x.OrderServiceImpl.process",
+                 source_code="", line_start=1, line_end=3),
+        # unrelated distractor with the same method name
+        CodeNode(file_path="x.java", language="java", node_type="class",
+                 name="PaymentService", qualified_name="com.x.PaymentService",
+                 source_code="", line_start=1, line_end=9),
+        CodeNode(file_path="x.java", language="java", node_type="method",
+                 name="process", qualified_name="com.x.PaymentService.process",
+                 source_code="", line_start=1, line_end=3),
+        # controller injects the INTERFACE type
+        CodeNode(file_path="x.java", language="java", node_type="class",
+                 name="CheckoutController", qualified_name="com.x.CheckoutController",
+                 source_code="", line_start=1, line_end=9,
+                 framework_hints={"field_types": {"orderService": "OrderService"}}),
+        CodeNode(file_path="x.java", language="java", node_type="method",
+                 name="view", qualified_name="com.x.CheckoutController.view",
+                 source_code="", line_start=1, line_end=3,
+                 call_sites=[{"name": "process", "receiver": "orderService"}]),
+    ]
+    edges = build_call_graph(nodes)
+    resolved = [(e.callee, e.confidence, e.metadata.get("resolved_by"))
+                for e in edges if e.caller == "com.x.CheckoutController.view"]
+    assert ("com.x.OrderServiceImpl.process", 0.9, "interface_impl") in resolved
+    # The unrelated same-named method must NOT be reached.
+    assert not any(c == "com.x.PaymentService.process" for c, _, _ in resolved)
+
+
+def test_interface_to_impl_ambiguous_does_not_guess():
+    """Two implementations define the method -> genuine polymorphism. Do NOT
+    force a single interface->impl edge (no false precision); fall through."""
+    nodes = [
+        CodeNode(file_path="x.java", language="java", node_type="class",
+                 name="OrderService", qualified_name="com.x.OrderService",
+                 source_code="", line_start=1, line_end=2),
+        CodeNode(file_path="x.java", language="java", node_type="class",
+                 name="StandardOrderService", qualified_name="com.x.StandardOrderService",
+                 source_code="", line_start=1, line_end=9, bases=["OrderService"]),
+        CodeNode(file_path="x.java", language="java", node_type="method",
+                 name="process", qualified_name="com.x.StandardOrderService.process",
+                 source_code="", line_start=1, line_end=3),
+        CodeNode(file_path="x.java", language="java", node_type="class",
+                 name="FastOrderService", qualified_name="com.x.FastOrderService",
+                 source_code="", line_start=1, line_end=9, bases=["OrderService"]),
+        CodeNode(file_path="x.java", language="java", node_type="method",
+                 name="process", qualified_name="com.x.FastOrderService.process",
+                 source_code="", line_start=1, line_end=3),
+        CodeNode(file_path="x.java", language="java", node_type="class",
+                 name="CheckoutController", qualified_name="com.x.CheckoutController",
+                 source_code="", line_start=1, line_end=9,
+                 framework_hints={"field_types": {"orderService": "OrderService"}}),
+        CodeNode(file_path="x.java", language="java", node_type="method",
+                 name="view", qualified_name="com.x.CheckoutController.view",
+                 source_code="", line_start=1, line_end=3,
+                 call_sites=[{"name": "process", "receiver": "orderService"}]),
+    ]
+    edges = build_call_graph(nodes)
+    view_edges = [e for e in edges if e.caller == "com.x.CheckoutController.view"]
+    assert not any(e.metadata.get("resolved_by") == "interface_impl" for e in view_edges)
+
+
+def test_short_name_fanout_is_capped_to_single_unresolved_edge():
+    """P0-3: a call name colliding across many unrelated classes (no locality,
+    no type info) must NOT fan out to every candidate at 0.6 — that is the
+    quadratic edge blow-up. Above the cap it collapses to ONE unresolved edge."""
+    caller = CodeNode(file_path="z/caller.py", language="python", node_type="method",
+                      name="run", qualified_name="z.caller.Caller.run",
+                      source_code="", line_start=1, line_end=3, calls=["save"])
+    # 12 unrelated classes each defining save() — different files & packages,
+    # no prefix overlap with the caller.
+    candidates = []
+    for i in range(12):
+        candidates.append(CodeNode(
+            file_path=f"a/m{i}.py", language="python", node_type="method",
+            name="save", qualified_name=f"a.pkg{i}.C{i}.save",
+            source_code="", line_start=1, line_end=2))
+    edges = build_call_graph([caller, *candidates])
+    save_edges = [e for e in edges if e.caller == "z.caller.Caller.run"]
+    assert len(save_edges) == 1
+    assert save_edges[0].metadata.get("resolved_by") == "unresolved"
+    assert save_edges[0].callee == "save"
+
+
+def test_short_name_small_collision_still_resolves():
+    """Below the cap, a small ambiguous set still fans out (bounded, useful)."""
+    caller = CodeNode(file_path="z/caller.py", language="python", node_type="method",
+                      name="run", qualified_name="z.caller.Caller.run",
+                      source_code="", line_start=1, line_end=3, calls=["save"])
+    candidates = [
+        CodeNode(file_path=f"a/m{i}.py", language="python", node_type="method",
+                 name="save", qualified_name=f"a.pkg{i}.C{i}.save",
+                 source_code="", line_start=1, line_end=2)
+        for i in range(2)
+    ]
+    edges = build_call_graph([caller, *candidates])
+    save_edges = [e for e in edges if e.caller == "z.caller.Caller.run"]
+    # Two candidates -> still resolved (not collapsed), not "unresolved".
+    assert len(save_edges) == 2
+    assert all(e.metadata.get("resolved_by") == "short_name" for e in save_edges)
