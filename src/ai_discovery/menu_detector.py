@@ -378,7 +378,7 @@ class JspMenuDetector(MenuDetector):
             for seg, child in sorted(node["_dirs"].items()):
                 items.append(MenuItem(
                     id=JsonYamlDetector._slugify(seg),
-                    label=seg,
+                    label=_humanize(seg),
                     path=f"{url_prefix}/{seg}",
                     metadata={"is_screen": False},
                     children=build(child, f"{url_prefix}/{seg}"),

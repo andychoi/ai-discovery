@@ -38,7 +38,7 @@ def test_jsp_screens_have_component_and_beans(tmp_path):
     cust = by_label["Customers"]
     assert cust.fe_component.endswith("list.jsp")
     assert cust.metadata.get("bean_classes") == ["com.acme.CustomerService"]
-    assert "customer" in cust.menu_path
+    assert "Customer" in cust.menu_path   # folder breadcrumb is humanized (consistent with WebForms)
     assert "Widget" not in by_label
 
 
