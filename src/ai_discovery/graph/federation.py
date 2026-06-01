@@ -133,7 +133,8 @@ def write_federation(
         cond_path.write_text(entity_conditions_to_json(federation["conditions"]))
         paths["conditions"] = cond_path
 
-    # HIGH-8: cross-repo integration edges (provider→consumer).
+    # HIGH-8: cross-repo integration edges (provider→consumer) — machine-readable
+    # JSON plus a human-readable integration map.
     integration_edges = federation.get("integration_edges") or []
     if integration_edges:
         ipath = output_dir / "integration_edges.json"
@@ -144,6 +145,13 @@ def write_federation(
             for e in integration_edges
         ], indent=2) + "\n")
         paths["integration_edges"] = ipath
+
+        from ..generators.dependency_catalog import render_integration_map
+        md = render_integration_map(integration_edges, federation.get("source_repos", []))
+        if md:
+            mpath = output_dir / "integration_map.md"
+            mpath.write_text(md, encoding="utf-8")
+            paths["integration_map"] = mpath
 
     # A federation manifest helps anyone inspecting the artifact dir know
     # which repos contributed, without parsing the FSM metadata.

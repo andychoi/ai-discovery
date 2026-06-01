@@ -351,3 +351,5 @@ def test_federation_correlates_cross_repo_integrations(tmp_path: Path):
     paths = write_federation(out, tmp_path / "fed")
     assert "integration_edges" in paths
     assert json.loads(paths["integration_edges"].read_text())[0]["provider_repo"] == "orders-svc"
+    assert "integration_map" in paths
+    assert "Cross-Repo Integration Map" in paths["integration_map"].read_text()
