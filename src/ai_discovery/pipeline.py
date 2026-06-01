@@ -1545,6 +1545,13 @@ def run_pipeline(
                 rollup_domains={r.domain for r in rollups},
             )
             written.extend(scenario_written)
+
+            # Dependency & interface catalog (gap-assessment #7): inventory
+            # external systems + FK relationships + API surface in one doc.
+            from .generators.dependency_catalog import write_dependency_catalog
+            dep_path = write_dependency_catalog(db_path, scan_id, project_slug, docs_dir)
+            if dep_path is not None:
+                console.print(f"  Dependency catalog: [green]{dep_path.name}[/]")
         console.print(f"  Written: [green]{len(written)}[/] markdown files to {docs_dir}")
 
         # Keep DB.doc_id aligned with the on-disk filenames so `discover ingest`
