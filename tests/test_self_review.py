@@ -344,3 +344,46 @@ def test_persist_claims_writes_to_db(tmp_path: Path):
 
     assert rows[2]["status"] == "contradicted"
     assert "postgresql" in rows[2]["evidence"]
+
+
+# ---------------------------------------------------------------------------
+# HIGH-2: verify_claim abstention — weak/absent RAG evidence cannot yield
+# a "verified" verdict, and the reason distinguishes the failure modes.
+# ---------------------------------------------------------------------------
+
+def test_verify_claim_no_results_is_not_retrieved(monkeypatch):
+    from ai_discovery.ai import self_review
+    monkeypatch.setattr(self_review, "search", lambda *a, **k: [], raising=False)
+    import ai_discovery.rag.retriever as retr
+    monkeypatch.setattr(retr, "search", lambda *a, **k: [])
+    claim = self_review.verify_claim("X calls Y", db_path=None, llm_client=MagicMock())
+    assert claim.status == "unverified"
+    assert claim.reason == "not_retrieved"
+
+
+def test_verify_claim_weak_evidence_downgrades_verified(monkeypatch):
+    from ai_discovery.ai import self_review
+    import ai_discovery.rag.retriever as retr
+    # A distant best match (distance above threshold) with an LLM that says
+    # "verified" must be downgraded — the evidence is too weak to confirm.
+    monkeypatch.setattr(retr, "search", lambda *a, **k: [
+        {"file_path": "f.py", "qualified_name": "f.g", "chunk_text": "code", "distance": 5.0},
+    ])
+    client = MagicMock()
+    client.invoke_with_advisor.return_value = MagicMock(text="verified")
+    claim = self_review.verify_claim("unrelated claim", db_path=None, llm_client=client)
+    assert claim.status == "unverified"
+    assert claim.reason == "weak_evidence"
+
+
+def test_verify_claim_close_evidence_allows_verified(monkeypatch):
+    from ai_discovery.ai import self_review
+    import ai_discovery.rag.retriever as retr
+    monkeypatch.setattr(retr, "search", lambda *a, **k: [
+        {"file_path": "f.py", "qualified_name": "f.g", "chunk_text": "code", "distance": 0.2},
+    ])
+    client = MagicMock()
+    client.invoke_with_advisor.return_value = MagicMock(text="verified")
+    claim = self_review.verify_claim("supported claim", db_path=None, llm_client=client)
+    assert claim.status == "verified"
+    assert claim.reason == "supported"

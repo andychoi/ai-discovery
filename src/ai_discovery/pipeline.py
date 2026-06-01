@@ -1314,10 +1314,26 @@ def run_pipeline(
 
                         # Focused re-generation for sections with bad claims
                         if summary["unverified"] + summary["contradicted"] > 0:
-                            from .ai.self_review import regenerate_sections
+                            from .ai.self_review import regenerate_sections, review_document
                             rollup.content_md = regenerate_sections(
                                 rollup.content_md, claims, llm_client, db_path=db_path,
                             )
+                            # HIGH-2: the rewrite changes the prose, so the old
+                            # verdicts no longer describe what ships. Re-verify the
+                            # regenerated content and recompute summary/confidence
+                            # from the NEW claims — otherwise the published score
+                            # reflects pre-rewrite claims, not the doc on disk.
+                            try:
+                                claims = review_document(
+                                    rollup.content_md, db_path, llm_client,
+                                    max_workers=2,
+                                )
+                                summary = get_review_summary(claims)
+                            except Exception as exc:
+                                logger.warning(
+                                    "Re-verification after regeneration failed for %s/%s: %s",
+                                    rollup.domain, rollup.doc_type, exc,
+                                )
 
                         rollup.content_md = annotate_document(rollup.content_md, claims)
                         rollup.unverified_claims = summary["unverified"] + summary["contradicted"]
