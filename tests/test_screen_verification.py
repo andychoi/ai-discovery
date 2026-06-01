@@ -36,14 +36,25 @@ def test_screen_narrative_assembles_prose():
     assert "View orders" in n and "R1: active only" in n and "id: order id" in n
 
 
-def test_patch_screen_doc_updates_confidence_and_banner(tmp_path):
+def test_patch_screen_doc_verified_flips_banner(tmp_path):
     p = tmp_path / "orders.md"; p.write_text(_SCREEN_MD)
-    _patch_screen_doc(p, 0.83)
+    _patch_screen_doc(p, 0.83, verified=True)
     out = p.read_text()
     assert "discovery_confidence: 0.83" in out
     assert "content_provenance: llm-narrative-source-verified" in out
     assert "✓ **Source-verified.**" in out
     assert "not source-verified" not in out
+
+
+def test_patch_screen_doc_unverified_updates_confidence_only(tmp_path):
+    """With no real evidence (verified=False) the confidence updates but the
+    banner stays honest — it must NOT claim source-verified."""
+    p = tmp_path / "orders.md"; p.write_text(_SCREEN_MD)
+    _patch_screen_doc(p, 0.5, verified=False)
+    out = p.read_text()
+    assert "discovery_confidence: 0.5" in out
+    assert "content_provenance: llm-narrative-unverified" in out   # unchanged
+    assert "⚠ **LLM-authored, not source-verified.**" in out        # banner kept
 
 
 def test_verify_screen_specs_end_to_end(monkeypatch, tmp_path):

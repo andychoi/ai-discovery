@@ -87,12 +87,17 @@ class ScenarioFlowInference:
             f"{s.get('name', '')}: {s.get('description', '')}" for s in flow.steps
         ).strip()
         if not narrative:
-            flow.confidence, flow.verified = 0.3, True
+            flow.confidence, flow.verified = 0.3, False
             return flow
         try:
             claims = review_document(narrative, db_path, self.llm_client, max_claims=15)
-            flow.confidence = blend_confidence(0, get_review_summary(claims))
-            flow.verified = True
+            summary = get_review_summary(claims)
+            flow.confidence = blend_confidence(0, summary)
+            # "source-verified" must MEAN it: only when the review actually
+            # confirmed claims against retrieved source. If RAG retrieved nothing
+            # (empty index, no match), every claim is unverified — that is NOT
+            # verification, so the doc keeps its unverified banner + capped score.
+            flow.verified = summary.get("verified", 0) > 0
         except Exception as e:  # RAG unavailable / model error — don't fake confidence
             logger.warning("PF verification failed for %s: %s", flow.scenario_id, e)
             flow.confidence, flow.verified = 0.4, False

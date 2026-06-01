@@ -473,3 +473,16 @@ def test_verify_flow_failure_leaves_low_unverified(monkeypatch):
     ScenarioFlowInference(MagicMock()).verify_flow(flow, db_path=None)
     assert flow.verified is False
     assert flow.confidence == 0.4
+
+
+def test_verify_flow_no_evidence_is_not_source_verified(monkeypatch):
+    """With an empty/unmatched RAG index every claim is unverified — verify_flow
+    must NOT mark the flow source-verified (it would overstate; real-scan finding)."""
+    import ai_discovery.ai.self_review as sr
+    import ai_discovery.ai.rollup as rollup
+    monkeypatch.setattr(sr, "review_document", lambda *a, **k: ["c"])
+    monkeypatch.setattr(sr, "get_review_summary", lambda c: {"verified": 0, "unverified": 3, "contradicted": 0, "total": 3})
+    monkeypatch.setattr(rollup, "blend_confidence", lambda n, s: 0.5)
+    flow = ScenarioFlow(scenario_id="s1", steps=[{"name": "Save", "description": "x"}])
+    ScenarioFlowInference(MagicMock()).verify_flow(flow, db_path=None)
+    assert flow.verified is False     # no confirmed claims → not source-verified

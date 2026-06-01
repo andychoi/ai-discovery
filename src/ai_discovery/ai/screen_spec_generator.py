@@ -415,20 +415,25 @@ def _screen_narrative(spec: dict) -> str:
     return "\n".join(p for p in parts if p)
 
 
-def _patch_screen_doc(path: Path, confidence: float) -> None:
-    """Rewrite a screen doc's confidence + provenance to reflect verification."""
+def _patch_screen_doc(path: Path, confidence: float, verified: bool) -> None:
+    """Update a screen doc's confidence, and flip the provenance banner to
+    source-verified ONLY when verification actually confirmed claims against
+    source. With an empty/unmatched RAG index `verified` is False, so the doc
+    keeps its honest "not source-verified" banner with the (low) blended score.
+    """
     import re
 
     if not path.exists():
         return
     text = path.read_text(encoding="utf-8")
     text = re.sub(r"discovery_confidence: .*", f"discovery_confidence: {round(confidence, 2)}", text, count=1)
-    text = text.replace("content_provenance: llm-narrative-unverified",
-                        "content_provenance: llm-narrative-source-verified")
-    text = text.replace(
-        "> ⚠ **LLM-authored, not source-verified.**",
-        "> ✓ **Source-verified.** Claims below were checked against source code via RAG —",
-    )
+    if verified:
+        text = text.replace("content_provenance: llm-narrative-unverified",
+                            "content_provenance: llm-narrative-source-verified")
+        text = text.replace(
+            "> ⚠ **LLM-authored, not source-verified.**",
+            "> ✓ **Source-verified.** Claims below were checked against source code via RAG —",
+        )
     path.write_text(text, encoding="utf-8")
 
 
@@ -464,7 +469,9 @@ def verify_screen_specs(db_path: Path, scan_id: int, llm_client, docs_dir) -> in
             continue
         try:
             claims = review_document(narrative, db_path, llm_client, max_claims=15)
-            conf = blend_confidence(0, get_review_summary(claims))
+            summary = get_review_summary(claims)
+            conf = blend_confidence(0, summary)
+            is_verified = summary.get("verified", 0) > 0
         except Exception as exc:
             logger.warning("Screen verification failed for %s: %s", row["screen_id"], exc)
             continue
@@ -477,8 +484,9 @@ def verify_screen_specs(db_path: Path, scan_id: int, llm_client, docs_dir) -> in
             conn.commit()
         finally:
             conn.close()
-        _patch_screen_doc(Path(docs_dir) / "screens" / f"{row['screen_id']}.md", conf)
-        verified += 1
+        _patch_screen_doc(Path(docs_dir) / "screens" / f"{row['screen_id']}.md", conf, is_verified)
+        if is_verified:
+            verified += 1
     return verified
 
 
