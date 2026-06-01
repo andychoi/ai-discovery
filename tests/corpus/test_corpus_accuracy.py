@@ -68,6 +68,9 @@ HARD_TARGETS = {
     ("openapi-spec", "endpoints"),
     # HIGH-7: docker-compose / K8s backing services become external-system nodes.
     ("infra-compose", "external_systems"),
+    # HIGH-7: GraphQL SDL + proto contracts → entities + operation endpoints.
+    ("contract-schemas", "entities"),
+    ("contract-schemas", "endpoints"),
 }
 
 

@@ -621,6 +621,35 @@ def run_pipeline(
                     f"  OpenAPI: [green]{len(openapi_nodes)}[/] spec endpoints "
                     f"([green]{len(fresh)}[/] new beyond AST)"
                 )
+
+            # HIGH-7: GraphQL SDL + gRPC/proto contracts — object types/messages
+            # become entities, root operations/RPCs become endpoints. Deduped by
+            # identity (entities) and (method, route) (endpoints).
+            from .extractors import read_graphql_files, read_proto_files
+            contract_nodes = read_graphql_files(resolved.repo_path) + read_proto_files(resolved.repo_path)
+            if contract_nodes:
+                existing_qns = {n.qualified_name for n in all_nodes}
+                ep_routes = {
+                    (n.framework_hints.get("method"), n.framework_hints.get("route"))
+                    for n in all_nodes if n.node_type == "endpoint"
+                }
+                fresh = []
+                for n in contract_nodes:
+                    if n.qualified_name in existing_qns:
+                        continue
+                    if n.node_type == "endpoint" and (
+                        n.framework_hints.get("method"), n.framework_hints.get("route")
+                    ) in ep_routes:
+                        continue
+                    fresh.append(n)
+                    existing_qns.add(n.qualified_name)
+                all_nodes.extend(fresh)
+                n_ent = sum(1 for n in fresh if n.node_type == "db_model")
+                n_ep = sum(1 for n in fresh if n.node_type == "endpoint")
+                console.print(
+                    f"  Contracts (GraphQL/proto): [green]{n_ent}[/] entities, "
+                    f"[green]{n_ep}[/] operations"
+                )
     else:
         console.print("[dim]Phase 6 (parse): loading from DB...[/]")
         all_nodes = _load_code_nodes_from_db(db_path, scan_id)
