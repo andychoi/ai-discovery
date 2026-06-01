@@ -14,6 +14,12 @@ from ..ai.rollup import RollupResult
 
 logger = logging.getLogger(__name__)
 
+# CRIT-2: process-flow docs are LLM-reconstructed narrative that does NOT pass
+# through the claim-verification pass the rollups get. Until that grounding
+# lands, their published confidence is capped so a reader is never shown a 1.0
+# on unverified prose. (Rollups, which ARE verified, are unaffected.)
+_UNVERIFIED_NARRATIVE_CONFIDENCE = 0.5
+
 
 _DOC_TYPE_PREFIXES: dict[str, str] = {
     "as-is": "ASIS",
@@ -377,6 +383,8 @@ def write_scenario_docs(
                 if rollup_domains is not None and flow.domain not in rollup_domains:
                     continue
                 pf_links_to.append(_make_doc_id(project_slug, flow.domain, target_doc_type))
+        # CRIT-2: cap unverified-narrative confidence (see constant above).
+        pf_confidence = min(flow.confidence, _UNVERIFIED_NARRATIVE_CONFIDENCE)
         rendered = template.render(
             doc_id=doc_id,
             title=f"Process Flow: {flow.scenario_id}",
@@ -384,7 +392,7 @@ def write_scenario_docs(
             scan_date=scan_date,
             repo_url=repo_url,
             repo_commit=repo_commit,
-            confidence=flow.confidence,
+            confidence=pf_confidence,
             links_to=pf_links_to,
             content=content,
         )
@@ -396,7 +404,7 @@ def write_scenario_docs(
                 "doc_type": "process-flow",
                 "domain": flow.domain or "",
                 "file_path": str(file_path),
-                "confidence": flow.confidence,
+                "confidence": pf_confidence,
             }
         )
         logger.info("Wrote %s -> %s", doc_id, file_path)
