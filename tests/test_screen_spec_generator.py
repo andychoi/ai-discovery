@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ai_discovery.ai.llm_client import StructuredResponse
 from ai_discovery.ai.screen_spec_generator import (
     ScreenSpec,
     build_screen_spec_prompt,
@@ -90,10 +91,8 @@ class TestScreenSpecPrompt:
 class TestScreenSpecGeneration:
     """Test LLM-driven spec generation."""
 
-    @patch("ai_discovery.ai.screen_spec_generator.LLMClient.invoke")
-    def test_generate_screen_spec_success(self, mock_invoke):
-        """Test successful screen spec generation."""
-        # Mock LLM response
+    def test_generate_screen_spec_success(self):
+        """Test successful screen spec generation via the structured-output path."""
         response_data = {
             "purpose": "Allow users to search for customers",
             "when_used": "When handling customer inquiries",
@@ -116,13 +115,6 @@ class TestScreenSpecGeneration:
             "open_items": [],
         }
 
-        mock_response = MagicMock()
-        mock_response.text = json.dumps(response_data)
-        mock_response.tokens_in = 500
-        mock_response.tokens_out = 200
-        mock_response.model = "claude-3-5-sonnet-20241022"
-        mock_invoke.return_value = mock_response
-
         screen = Screen(
             screen_id="customer-search",
             menu_path=["Customers", "Search"],
@@ -131,8 +123,13 @@ class TestScreenSpecGeneration:
         )
         mapping = ScreenMapping(screen=screen)
 
+        # generate_screen_spec now calls invoke_structured, which returns a
+        # schema-validated dict directly (no text parsing).
         llm_client = MagicMock()
-        llm_client.invoke.return_value = mock_response
+        llm_client.invoke_structured.return_value = StructuredResponse(
+            data=response_data, tokens_in=500, tokens_out=200,
+            model="claude-sonnet-4-6", tier="screen", via_tool=True,
+        )
 
         spec = generate_screen_spec(mapping, llm_client)
 
@@ -142,44 +139,27 @@ class TestScreenSpecGeneration:
         assert spec.interaction_mode == "inquiry"
         assert len(spec.user_actions) == 1
 
-    @patch("ai_discovery.ai.screen_spec_generator.LLMClient.invoke")
-    def test_generate_screen_spec_invalid_json(self, mock_invoke):
-        """Test handling of invalid JSON response."""
-        mock_response = MagicMock()
-        mock_response.text = "not valid json {"
-        mock_invoke.return_value = mock_response
-
-        screen = Screen(
-            screen_id="test",
-            menu_path=["Test"],
-            label="Test",
-            path="/test",
-        )
+    def test_generate_screen_spec_invalid_json(self):
+        """A parse failure on the fallback path is swallowed and yields None."""
+        screen = Screen(screen_id="test", menu_path=["Test"], label="Test", path="/test")
         mapping = ScreenMapping(screen=screen)
 
+        # Only the Ollama fallback parses text; simulate it failing to find JSON.
         llm_client = MagicMock()
-        llm_client.invoke.return_value = mock_response
+        llm_client.invoke_structured.side_effect = json.JSONDecodeError("x", "doc", 0)
 
         spec = generate_screen_spec(mapping, llm_client)
-
         assert spec is None
 
-    @patch("ai_discovery.ai.screen_spec_generator.LLMClient.invoke")
-    def test_generate_screen_spec_lvm_exception(self, mock_invoke):
+    def test_generate_screen_spec_lvm_exception(self):
         """Test handling of LLM invocation exception."""
         llm_client = MagicMock()
-        llm_client.invoke.side_effect = Exception("LLM service unavailable")
+        llm_client.invoke_structured.side_effect = Exception("LLM service unavailable")
 
-        screen = Screen(
-            screen_id="test",
-            menu_path=["Test"],
-            label="Test",
-            path="/test",
-        )
+        screen = Screen(screen_id="test", menu_path=["Test"], label="Test", path="/test")
         mapping = ScreenMapping(screen=screen)
 
         spec = generate_screen_spec(mapping, llm_client)
-
         assert spec is None
 
 

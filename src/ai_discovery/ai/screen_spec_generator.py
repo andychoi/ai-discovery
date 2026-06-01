@@ -16,8 +16,78 @@ from typing import Optional
 from .llm_client import LLMClient
 from ..db import get_conn, now_iso
 from ..screen_mapper import ScreenMapping
+from ..shared.json_extract import extract_json_object
 
 logger = logging.getLogger(__name__)
+
+# Re-exported for callers/tests; the durable path uses tool-use schema
+# enforcement (LLMClient.invoke_structured) and only falls back to this on
+# providers without tool support.
+_extract_json_object = extract_json_object
+
+# JSON schema for screen-spec tool use. Mirrors the example structure in
+# build_screen_spec_prompt; with Bedrock tool use the model MUST return an
+# object of this shape (no fences, no truncated free text).
+SCREEN_SPEC_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "purpose": {"type": "string"},
+        "when_used": {"type": "string"},
+        "interaction_mode": {
+            "type": "string",
+            "enum": ["inquiry", "monitoring", "workflow_step",
+                     "admin_panel", "configuration", "reporting"],
+        },
+        "crud_profile": {
+            "type": "string",
+            "enum": ["read_only", "create_edit", "manage", "admin", "bulk_operation"],
+        },
+        "user_actions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"action": {"type": "string"}, "response": {"type": "string"}},
+                "required": ["action", "response"],
+            },
+        },
+        "rules_narrative": {"type": "string"},
+        "rules": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "description": {"type": "string"}},
+                "required": ["name", "description"],
+            },
+        },
+        "fields_description": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "type": {"type": "string"},
+                    "source": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["name", "description"],
+            },
+        },
+        "downstream_effects": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"action": {"type": "string"}, "effect": {"type": "string"}},
+                "required": ["action", "effect"],
+            },
+        },
+        "open_items": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        "purpose", "when_used", "interaction_mode", "crud_profile",
+        "user_actions", "rules_narrative", "rules", "fields_description",
+        "downstream_effects", "open_items",
+    ],
+}
 
 
 @dataclass
@@ -196,10 +266,17 @@ def generate_screen_spec(
     try:
         prompt = build_screen_spec_prompt(screen_mapping, context)
 
-        response = llm_client.invoke("screen", prompt, max_tokens=2048)
-
-        # Parse JSON response
-        payload = json.loads(response.text)
+        # Durable structured output: on Bedrock the model returns the spec as
+        # schema-validated tool input (no markdown fences, no mid-object
+        # truncation); on Ollama it falls back to tolerant text parsing.
+        # max_tokens headroom: content-rich screens emit large objects.
+        response = llm_client.invoke_structured(
+            "screen", prompt, SCREEN_SPEC_SCHEMA,
+            tool_name="emit_screen_spec",
+            tool_description="Emit the structured specification for this screen.",
+            max_tokens=8192,
+        )
+        payload = response.data
 
         # Construct ScreenSpec object
         spec = ScreenSpec(
@@ -234,7 +311,7 @@ def generate_screen_spec(
             tokens_in=response.tokens_in,
             tokens_out=response.tokens_out,
             model=response.model,
-            raw_response=response.text,
+            raw_response=response.raw_text or json.dumps(payload, default=str),
         )
         return spec
     except json.JSONDecodeError as e:
