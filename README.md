@@ -225,7 +225,7 @@ bedrock:
   region: us-east-1
   tier1: us.anthropic.claude-haiku-4-5-20251001-v1:0   # cheap: chunk summaries
   tier2: us.anthropic.claude-sonnet-4-6                # mid: flow analysis
-  tier3d: us.anthropic.claude-haiku-4-5-20251001-v1:0  # dev doc generation (fast/cheap)
+  tier3d: us.anthropic.claude-sonnet-4-6                # mid: flow analysis
   tier3p: us.anthropic.claude-sonnet-4-6               # prod doc generation (--prod) — MUST be enabled in your account
 
 output_directory: ./data/discovery-output
