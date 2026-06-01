@@ -1,0 +1,16 @@
+{
+  "_README": "JS class-based name-collision fixture (mirror of java-di-collision). Two services define process(); CheckoutHandler constructs both via `new`, and run() calls this.orderService.process(), which must resolve to OrderService only. Authored from source.",
+  "project": "js-di-collision",
+  "language": "javascript",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "CheckoutHandler.run", "callee_suffix": "OrderService.process", "min_confidence": 0.6}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "CheckoutHandler.run", "callee_suffix": "PaymentService.process"}
+  ],
+  "_di_resolution_note": "HIGH-3 (JS): this.orderService = new OrderService() gives the field orderService type OrderService, so process() resolves to OrderService.process only. di_resolution=1.0 with receiver-type resolution; was 0.0 (short-name fan-out). Module-level functional DI (require + call outside a class) remains out of scope."
+}

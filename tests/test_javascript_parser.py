@@ -236,3 +236,36 @@ function handle() {
     sites = {(s["name"], s["receiver"]) for s in fn.call_sites}
     assert ("save", "OrderService") in sites
     assert ("plainCall", None) in sites
+
+
+def test_extracts_mongoose_model_as_entity(parser, tmp_path):
+    """Mongoose schema + model() -> db_model with the object keys as fields."""
+    code = (
+        "const mongoose = require('mongoose');\n"
+        "const orderSchema = new mongoose.Schema({\n"
+        "  customerId: mongoose.Schema.Types.ObjectId,\n"
+        "  status: String,\n"
+        "  total: Number\n"
+        "});\n"
+        "module.exports = mongoose.model('Order', orderSchema);\n"
+    )
+    f = tmp_path / "Order.js"; f.write_text(code)
+    models = [n for n in parser.parse_file(f) if n.node_type == "db_model"]
+    assert len(models) == 1
+    assert models[0].name == "Order"
+    assert set(models[0].fields) == {"customerId", "status", "total"}
+
+
+def test_extracts_field_types_from_constructor_new(parser, tmp_path):
+    """HIGH-3 (JS): `this.x = new Y()` in the constructor captures x's type."""
+    code = (
+        "class CheckoutHandler {\n"
+        "  constructor() {\n"
+        "    this.orderService = new OrderService();\n"
+        "  }\n"
+        "  run() { this.orderService.process(); }\n"
+        "}\n"
+    )
+    f = tmp_path / "h.js"; f.write_text(code)
+    cls = next(n for n in parser.parse_file(f) if n.node_type == "class")
+    assert cls.framework_hints.get("field_types", {}).get("orderService") == "OrderService"

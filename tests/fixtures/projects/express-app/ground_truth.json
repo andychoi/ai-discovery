@@ -14,7 +14,7 @@
     {"table": "Order",   "fields": ["customerId", "items", "status", "createdAt"]},
     {"table": "Product", "fields": ["name", "description", "price", "stock", "createdAt"]}
   ],
-  "_entities_note": "KNOWN GAP (surfaced by this harness): the JS parser does not extract Mongoose schemas as db_model nodes, so entity recall is currently 0 for this fixture. Baseline-only dimension; not a hard target until JS entity extraction lands.",
+  "_entities_note": "Mongoose schemas (new mongoose.Schema({...}) + mongoose.model('Name', schema)) are now extracted as db_model entities — the gap this harness surfaced is closed; entities is a hard target.",
   "relationships": [],
   "_key_call_edges_note": "Route handlers delegate to injected service singletons; service->model calls (find/save) are Mongoose methods absent from source, correctly unresolved. Caller names are anonymous route handlers, so matched on callee + confidence.",
   "key_call_edges": [
