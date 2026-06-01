@@ -19,6 +19,7 @@ from typing import Any, Optional
 import yaml
 from .route_parser import parse_route_file, RouteNode
 from .webforms_extractor import extract_webforms_page
+from .jsp_extractor import extract_jsp_page
 from .repo.lang_detector import _SKIP_DIRS
 
 logger = logging.getLogger(__name__)
@@ -349,6 +350,60 @@ class WebFormsMenuDetector(MenuDetector):
         return build(root, "")
 
 
+class JspMenuDetector(MenuDetector):
+    """Build screens from JSP pages (.jsp/.jspx; folder hierarchy = menu).
+
+    Fallback for apps with no JS menu/router. .tag/.tagx tag files are excluded
+    (they are reusable components, not top-level screens)."""
+
+    def detect(self, repo_path: Path) -> Optional[list[MenuItem]]:
+        repo = Path(repo_path)
+        pages = [
+            p for p in sorted(list(repo.rglob("*.jsp")) + list(repo.rglob("*.jspx")))
+            if not (_SKIP_DIRS & set(p.parts))
+        ]
+        if not pages:
+            return None
+
+        root: dict = {"_dirs": {}, "_pages": []}
+        for path in pages:
+            rel = path.relative_to(repo)
+            node = root
+            for seg in rel.parts[:-1]:
+                node = node["_dirs"].setdefault(seg, {"_dirs": {}, "_pages": []})
+            node["_pages"].append(path)
+
+        def build(node: dict, url_prefix: str) -> list[MenuItem]:
+            items: list[MenuItem] = []
+            for seg, child in sorted(node["_dirs"].items()):
+                items.append(MenuItem(
+                    id=JsonYamlDetector._slugify(seg),
+                    label=seg,
+                    path=f"{url_prefix}/{seg}",
+                    metadata={"is_screen": False},
+                    children=build(child, f"{url_prefix}/{seg}"),
+                ))
+            for path in sorted(node["_pages"]):
+                page = extract_jsp_page(path)
+                rel = path.relative_to(repo)
+                label = (page.title if page and page.title else None) or _humanize(path.stem)
+                items.append(MenuItem(
+                    id=JsonYamlDetector._slugify(str(rel)),
+                    label=label,
+                    path=f"{url_prefix}/{path.name}",
+                    metadata={
+                        "is_screen": True,
+                        "component_source": str(rel),
+                        "bean_classes": page.bean_classes if page else [],
+                        "form_actions": page.form_actions if page else [],
+                        "framework": "jsp",
+                    },
+                ))
+            return items
+
+        return build(root, "")
+
+
 class HybridMenuDetector:
     """
     Hybrid detector that tries multiple strategies.
@@ -362,6 +417,7 @@ class HybridMenuDetector:
             TypeScriptConstantDetector(),
             FrameworkRoutingDetector(),
             WebFormsMenuDetector(),
+            JspMenuDetector(),
         ]
 
     def detect(self, repo_path: Path) -> Optional[list[MenuItem]]:
