@@ -58,6 +58,31 @@ def test_get_read_conn_has_mmap(db_path: Path) -> None:
     assert mmap > 0
 
 
+def test_call_edges_unique_dedups_duplicate_edges(db_path: Path) -> None:
+    """P1-a: re-inserting the same edge (same scan_id/caller/callee_name/edge_type)
+    must not create a duplicate row — the UNIQUE constraint + INSERT OR IGNORE
+    guard against phase-7 re-runs duplicating the call graph."""
+    conn = get_conn(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO scan_runs (id, project_slug, started_at) VALUES (1, 'p', '2026-01-01')"
+        )
+        conn.execute(
+            "INSERT INTO code_nodes (id, scan_id, file_path, node_type, name, qualified_name) "
+            "VALUES (1, 1, 'a.py', 'method', 'run', 'a.A.run')"
+        )
+        ins = ("INSERT OR IGNORE INTO call_edges "
+               "(scan_id, caller_id, callee_id, callee_name, edge_type, confidence) "
+               "VALUES (1, 1, NULL, 'a.B.save', 'direct_call', 0.9)")
+        conn.execute(ins)
+        conn.execute(ins)  # exact duplicate (simulates phase-7 re-run)
+        conn.commit()
+        n = conn.execute("SELECT COUNT(*) FROM call_edges").fetchone()[0]
+    finally:
+        conn.close()
+    assert n == 1
+
+
 def test_retry_on_locked_decorator() -> None:
     """retry_on_locked should retry 3 times then succeed on the last attempt."""
     call_count = 0

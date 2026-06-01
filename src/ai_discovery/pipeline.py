@@ -819,8 +819,15 @@ def run_pipeline(
                     for edge in edges
                     if qn_to_id.get(edge.caller) is not None
                 ]
+                # P1-a: idempotent re-run. call_edges has no natural overwrite,
+                # so re-running phase 7 on the same scan_id (e.g. --resume-from=7)
+                # would otherwise duplicate every edge. Clear this scan's edges
+                # first (same pattern as db_relationship), and use INSERT OR IGNORE
+                # against the UNIQUE(scan_id, caller_id, callee_name, edge_type)
+                # constraint as defense-in-depth on databases that have it.
+                conn.execute("DELETE FROM call_edges WHERE scan_id = ?", (scan_id,))
                 conn.executemany(
-                    "INSERT INTO call_edges (scan_id, caller_id, callee_id, callee_name, edge_type, confidence) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO call_edges (scan_id, caller_id, callee_id, callee_name, edge_type, confidence) VALUES (?, ?, ?, ?, ?, ?)",
                     edge_rows,
                 )
                 conn.commit()
