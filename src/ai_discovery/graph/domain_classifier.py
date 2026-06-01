@@ -40,16 +40,20 @@ def infer_domain(qualified_name: str, file_path: str) -> str:
     3. Fallback: file stem
     """
     # Strategy 1: namespace / package segments from qualified_name
-    if "." in qualified_name:
+    # (skip path-like qns such as "Pages/Default.aspx" — the dot is a file extension)
+    if "." in qualified_name and "/" not in qualified_name and "\\" not in qualified_name:
         parts = qualified_name.split(".")
         # Walk segments (skip last which is the class/function name itself)
         for part in parts[:-1]:
             if part.lower() not in _FRAMEWORK_DIRS and not _is_tld_segment(part):
                 return part
 
-    # Strategy 2: walk file path components, skip framework dirs
+    # Strategy 2: walk file path components, skip framework dirs and path roots
     path_parts = PurePosixPath(file_path).parts
     for part in path_parts[:-1]:  # exclude filename
+        # Skip POSIX root "/", Windows drive letters "C:", and framework dirs
+        if part in ("/", "\\") or (len(part) == 2 and part[1] == ":"):
+            continue
         if part.lower() not in _FRAMEWORK_DIRS:
             return part
 
@@ -79,7 +83,7 @@ def classify_domains(nodes: list[CodeNode]) -> dict[str, Domain]:
     groups: dict[str, list[CodeNode]] = defaultdict(list)
 
     for node in nodes:
-        domain_name = infer_domain(node.qualified_name, node.file_path)
+        domain_name = node.domain or infer_domain(node.qualified_name, node.file_path)
         node.domain = domain_name
         groups[domain_name].append(node)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..graph.domain_classifier import infer_domain
 from ..graph.models import CodeNode
 from ..webforms_extractor import extract_webforms_page
 from .base import LanguageParser
@@ -31,6 +32,11 @@ class WebFormsParser(LanguageParser):
             text = file_path.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             pass
+        domain = (
+            infer_domain(page.code_behind_class, str(file_path))
+            if page.code_behind_class
+            else None
+        )
         return [
             CodeNode(
                 file_path=str(file_path),
@@ -50,5 +56,6 @@ class WebFormsParser(LanguageParser):
                     "is_user_control": page.is_user_control,
                     "events": page.events,
                 },
+                domain=domain,
             )
         ]

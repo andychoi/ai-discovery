@@ -41,3 +41,21 @@ def test_user_control_is_component_not_screen_flagged():
     n = WebFormsParser().parse_file(FIX / "Widget.ascx")[0]
     assert n.node_type == "ui_component"
     assert n.framework_hints["is_user_control"] is True
+
+
+def test_webforms_page_colocates_with_codebehind_domain():
+    from ai_discovery.graph.domain_classifier import classify_domains
+    page = WebFormsParser().parse_file(FIX / "Pages" / "Customer.aspx")[0]
+    cb = CodeNode(file_path="Customer.aspx.cs", language="csharp", node_type="method",
+                  name="grid_RowCommand", qualified_name="MyApp.Pages.Customer.grid_RowCommand",
+                  source_code="", line_start=1, line_end=2)
+    classify_domains([page, cb])
+    assert "/" not in page.domain and "\\" not in page.domain  # no path-singleton
+    assert page.domain == cb.domain                            # co-located with handler
+
+
+def test_webforms_page_without_codebehind_not_path_singleton():
+    page = WebFormsParser().parse_file(FIX / "NoCodeBehind.aspx")[0]
+    from ai_discovery.graph.domain_classifier import classify_domains
+    classify_domains([page])
+    assert "/" not in page.domain and "\\" not in page.domain
