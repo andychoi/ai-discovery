@@ -337,5 +337,79 @@ def parse_route_file(path: Path, framework: str) -> RouteNode | None:
     return RouteNode(children=_array_to_routes(array, field_map, imports))
 
 
+def _jsx_attr(open_node, name: str):
+    """Return the value node of a JSX attribute `name=...` on an opening/self-closing element."""
+    for attr in open_node.children:
+        if attr.type != "jsx_attribute":
+            continue
+        attr_name = attr.children[0]
+        if attr_name.text is None or attr_name.text.decode("utf-8", "ignore") != name:
+            continue
+        for c in attr.children[1:]:
+            if c.type == "string":
+                return c
+            if c.type == "jsx_expression":
+                for inner in c.named_children:
+                    return inner
+    return None
+
+
+def _jsx_component(element_value):
+    """From an element={<Foo .../>} value, return (name, redirect_to)."""
+    if element_value is None:
+        return None, None
+    name = None
+    redirect_to = None
+    for n in _iter(element_value):
+        if n.type in ("jsx_self_closing_element", "jsx_opening_element"):
+            ident = n.child_by_field_name("name")
+            if ident is not None and ident.text is not None:
+                name = ident.text.decode("utf-8", "ignore")
+                if name == "Navigate":
+                    to = _jsx_attr(n, "to")
+                    redirect_to = _str_value(to) if to is not None else None
+            break
+    return name, redirect_to
+
+
+def _jsx_route_to_node(element, imports) -> RouteNode:
+    open_el = element if element.type == "jsx_self_closing_element" else element.children[0]
+    rn = RouteNode()
+    path_node = _jsx_attr(open_el, "path")
+    rn.path = _str_value(path_node) if path_node is not None else None
+    if rn.path in _CATCH_ALL:
+        rn.is_catch_all = True
+    element_val = _jsx_attr(open_el, "element") or _jsx_attr(open_el, "Component")
+    name, redirect_to = _jsx_component(element_val)
+    rn.component = name
+    rn.component_source = imports.get(name) if name else None
+    rn.redirect_to = redirect_to
+    if redirect_to:
+        rn.component = None  # a <Navigate> is a redirect, not a screen component
+        rn.component_source = None
+    if element.type == "jsx_element":
+        for child in element.children:
+            if child.type in ("jsx_element", "jsx_self_closing_element"):
+                ci = child if child.type == "jsx_self_closing_element" else child.children[0]
+                cname = ci.child_by_field_name("name")
+                if cname is not None and cname.text is not None and cname.text.decode("utf-8", "ignore") == "Route":
+                    rn.children.append(_jsx_route_to_node(child, imports))
+    return rn
+
+
 def _jsx_to_routes(node, imports) -> list[RouteNode]:
-    return []  # implemented in Task 5
+    for n in _iter(node):
+        if n.type == "jsx_element":
+            open_el = n.children[0]
+            ident = open_el.child_by_field_name("name")
+            if ident is not None and ident.text is not None and ident.text.decode("utf-8", "ignore") in ("Routes", "Switch"):
+                routes = []
+                for child in n.children:
+                    if child.type in ("jsx_element", "jsx_self_closing_element"):
+                        ci = child if child.type == "jsx_self_closing_element" else child.children[0]
+                        cname = ci.child_by_field_name("name")
+                        if cname is not None and cname.text is not None and cname.text.decode("utf-8", "ignore") == "Route":
+                            routes.append(_jsx_route_to_node(child, imports))
+                if routes:
+                    return routes
+    return []

@@ -152,3 +152,17 @@ def test_parse_react_data_router():
     cust = next(c for c in root.children if c.path == "/customers")
     assert cust.title == "Customers"
     assert cust.component == "CustomerList"
+
+
+def test_parse_react_jsx():
+    root = rp.parse_route_file(FIX / "react-jsx.tsx", "react")
+    assert root is not None
+    top = {c.path: c for c in root.children}
+    assert "/customers" in top
+    cust = top["/customers"]
+    assert cust.component == "CustomerList"
+    assert cust.component_source == "./CustomerList"
+    assert any(ch.path == ":id" and ch.component == "CustomerDetail" for ch in cust.children)
+    assert any(c.is_catch_all for c in root.children)
+    old = top.get("/old")
+    assert old is not None and old.redirect_to == "/customers"
