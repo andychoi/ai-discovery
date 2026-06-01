@@ -1,0 +1,2 @@
+<%@ Page Language="C#" %>
+<html><body><h1>Static</h1></body></html>
