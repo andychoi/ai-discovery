@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 # Doc types generated per domain (Phase 0: Discovery)
 DOC_TYPES = ("as-is", "as-is-detail", "as-is-schema")
 
+# Confidence for a doc with nothing scorable (no AST rows, no extractable
+# claims). Such a doc is unverifiable — not certain — so it scores low. See
+# blend_confidence (HIGH-1 fix).
+UNVERIFIABLE_CONFIDENCE = 0.3
+
 # Human-readable labels for doc types
 _DOC_TYPE_LABELS = {
     "as-is":        "As-Is Assessment",
@@ -391,9 +396,11 @@ def blend_confidence(verified_row_count: int, review_summary: dict) -> float:
     verified/unverified/contradicted split: verified=1.0, unverified=0.5,
     contradicted=0.0.
 
-    Returns a value in [0.0, 1.0]. If there's nothing to score (no AST rows
-    AND no claims extracted), returns 1.0 by convention — matching
-    `get_review_summary` for empty inputs.
+    Returns a value in [0.0, 1.0]. If there's nothing to score (no AST rows AND
+    no claims extracted), the doc is *unverifiable*, not certain — return a low
+    confidence (HIGH-1 fix). Publishing 1.0 here meant a doc whose claims could
+    not even be extracted shipped as maximally confident, which is exactly
+    backwards for a trustworthiness signal.
     """
     n_ast = max(0, int(verified_row_count or 0))
     verified = int(review_summary.get("verified", 0))
@@ -403,7 +410,7 @@ def blend_confidence(verified_row_count: int, review_summary: dict) -> float:
 
     total = n_ast + n_prose
     if total == 0:
-        return 1.0
+        return UNVERIFIABLE_CONFIDENCE
 
     score = (n_ast * 1.0) + (verified * 1.0) + (unverified * 0.5) + (contradicted * 0.0)
     return round(score / total, 2)
