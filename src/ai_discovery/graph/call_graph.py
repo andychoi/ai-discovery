@@ -14,17 +14,26 @@ def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
     Resolution stages (first match wins, higher confidence earlier):
       1. Exact qualified-name match                       → confidence 1.0
       2. Import-scoped — receiver matches a caller import → confidence 0.95
-      3. Short-name contextual (same class/file/module)   → confidence 0.95 … 0.6
-      4. Unresolved — no match                            → confidence 0.5
+      3. Receiver-type (DI) — receiver is a field/param    → confidence 0.93
+         of a known type; pin the call to that type's method
+      4. Short-name contextual (same class/file/module)   → confidence 0.95 … 0.6
+      5. Unresolved — no match                            → confidence 0.5
 
     Each edge carries evidence in `metadata["resolved_by"]` (stage name).
     """
     qualified_index: dict[str, CodeNode] = {}
     short_name_index: dict[str, list[CodeNode]] = defaultdict(list)
+    # HIGH-3: class qualified_name → {field/param name: declared type}. Lets the
+    # receiver-type stage resolve `orderService.process()` to OrderService.process
+    # instead of fanning out across every `process` in the codebase.
+    field_types_by_class: dict[str, dict[str, str]] = {}
 
     for node in nodes:
         qualified_index[node.qualified_name] = node
         short_name_index[node.name].append(node)
+        ftypes = (node.framework_hints or {}).get("field_types")
+        if ftypes:
+            field_types_by_class[node.qualified_name] = ftypes
 
     edges: list[CallEdge] = []
 
@@ -82,7 +91,29 @@ def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
                     )
                     continue
 
-            # Stage 3: short-name contextual
+            # Stage 3: receiver-type (DI) — pin the call to the receiver's
+            # declared type, eliminating short-name fan-out across same-named
+            # methods. This is the HIGH-3 fix: it consumes the field/param types
+            # the parser already extracts.
+            type_resolved = _resolve_via_receiver_type(
+                node, call_name, receiver, field_types_by_class,
+                qualified_index, short_name_index,
+            )
+            if type_resolved is not None:
+                target, confidence = type_resolved
+                if target.qualified_name != node.qualified_name:
+                    edges.append(
+                        CallEdge(
+                            caller=node.qualified_name,
+                            callee=target.qualified_name,
+                            edge_type="direct_call",
+                            confidence=confidence,
+                            metadata={"resolved_by": "receiver_type", "receiver": receiver},
+                        )
+                    )
+                    continue
+
+            # Stage 4: short-name contextual
             resolved = _resolve_contextual_targets(node, call_name, short_name_index)
             if resolved:
                 for target, confidence in resolved:
@@ -121,6 +152,43 @@ def build_call_graph(nodes: list[CodeNode]) -> list[CallEdge]:
         if cur is None or e.confidence > cur.confidence:
             deduped[k] = e
     return list(deduped.values())
+
+
+def _resolve_via_receiver_type(
+    caller: CodeNode,
+    call_name: str,
+    receiver: str | None,
+    field_types_by_class: dict[str, dict[str, str]],
+    qualified_index: dict[str, CodeNode],
+    short_name_index: dict[str, list[CodeNode]],
+) -> tuple[CodeNode, float] | None:
+    """Resolve `receiver.call_name()` via the receiver's declared type (HIGH-3).
+
+    If `receiver` is a field / constructor-param of the caller's enclosing class
+    with a known type `T`, and `T` defines `call_name`, return that method node.
+    Returns None when the receiver type is unknown or the method isn't found on
+    it — so resolution falls through to the short-name stage unchanged (e.g.
+    `repo.findAll()` where findAll is a framework-inherited method absent from
+    source stays unresolved, exactly as before).
+    """
+    if not receiver:
+        return None
+    # `caller` is a method node; its enclosing class qn is the name minus the
+    # final segment (com.x.CheckoutController.view -> com.x.CheckoutController).
+    class_qn = caller.qualified_name.rsplit(".", 1)[0]
+    field_types = field_types_by_class.get(class_qn)
+    if not field_types:
+        return None
+    type_name = field_types.get(receiver)
+    if not type_name:
+        return None
+    for type_node in short_name_index.get(type_name, []):
+        if type_node.node_type not in ("class", "db_model"):
+            continue
+        target = qualified_index.get(f"{type_node.qualified_name}.{call_name}")
+        if target is not None:
+            return (target, 0.93)
+    return None
 
 
 def _build_import_index(caller: CodeNode) -> dict[str, dict]:
