@@ -39,7 +39,7 @@ class RouteNode:
     raw: dict = field(default_factory=dict)
 
 
-def _grammar_for_ext(path: Path):
+def _grammar_for_ext(path: Path) -> "Language | None":
     if not _TS_AVAILABLE:
         return None
     suffix = path.suffix.lower()
@@ -67,8 +67,23 @@ def _str_value(node) -> str | None:
     return node.text.decode("utf-8", "ignore")
 
 
+def _iter(node):
+    """Depth-first iterator over all descendant nodes (incl. node itself)."""
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        yield n
+        stack.extend(reversed(n.children))
+
+
 def _collect_imports(root) -> dict[str, str]:
-    """Map each imported identifier to its module specifier."""
+    """Map each imported local binding to its module specifier.
+
+    Handles:
+      ``import Def from './d'``         → key ``Def``
+      ``import * as NS from './n'``     → key ``NS``
+      ``import { A, B as C } from 'm'`` → keys ``A``, ``C``
+    """
     imports: dict[str, str] = {}
     for node in _iter(root):
         if node.type != "import_statement":
@@ -77,16 +92,42 @@ def _collect_imports(root) -> dict[str, str]:
         specifier = _str_value(src) if src is not None else None
         if not specifier:
             continue
-        for ident in _iter(node):
-            if ident.type == "identifier":
-                imports[ident.text.decode("utf-8", "ignore")] = specifier
+        clause = node.child_by_field_name("import") or _find_first_child(node, "import_clause")
+        if clause is None:
+            continue
+        for child in clause.children:
+            if child.type == "identifier":
+                # default binding: import Foo from 'x'
+                imports[child.text.decode("utf-8", "ignore")] = specifier
+            elif child.type == "namespace_import":
+                # import * as NS from 'x'
+                for c in child.children:
+                    if c.type == "identifier":
+                        imports[c.text.decode("utf-8", "ignore")] = specifier
+                        break
+            elif child.type == "named_imports":
+                # import { A, B as C } from 'x'
+                for spec in child.children:
+                    if spec.type != "import_specifier":
+                        continue
+                    alias_node = spec.child_by_field_name("alias")
+                    name_node = spec.child_by_field_name("name")
+                    # local binding is the alias when present, else the name
+                    local = alias_node if alias_node is not None else name_node
+                    if local is None:
+                        # fallback: first identifier child
+                        for c in spec.children:
+                            if c.type == "identifier":
+                                local = c
+                                break
+                    if local is not None:
+                        imports[local.text.decode("utf-8", "ignore")] = specifier
     return imports
 
 
-def _iter(node):
-    """Depth-first iterator over all descendant nodes (incl. node itself)."""
-    stack = [node]
-    while stack:
-        n = stack.pop()
-        yield n
-        stack.extend(reversed(n.children))
+def _find_first_child(node, child_type: str):
+    """Return the first child of ``node`` with the given type, or None."""
+    for child in node.children:
+        if child.type == child_type:
+            return child
+    return None

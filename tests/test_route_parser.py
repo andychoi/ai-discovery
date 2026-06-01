@@ -4,6 +4,8 @@ import pytest
 from ai_discovery import route_parser as rp
 from ai_discovery.route_parser import RouteNode
 
+pytestmark = pytest.mark.skipif(not rp._TS_AVAILABLE, reason="tree-sitter grammars not installed")
+
 
 def _parse_src(src: bytes, ext: str = ".ts"):
     """Parse a raw source string with the right grammar and return the root node."""
@@ -42,3 +44,12 @@ def test_collect_imports_maps_identifier_to_specifier():
     assert imports["UserList"] == "./pages/UserList.vue"
     assert imports["A"] == "./ab"
     assert imports["B"] == "./ab"
+
+
+def test_collect_imports_uses_local_binding_for_alias():
+    root = _parse_src(b"import {A as Alias} from './m'\nimport Def from './d'\nimport * as NS from './n'")
+    imports = rp._collect_imports(root)
+    assert imports["Alias"] == "./m"     # alias is the local binding
+    assert "A" not in imports            # original name is NOT a local binding here
+    assert imports["Def"] == "./d"
+    assert imports["NS"] == "./n"
