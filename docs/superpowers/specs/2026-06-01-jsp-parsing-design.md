@@ -105,6 +105,7 @@ The existing `build_screen_map` then yields `Screen`s: `fe_component` = the `.js
 - `<jsp:useBean>` with `type=` but no `class=` (interface-only bean) → no class edge (we only link concrete `class=`).
 - Duplicate page filenames in different folders → distinct `qualified_name` (full path) and screen paths; `build_screen_map`'s `unique_id` covers id clashes.
 - Includes recorded as flat hints, not followed transitively.
+- **Domain co-location is best-effort, package-shape dependent.** The page domain is `infer_domain(bean_class, file_path)`; for a clean multi-segment package (`com.acme.Foo` → `acme`) this is path-independent and matches the real bean node. For packages whose only meaningful segment is a framework name (`com.app.Foo` — `app` is a framework dir) or single-segment packages, `infer_domain` falls through to the file path, so the page may land in a *folder-based* domain rather than the bean's (still not a path-singleton — the `infer_domain` path-qn guard prevents that). Hardening this belongs in `infer_domain` (shared by all parsers), not the JSP parser, and is out of scope here.
 
 ## Test plan
 
