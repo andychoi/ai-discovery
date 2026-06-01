@@ -36,6 +36,13 @@ class ScenarioFlow:
     data_flow: list[str] = field(default_factory=list)
     external_interfaces: list[dict] = field(default_factory=list)
     confidence: float = 1.0
+    # CRIT-2: file:line of every execution-slice node the scenario traverses, so
+    # the PF doc carries auditable source provenance for its (LLM-narrated) steps.
+    source_refs: list[dict] = field(default_factory=list)
+    # True once verify_flow has set `confidence` from claim-verification against
+    # RAG source (vs the unverified default). Lets the renderer decide whether to
+    # trust the score or cap it.
+    verified: bool = False
 
 
 class ScenarioFlowInference:
@@ -45,15 +52,11 @@ class ScenarioFlowInference:
         self.llm_client = llm_client
 
     def infer_flow(self, scenario: Scenario, summaries: dict[str, dict]) -> ScenarioFlow:
-        """Staged inference: Flow -> IPO -> Interfaces."""
-        # Step 1: Flow Inference
+        """Staged inference: Flow -> IPO -> Interfaces. Every stage is grounded in
+        the execution-slice node context (file:line + Tier-1 summary)."""
         flow_steps = self._infer_steps(scenario, summaries)
-        
-        # Step 2: IPO Extraction
-        ipo_data = self._infer_ipo(scenario, flow_steps)
-        
-        # Step 3: Interface Detection
-        interfaces = self._infer_interfaces(scenario, flow_steps)
+        ipo_data = self._infer_ipo(scenario, flow_steps, summaries)
+        interfaces = self._infer_interfaces(scenario, flow_steps, summaries)
 
         return ScenarioFlow(
             scenario_id=scenario.scenario_id,
@@ -63,8 +66,77 @@ class ScenarioFlowInference:
             process=ipo_data.get("process", []),
             output=ipo_data.get("output", []),
             data_flow=ipo_data.get("data_flow", []),
-            external_interfaces=interfaces
+            external_interfaces=interfaces,
+            source_refs=self._source_refs(scenario),
         )
+
+    def verify_flow(self, flow: "ScenarioFlow", db_path) -> "ScenarioFlow":
+        """CRIT-2: set `flow.confidence` from claim-verification of the flow
+        narrative against RAG-indexed source, instead of an unverified default.
+
+        Extracts claims from the step descriptions and verifies each against the
+        code via the shared self-review machinery, then blends a deterministic
+        confidence. Marks the flow `verified` so the renderer trusts the score.
+        This is LLM-cost-heavy (one review pass per scenario), so callers gate it
+        (e.g. prod scans only). On any failure it leaves an explicit low score.
+        """
+        from .self_review import review_document, get_review_summary
+        from .rollup import blend_confidence
+
+        narrative = "\n".join(
+            f"{s.get('name', '')}: {s.get('description', '')}" for s in flow.steps
+        ).strip()
+        if not narrative:
+            flow.confidence, flow.verified = 0.3, True
+            return flow
+        try:
+            claims = review_document(narrative, db_path, self.llm_client, max_claims=15)
+            flow.confidence = blend_confidence(0, get_review_summary(claims))
+            flow.verified = True
+        except Exception as e:  # RAG unavailable / model error — don't fake confidence
+            logger.warning("PF verification failed for %s: %s", flow.scenario_id, e)
+            flow.confidence, flow.verified = 0.4, False
+        return flow
+
+    @staticmethod
+    def _source_refs(scenario: Scenario) -> list[dict]:
+        """Auditable file:line provenance for each node the scenario traverses."""
+        refs: list[dict] = []
+        seen: set[str] = set()
+        for node in scenario.nodes:
+            fp = getattr(node, "file_path", "") or ""
+            line = getattr(node, "line_number", 0) or 0
+            if not fp or node.qualified_name in seen:
+                continue
+            seen.add(node.qualified_name)
+            refs.append({
+                "name": node.name,
+                "qualified_name": node.qualified_name,
+                "source": f"{fp}:{line}",
+            })
+        return refs
+
+    def _nodes_context(self, scenario: Scenario, summaries: dict[str, dict]) -> str:
+        """Grounded node block fed to every inference prompt: qualified name,
+        type, file:line, and the Tier-1 summary (purpose + I/O). Replaces the
+        bare name-only listing so the LLM reconstructs steps from real code
+        context, not just identifiers (CRIT-2: source-fed prompts)."""
+        lines: list[str] = []
+        for node in scenario.nodes:
+            s = summaries.get(node.qualified_name, {})
+            fp = getattr(node, "file_path", "") or "?"
+            line = getattr(node, "line_number", 0) or 0
+            lines.append(f"- {node.qualified_name} ({node.type}) @ {fp}:{line}")
+            purpose = s.get("purpose")
+            if purpose:
+                lines.append(f"    purpose: {purpose}")
+            io = s.get("io_summary")
+            if io:
+                lines.append(f"    io: {io}")
+            if node.state_transition:
+                t = node.state_transition
+                lines.append(f"    transition: {t.entity}.{t.field} -> {t.to_state}")
+        return "\n".join(lines)
 
     def _infer_steps(self, scenario: Scenario, summaries: dict[str, dict]) -> list[dict]:
         prompt = self._build_steps_prompt(scenario, summaries)
@@ -74,16 +146,16 @@ class ScenarioFlowInference:
         )
         return self._parse_json_response(response.text, "flow")
 
-    def _infer_ipo(self, scenario: Scenario, flow_steps: list[dict]) -> dict:
-        prompt = self._build_ipo_prompt(scenario, flow_steps)
+    def _infer_ipo(self, scenario: Scenario, flow_steps: list[dict], summaries: dict[str, dict]) -> dict:
+        prompt = self._build_ipo_prompt(scenario, flow_steps, summaries)
         response = self.llm_client.invoke_with_advisor(
             "tier2", prompt,
             context=AdvisorContext(domain="scenario_ipo", max_advisor_cost_pct=0.15)
         )
         return self._parse_json_response(response.text)
 
-    def _infer_interfaces(self, scenario: Scenario, flow_steps: list[dict]) -> list[dict]:
-        prompt = self._build_interfaces_prompt(scenario, flow_steps)
+    def _infer_interfaces(self, scenario: Scenario, flow_steps: list[dict], summaries: dict[str, dict]) -> list[dict]:
+        prompt = self._build_interfaces_prompt(scenario, flow_steps, summaries)
         response = self.llm_client.invoke_with_advisor(
             "tier2", prompt,
             context=AdvisorContext(domain="scenario_interfaces", max_advisor_cost_pct=0.2)
@@ -91,18 +163,11 @@ class ScenarioFlowInference:
         return self._parse_json_response(response.text, "interfaces")
 
     def _build_steps_prompt(self, scenario: Scenario, summaries: dict[str, dict]) -> str:
-        nodes_info = []
-        for node in scenario.nodes:
-            s = summaries.get(node.qualified_name, {})
-            nodes_info.append(f"- {node.qualified_name} ({node.type}): {s.get('purpose', 'N/A')}")
-            if node.state_transition:
-                t = node.state_transition
-                nodes_info.append(f"  Transition: {t.entity}.{t.field} -> {t.to_state}")
-
         return (
             "You are a software architect. Convert the following execution path into a coherent business process flow.\n"
             f"Scenario: {scenario.name} (Trigger: {scenario.trigger_type})\n\n"
-            "Execution Path Nodes:\n" + "\n".join(nodes_info) + "\n\n"
+            "Execution Path Nodes (with source location and behavior):\n"
+            + self._nodes_context(scenario, summaries) + "\n\n"
             "TASK:\n"
             "1. Group functions into business steps.\n"
             "2. Order steps logically.\n"
@@ -110,23 +175,28 @@ class ScenarioFlowInference:
             "4. Identify validations, transformations, persistence, and external interactions.\n"
             "5. Use type USER_TASK for manual human steps (approval, review).\n"
             "6. Use type GATEWAY for conditional branches (if/else decisions).\n"
-            "7. Use type DB for database operations, EXTERNAL for external API calls.\n\n"
+            "7. Use type DB for database operations, EXTERNAL for external API calls.\n"
+            "8. Ground every step in the nodes above — do not invent steps with no corresponding node.\n\n"
             "OUTPUT JSON:\n"
             '{"flow": [{"step": 1, "name": "Validate Order", "type": "PROCESS|GATEWAY|USER_TASK|DB|EXTERNAL", "description": "..."}]}'
         )
 
-    def _build_ipo_prompt(self, scenario: Scenario, flow_steps: list[dict]) -> str:
+    def _build_ipo_prompt(self, scenario: Scenario, flow_steps: list[dict], summaries: dict[str, dict]) -> str:
         return (
-            "Extract Input-Process-Output (IPO) for this scenario flow.\n"
+            "Extract Input-Process-Output (IPO) for this scenario flow, grounded in the actual nodes.\n"
+            "Execution Path Nodes:\n" + self._nodes_context(scenario, summaries) + "\n\n"
             f"Flow Steps: {json.dumps(flow_steps)}\n\n"
+            "Only include inputs/outputs/data flows supported by the nodes above.\n"
             "OUTPUT JSON:\n"
             '{"input": ["..."], "process": ["..."], "output": ["..."], "data_flow": ["A -> B"]}'
         )
 
-    def _build_interfaces_prompt(self, scenario: Scenario, flow_steps: list[dict]) -> str:
+    def _build_interfaces_prompt(self, scenario: Scenario, flow_steps: list[dict], summaries: dict[str, dict]) -> str:
         return (
-            "Identify external systems involved in this scenario.\n"
+            "Identify external systems involved in this scenario, grounded in the actual nodes.\n"
+            "Execution Path Nodes:\n" + self._nodes_context(scenario, summaries) + "\n\n"
             f"Flow Steps: {json.dumps(flow_steps)}\n\n"
+            "Only list interfaces evidenced by a node above (DB/queue/external boundary); do not invent.\n"
             "OUTPUT JSON:\n"
             '{"interfaces": [{"name": "PostgreSQL", "type": "DB", "operation": "INSERT orders"}]}'
         )

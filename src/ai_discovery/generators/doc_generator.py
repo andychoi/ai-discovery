@@ -349,6 +349,22 @@ def write_scenario_docs(
                 )
             content_parts.append("\n".join(step_lines))
 
+        # CRIT-2: auditable source provenance — the real files:lines this scenario
+        # traverses, so a reader can verify the (LLM-narrated) steps against code.
+        source_refs = getattr(flow, "source_refs", None) or []
+        if source_refs:
+            ref_lines = [
+                "## Source Coverage",
+                "",
+                "*The steps above are reconstructed from these source locations:*",
+                "",
+                "| Node | Source |",
+                "|---|---|",
+            ]
+            for r in source_refs:
+                ref_lines.append(f"| `{r.get('qualified_name', r.get('name', ''))}` | `{r.get('source', '')}` |")
+            content_parts.append("\n".join(ref_lines))
+
         if art.get("mermaid"):
             content_parts.append(
                 f"## Sequence Diagram\n\n```mermaid\n{art['mermaid']}\n```"
@@ -383,8 +399,12 @@ def write_scenario_docs(
                 if rollup_domains is not None and flow.domain not in rollup_domains:
                     continue
                 pf_links_to.append(_make_doc_id(project_slug, flow.domain, target_doc_type))
-        # CRIT-2: cap unverified-narrative confidence (see constant above).
-        pf_confidence = min(flow.confidence, _UNVERIFIED_NARRATIVE_CONFIDENCE)
+        # CRIT-2: trust the score only when the flow was claim-verified against
+        # source (prod path); otherwise cap it as unverified narrative.
+        if getattr(flow, "verified", False):
+            pf_confidence = round(flow.confidence, 2)
+        else:
+            pf_confidence = min(flow.confidence, _UNVERIFIED_NARRATIVE_CONFIDENCE)
         rendered = template.render(
             doc_id=doc_id,
             title=f"Process Flow: {flow.scenario_id}",
@@ -393,6 +413,7 @@ def write_scenario_docs(
             repo_url=repo_url,
             repo_commit=repo_commit,
             confidence=pf_confidence,
+            verified=getattr(flow, "verified", False),
             links_to=pf_links_to,
             content=content,
         )

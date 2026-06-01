@@ -14,8 +14,15 @@ discovery_confidence: {{ confidence }}
 
 # {{ title }}
 
+{% if verified %}
+> ✓ **Source-verified.** Steps are reconstructed from the execution slice and
+> claim-checked against source code (see Source Coverage below); the confidence
+> reflects that verification.
+{% else %}
 > ⚠ **LLM-reconstructed narrative.** This process flow is inferred from the call
-> graph and is **not** claim-verified against source line-by-line (unlike the
-> ASIS/ASD/ASSC rollups). Treat steps as a hypothesis to confirm, not fact.
+> graph. Steps are grounded in the source locations listed under *Source
+> Coverage* below, but are **not** per-claim verified (run a `--prod` scan for
+> that). Treat steps as a hypothesis to confirm against the cited sources.
+{% endif %}
 
 {{ content }}
