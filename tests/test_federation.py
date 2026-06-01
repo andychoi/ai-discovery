@@ -320,3 +320,34 @@ def test_federation_reuses_impact_query(tmp_path: Path):
     assert "Impact report: Order" in report
     # Both transitions appear in the federated view
     assert "draft" in report and "shipped" in report
+
+
+def test_federation_correlates_cross_repo_integrations(tmp_path: Path):
+    """HIGH-8: a consumer repo's outbound HTTP call matches a provider repo's
+    inbound endpoint → a provider→consumer integration edge."""
+    import json
+
+    provider = _write_repo(tmp_path / "orders-svc", fsms=[_fsm("Order", fields={"id", "status"})])
+    (provider / "interfaces.json").write_text(json.dumps({
+        "slug": "orders-svc",
+        "inbound": [{"method": "GET", "path": "/api/orders/{id}", "handler": "getOrder"}],
+        "outbound": [],
+    }))
+    consumer = _write_repo(tmp_path / "web-bff", fsms=[_fsm("Cart", fields={"id", "items"})])
+    (consumer / "interfaces.json").write_text(json.dumps({
+        "slug": "web-bff",
+        "inbound": [],
+        "outbound": [{"method": "GET", "target": "https://orders/api/orders/99", "caller": "dashboard"}],
+    }))
+
+    out = federate_workspace([provider, consumer])
+    edges = out["integration_edges"]
+    assert len(edges) == 1
+    e = edges[0]
+    assert e.provider_repo == "orders-svc" and e.consumer_repo == "web-bff"
+    assert e.method == "GET" and e.path == "/api/orders/{}"
+
+    # And it persists to integration_edges.json.
+    paths = write_federation(out, tmp_path / "fed")
+    assert "integration_edges" in paths
+    assert json.loads(paths["integration_edges"].read_text())[0]["provider_repo"] == "orders-svc"

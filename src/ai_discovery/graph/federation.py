@@ -86,10 +86,28 @@ def federate_workspace(
     merged_links = _merge_cross_links_across_repos(per_repo)
     merged_conditions = _merge_conditions_across_repos(per_repo)
 
+    # HIGH-8: correlate cross-repo integrations — a consumer repo's outbound HTTP
+    # calls matched against a provider repo's inbound endpoints. This is the real
+    # federation deliverable (provider→consumer edges), distinct from the
+    # name-coincidence entity merge above.
+    from .integration_correlator import correlate, interfaces_from_dict
+    repo_interfaces = []
+    for slug, d in zip(repo_slugs, artifact_dirs):
+        ipath = d / "interfaces.json"
+        if ipath.exists():
+            try:
+                ri = interfaces_from_dict(json.loads(ipath.read_text()))
+                ri.slug = slug  # trust the federation's slug over the stored one
+                repo_interfaces.append(ri)
+            except Exception:
+                pass
+    integration_edges = correlate(repo_interfaces)
+
     return {
         "fsms": merged_fsms,
         "cross_links": merged_links,
         "conditions": merged_conditions,
+        "integration_edges": integration_edges,
         "source_repos": repo_slugs,
     }
 
@@ -114,6 +132,18 @@ def write_federation(
         cond_path = output_dir / "entity_conditions.json"
         cond_path.write_text(entity_conditions_to_json(federation["conditions"]))
         paths["conditions"] = cond_path
+
+    # HIGH-8: cross-repo integration edges (provider→consumer).
+    integration_edges = federation.get("integration_edges") or []
+    if integration_edges:
+        ipath = output_dir / "integration_edges.json"
+        ipath.write_text(json.dumps([
+            {"provider_repo": e.provider_repo, "consumer_repo": e.consumer_repo,
+             "method": e.method, "path": e.path, "consumer_caller": e.consumer_caller,
+             "provider_handler": e.provider_handler, "confidence": e.confidence}
+            for e in integration_edges
+        ], indent=2) + "\n")
+        paths["integration_edges"] = ipath
 
     # A federation manifest helps anyone inspecting the artifact dir know
     # which repos contributed, without parsing the FSM metadata.

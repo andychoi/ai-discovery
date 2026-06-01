@@ -768,6 +768,20 @@ def run_pipeline(
                 conn.commit()
             finally:
                 conn.close()
+
+            # HIGH-8: write this repo's interface surface (inbound endpoints +
+            # outbound HTTP targets) so `discover federate` can correlate
+            # provider→consumer integration edges across repos.
+            try:
+                from .graph.integration_correlator import (
+                    build_repo_interfaces, interfaces_to_dict,
+                )
+                ri = build_repo_interfaces(project_slug, all_nodes, edges)
+                (output_dir / "interfaces.json").write_text(
+                    json.dumps(interfaces_to_dict(ri), indent=2), encoding="utf-8",
+                )
+            except Exception as exc:
+                logger.warning("Failed to write interfaces.json: %s", exc)
     else:
         console.print("[dim]Phase 7 (domain_classify): loading from DB...[/]")
         domains_dict = _load_domains_from_db(db_path, scan_id, all_nodes)
