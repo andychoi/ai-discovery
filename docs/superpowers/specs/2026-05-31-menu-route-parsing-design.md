@@ -18,6 +18,7 @@ Make all four formats actually yield screens, via real AST parsing (not regex), 
 - Non-menu screens (popups, wizards, modals, deep-links) — separate effort.
 - Cross-referencing a `MENU` constant against route configs to enrich components — noted as a future enhancement, not in this iteration.
 - Changes to the pipeline, DB schema, or `Screen`/`MenuItem` models.
+- React Router pathless `index` *routes* (`<Route index element=…/>`): `index` is not emitted as its own screen this iteration (only `<Navigate>`/`redirect` are treated as redirects). Deferred — revisit if index-route screens are needed.
 
 ## Decisions (locked during brainstorming)
 
