@@ -433,6 +433,15 @@ def run_pipeline(
             conn.close()
         console.print(f"  Scan run [bold]#{scan_id}[/] created")
 
+    # LLM client is constructed up-front (cheap — it only wraps config) so every
+    # phase that needs it can use it. CRIT-1: it was previously built just before
+    # Phase 10, which made Phase 2 (screen specs) raise UnboundLocalError on any
+    # repo with a detectable menu, since `llm_client` is a function-local of
+    # run_pipeline. Keep this binding ahead of Phase 2.
+    from .ai.llm_client import LLMClient
+
+    llm_client = LLMClient(config)
+
     # ------------------------------------------------------------------
     # 2. Screen-centric LLM spec generation (PARALLEL to domain analysis)
     # ------------------------------------------------------------------
@@ -912,10 +921,9 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 10. Embed for RAG
     # ------------------------------------------------------------------
-    from .ai.llm_client import LLMClient
     from .rag.embedder import embed_chunks
 
-    llm_client = LLMClient(config)
+    # llm_client is already constructed up-front (before Phase 2); see CRIT-1 note.
 
     if not config.rag.enabled:
         console.print("[dim]Phase 10 (rag_embed): disabled via config.rag.enabled=false[/]")
