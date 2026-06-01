@@ -53,3 +53,36 @@ def test_collect_imports_uses_local_binding_for_alias():
     assert "A" not in imports            # original name is NOT a local binding here
     assert imports["Def"] == "./d"
     assert imports["NS"] == "./n"
+
+
+def test_array_to_routes_ts_const_menu():
+    src = (b"const MENU=[{path:'/users',label:'Users',roles:['admin'],"
+           b"children:[{path:'/users/:id',label:'Detail'}]}]")
+    root = _parse_src(src)
+    def find(n, t):
+        if n.type == t: return n
+        for c in n.children:
+            r = find(c, t)
+            if r: return r
+    arr = find(root, "array")
+    routes = rp._array_to_routes(arr, rp.FIELD_MAPS["ts-const"], {})
+    assert len(routes) == 1
+    top = routes[0]
+    assert top.path == "/users"
+    assert top.title == "Users"
+    assert top.roles == ["admin"]
+    assert len(top.children) == 1
+    assert top.children[0].path == "/users/:id"
+    assert top.children[0].title == "Detail"
+
+
+def test_object_to_route_detects_catch_all():
+    src = b"const R=[{path:'*',label:'NotFound'}]"
+    root = _parse_src(src)
+    def find(n, t):
+        if n.type == t: return n
+        for c in n.children:
+            r = find(c, t)
+            if r: return r
+    routes = rp._array_to_routes(find(root, "array"), rp.FIELD_MAPS["ts-const"], {})
+    assert routes[0].is_catch_all is True

@@ -131,3 +131,94 @@ def _find_first_child(node, child_type: str):
         if child.type == child_type:
             return child
     return None
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Object-literal walker
+# ---------------------------------------------------------------------------
+
+FIELD_MAPS: dict[str, dict[str, list[str]]] = {
+    "vue":      {"path": ["path"], "component": ["component"], "title": ["meta.title", "name"],
+                 "name": ["name"], "redirect": ["redirect"], "roles": ["meta.roles"], "children": ["children"]},
+    "angular":  {"path": ["path"], "component": ["component", "loadComponent", "loadChildren"],
+                 "title": ["data.title"], "redirect": ["redirectTo"], "roles": ["data.roles"], "children": ["children"]},
+    "ts-const": {"path": ["path", "route", "to"], "title": ["label", "name", "title"],
+                 "roles": ["roles", "permissions"], "children": ["children", "submenu"]},
+}
+
+_CATCH_ALL = {"*", "**"}
+
+
+def _object_pairs(object_node) -> dict[str, "object"]:
+    """Map each key string -> value node for an `object` AST node."""
+    pairs: dict[str, object] = {}
+    for child in object_node.named_children:
+        if child.type != "pair":
+            continue
+        key = child.child_by_field_name("key")
+        val = child.child_by_field_name("value")
+        if key is None or val is None:
+            continue
+        # Keys may be quoted strings (e.g. "path") or bare identifiers (path).
+        if key.type in ("string", "template_string"):
+            key_name = _str_value(key)
+        else:
+            key_name = key.text.decode("utf-8", "ignore")
+        if key_name is not None:
+            pairs[key_name] = val
+    return pairs
+
+
+def _lookup(pairs: dict, dotted_key: str):
+    """Resolve 'meta.title' by descending one level into nested object literals."""
+    parts = dotted_key.split(".")
+    val = pairs.get(parts[0])
+    for part in parts[1:]:
+        if val is None or val.type != "object":
+            return None
+        val = _object_pairs(val).get(part)
+    return val
+
+
+def _first(pairs: dict, keys: list[str]):
+    for k in keys:
+        v = _lookup(pairs, k) if "." in k else pairs.get(k)
+        if v is not None:
+            return v
+    return None
+
+
+def _string_list(node) -> list[str]:
+    if node is None or node.type != "array":
+        return []
+    return [_str_value(c) for c in node.named_children if c.type in ("string", "template_string")]
+
+
+def _array_to_routes(array_node, field_map, imports, depth=0) -> list[RouteNode]:
+    if array_node is None or array_node.type != "array" or depth > _MAX_DEPTH:
+        return []
+    return [
+        _object_to_route(obj, field_map, imports, depth)
+        for obj in array_node.named_children
+        if obj.type == "object"
+    ]
+
+
+def _object_to_route(object_node, field_map, imports, depth=0) -> RouteNode:
+    pairs = _object_pairs(object_node)
+    rn = RouteNode()
+    path_node = _first(pairs, field_map.get("path", []))
+    rn.path = _str_value(path_node) if path_node is not None else None
+    if rn.path in _CATCH_ALL or (rn.path and "pathMatch(.*)" in rn.path):
+        rn.is_catch_all = True
+    title_node = _first(pairs, field_map.get("title", []))
+    rn.title = _str_value(title_node) if title_node is not None else None
+    name_node = _first(pairs, field_map.get("name", []))
+    rn.name = _str_value(name_node) if name_node is not None else None
+    redirect_node = _first(pairs, field_map.get("redirect", []))
+    rn.redirect_to = _str_value(redirect_node) if redirect_node is not None else None
+    rn.roles = _string_list(_first(pairs, field_map.get("roles", [])))
+    children_node = _first(pairs, field_map.get("children", []))
+    rn.children = _array_to_routes(children_node, field_map, imports, depth + 1)
+    # component resolution added in Task 3
+    return rn
