@@ -205,6 +205,27 @@ def _build_rag_chunks(chunks: list, config: DiscoveryConfig) -> list:
     return chunk_for_rag(source, config.rag.chunk_size, config.rag.chunk_overlap)
 
 
+def _release_node_source(nodes: list) -> int:
+    """Free in-memory `source_code` once chunking (phase 9) is complete.
+
+    P0-3 (memory): each in-memory CodeNode carries its full source text, which on
+    a 100k-class / 500k-method corpus is the dominant sustained memory term. The
+    source is durably persisted in `code_nodes` (phase 7) and the only in-memory
+    consumers — the SQL/external extractors and the chunker — have all run by the
+    end of phase 9. Releasing it here bounds memory across the LLM-heavy phases
+    10–19 (where embeddings and LLM buffers accumulate) and is invisible to every
+    downstream `all_nodes` consumer (they read structural fields only). Returns
+    the approximate number of bytes freed. Idempotent.
+    """
+    freed = 0
+    for n in nodes:
+        sc = getattr(n, "source_code", "")
+        if sc:
+            freed += len(sc)
+            n.source_code = ""
+    return freed
+
+
 def _budget_ok(llm_client, config: DiscoveryConfig, phase_label: str) -> bool:
     """Return True if budget still has room; print warning and return False otherwise.
 
@@ -1048,6 +1069,13 @@ def run_pipeline(
         chunks = chunk_code_nodes(all_nodes)
         rag_chunks = _build_rag_chunks(chunks, config)
 
+    # P0-3 (memory): chunking is the last in-memory consumer of node.source_code.
+    # Release it now (it stays in code_nodes) so phases 10–19 don't carry the
+    # full corpus source alongside embeddings and LLM buffers.
+    freed_mb = _release_node_source(all_nodes) // (1024 * 1024)
+    if freed_mb >= 1:
+        console.print(f"  [dim]Released ~{freed_mb} MB of in-memory source after chunking[/]")
+
     # ------------------------------------------------------------------
     # 10. Embed for RAG
     # ------------------------------------------------------------------
@@ -1279,6 +1307,27 @@ def run_pipeline(
                 db_path=db_path,
                 scan_id=scan_id,
             )
+
+        # P0-4: deterministic structural check (no LLM). Flag file:line citations
+        # and qualified symbols in the generated prose that are absent from the
+        # parsed graph — likely fabrications — and annotate the doc so readers see
+        # the warning before relying on it.
+        try:
+            from .ai.prose_validator import build_known_graph, validate_prose, annotate
+            known_graph = build_known_graph(all_nodes)
+            flagged_total = 0
+            for r in rollups:
+                v = validate_prose(r.content_md, known_graph)
+                if not v.is_clean:
+                    r.content_md = annotate(r.content_md, v)
+                    flagged_total += v.count
+            if flagged_total:
+                console.print(
+                    f"  [yellow]Unverified code references flagged:[/] {flagged_total} "
+                    "(annotated in docs)"
+                )
+        except Exception as exc:  # annotation is non-critical: warn, don't lose docs
+            console.print(f"  [yellow]Prose validation skipped:[/] {exc}")
 
         persist_rollups(rollups, scan_id, db_path, project_slug)
         console.print(f"  Documents: [green]{len(rollups)}[/] generated")

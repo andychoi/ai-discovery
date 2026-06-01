@@ -11,6 +11,7 @@ import pytest
 from ai_discovery.ai.rollup import (
     DOC_TYPES,
     RollupResult,
+    RollupTotalFailureError,
     _build_rollup_prompt,
     _parse_rollup,
     generate_all_docs,
@@ -318,11 +319,60 @@ def test_generate_all_docs_multiple_domains():
 
 
 def test_generate_all_docs_empty_domains():
-    """No domains -> empty results, no LLM calls."""
+    """No domains -> empty results, no LLM calls. Must NOT raise (nothing attempted)."""
     client = _mock_llm_client()
     results = generate_all_docs([], {}, {}, client)
     assert results == []
     assert client.invoke_with_advisor.call_count == 0
+
+
+def test_generate_all_docs_all_fail_raises():
+    """Every (domain, doc_type) rollup fails -> fatal RollupTotalFailureError.
+
+    Regression guard for the silent-success bug: previously generate_all_docs
+    swallowed every failure and returned [], so phase 14 was recorded complete
+    and the scan exited 0 with missing ASIS/ASD/ASSC docs. The classic trigger
+    is an invalid tier3 model id ('model identifier is invalid').
+    """
+    client = _mock_llm_client()
+    client.invoke_with_advisor.side_effect = RuntimeError(
+        "ValidationException: The provided model identifier is invalid"
+    )
+
+    with pytest.raises(RollupTotalFailureError):
+        generate_all_docs([_make_domain("orders")], SAMPLE_SUMMARIES, {}, client)
+
+
+def test_generate_all_docs_partial_failure_does_not_raise():
+    """At least one rollup succeeds -> return the successes, do NOT raise.
+
+    Partial degradation is acceptable; only total failure is fatal.
+    """
+    client = _mock_llm_client()
+    ok = LLMResponse(
+        text="# Doc\n\nContent.\n\nConfidence: 0.8",
+        tokens_in=10, tokens_out=10, model="claude-opus", tier="tier3",
+    )
+
+    def _route(tier, prompt, *args, **kwargs):
+        # Fail every 'payments' doc, succeed for 'orders'.
+        if "Domain: payments" in prompt:
+            raise RuntimeError("model identifier is invalid")
+        return ok
+
+    client.invoke_with_advisor.side_effect = _route
+
+    results = generate_all_docs(
+        [_make_domain("orders"), _make_domain("payments")],
+        SAMPLE_SUMMARIES,
+        {},
+        client,
+    )
+
+    # Only the 'orders' docs survive; no exception raised.
+    assert results
+    assert {r.domain for r in results} == {"orders"}
+    assert len(results) == len(DOC_TYPES)
 
 
 # ---------------------------------------------------------------------------

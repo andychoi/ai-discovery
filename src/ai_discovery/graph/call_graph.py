@@ -7,6 +7,13 @@ from pathlib import PurePosixPath
 
 from .models import CallEdge, CodeNode, ExecutionEdge, ExecutionNode, Scenario, StateTransition
 
+# P0-3: above this many equally-plausible candidates for a single call, the
+# resolver stops fanning out an edge to every candidate (which is both noise —
+# none is identifiably the real target — and a quadratic edge/memory blow-up on
+# enterprise codebases where names like `save`/`execute`/`handle` collide across
+# hundreds of classes). Instead the call collapses to one unresolved edge.
+_MAX_FANOUT = 8
+
 
 def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]:
     """Build call graph from CodeNode.calls / CodeNode.call_sites references.
@@ -32,6 +39,12 @@ def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]
     # receiver-type stage resolve `orderService.process()` to OrderService.process
     # instead of fanning out across every `process` in the codebase.
     field_types_by_class: dict[str, dict[str, str]] = {}
+    # P0-2: interface/superclass short-name -> implementing/extending class nodes.
+    # Lets the receiver-type stage resolve an interface-typed injected field
+    # (the common Spring/.NET case: `OrderService` field, `OrderServiceImpl`
+    # bean) to the concrete impl's method instead of dead-ending on the
+    # bodyless interface node or fanning out across same-named methods.
+    impls_by_base: dict[str, list[CodeNode]] = defaultdict(list)
 
     for node in nodes:
         qualified_index[node.qualified_name] = node
@@ -39,6 +52,10 @@ def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]
         ftypes = (node.framework_hints or {}).get("field_types")
         if ftypes:
             field_types_by_class[node.qualified_name] = ftypes
+        if node.node_type in ("class", "db_model") and node.bases:
+            for base in node.bases:
+                # bases are unqualified, but tolerate a qualified form.
+                impls_by_base[base.rsplit(".", 1)[-1]].append(node)
 
     edges: list[CallEdge] = []
 
@@ -119,10 +136,10 @@ def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]
             # the parser already extracts.
             type_resolved = _resolve_via_receiver_type(
                 node, call_name, receiver, field_types_by_class,
-                qualified_index, short_name_index,
+                qualified_index, short_name_index, impls_by_base,
             )
             if type_resolved is not None:
-                target, confidence = type_resolved
+                target, confidence, reason = type_resolved
                 if target.qualified_name != node.qualified_name:
                     edges.append(
                         CallEdge(
@@ -130,7 +147,7 @@ def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]
                             callee=target.qualified_name,
                             edge_type="direct_call",
                             confidence=confidence,
-                            metadata={"resolved_by": "receiver_type", "receiver": receiver},
+                            metadata={"resolved_by": reason, "receiver": receiver},
                         )
                     )
                     continue
@@ -183,13 +200,24 @@ def _resolve_via_receiver_type(
     field_types_by_class: dict[str, dict[str, str]],
     qualified_index: dict[str, CodeNode],
     short_name_index: dict[str, list[CodeNode]],
-) -> tuple[CodeNode, float] | None:
+    impls_by_base: dict[str, list[CodeNode]] | None = None,
+) -> tuple[CodeNode, float, str] | None:
     """Resolve `receiver.call_name()` via the receiver's declared type (HIGH-3).
 
     If `receiver` is a field / constructor-param of the caller's enclosing class
-    with a known type `T`, and `T` defines `call_name`, return that method node.
-    Returns None when the receiver type is unknown or the method isn't found on
-    it — so resolution falls through to the short-name stage unchanged (e.g.
+    with a known type `T`, and `T` defines `call_name`, return that method node
+    tagged `receiver_type` (confidence 0.93).
+
+    P0-2 interface->impl: if `T` is an interface or abstract base that declares no
+    `call_name` body, but exactly one concrete class implementing/extending `T`
+    defines `call_name`, resolve to that impl's method tagged `interface_impl`
+    (confidence 0.90). This is the common Spring/.NET case where a field is typed
+    as the interface (`OrderService`) but the bean is the impl (`OrderServiceImpl`).
+    When *multiple* impls define `call_name` (genuine polymorphism) we do not
+    guess — return None and let the short-name stage handle it.
+
+    Returns None when the receiver type is unknown or the method isn't found —
+    so resolution falls through to the short-name stage unchanged (e.g.
     `repo.findAll()` where findAll is a framework-inherited method absent from
     source stays unresolved, exactly as before).
     """
@@ -212,7 +240,18 @@ def _resolve_via_receiver_type(
             continue
         target = qualified_index.get(f"{type_node.qualified_name}.{call_name}")
         if target is not None:
-            return (target, 0.93)
+            return (target, 0.93, "receiver_type")
+
+    # Interface->impl fallback: the declared type defines no such method body.
+    # Resolve to a concrete implementer iff exactly one defines call_name.
+    if impls_by_base:
+        impl_targets: dict[str, CodeNode] = {}
+        for impl in impls_by_base.get(type_name, []):
+            t = qualified_index.get(f"{impl.qualified_name}.{call_name}")
+            if t is not None:
+                impl_targets[t.qualified_name] = t
+        if len(impl_targets) == 1:
+            return (next(iter(impl_targets.values())), 0.90, "interface_impl")
     return None
 
 
@@ -322,8 +361,9 @@ def _resolve_contextual_targets(
             suffix_matches = _suffix_matches(call_ref, short_name_index)
             if len(suffix_matches) == 1:
                 return [(suffix_matches[0], 0.85)]
-            if len(suffix_matches) > 1:
+            if 1 < len(suffix_matches) <= _MAX_FANOUT:
                 return [(target, 0.7) for target in suffix_matches if target.qualified_name != caller.qualified_name]
+            # > _MAX_FANOUT suffix matches: too ambiguous — collapse (see below).
         return []
 
     same_class = _same_class_matches(caller, call_ref, candidates)
@@ -351,10 +391,17 @@ def _resolve_contextual_targets(
         best = [target for target, score in ranked if score == best_score and target.qualified_name != caller.qualified_name]
         if len(best) == 1:
             return [(best[0], 0.75)]
-        if best:
+        if 0 < len(best) <= _MAX_FANOUT:
             return [(target, 0.65) for target in best]
 
-    return [(target, 0.6) for target in candidates if target.qualified_name != caller.qualified_name]
+    others = [target for target in candidates if target.qualified_name != caller.qualified_name]
+    # P0-3: collapse rather than fan out when the ambiguous set is large. An empty
+    # return falls through to the Stage-5 unresolved edge (a single edge to the
+    # raw call name at 0.5), preserving the "ambiguous call" signal without the
+    # quadratic edge blow-up.
+    if len(others) > _MAX_FANOUT:
+        return []
+    return [(target, 0.6) for target in others]
 
 
 def _same_class_matches(caller: CodeNode, call_ref: str, candidates: list[CodeNode]) -> list[CodeNode]:

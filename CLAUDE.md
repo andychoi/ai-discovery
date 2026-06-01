@@ -110,10 +110,15 @@ discover verify-drift /path/to/repo --spec-dir ./data/specs
 
 ### Supported Menu Formats (Hybrid Detection)
 
-- **JSON/YAML files** (`menu.json`, `navigation.yaml`, etc.)
-- **TypeScript constants** (`export const MENU = [...]`)
-- **Framework routing** (Vue Router, React Router, Angular routing configs)
-- **Server-side rendering** apps (Java Spring, .NET ASP.NET, etc.)
+- **JSON/YAML files** (`menu.json`, `navigation.yaml`, etc.) — **fully supported**; only leaf menu entries become screens.
+- **TypeScript constants** (`export const MENU = [...]`) — **scaffolded, not functional** (`menu_detector.py` `_parse_ts_array` returns `[]`).
+- **Framework routing** (Vue / React / Angular) — **scaffolded, not functional** (detectors return `None`).
+- **Server-side rendering** (Spring / ASP.NET menus) — **not implemented** (no detector).
+
+> Net: only static JSON/YAML menus yield screens today. Apps with no static menu
+> file, and non-menu screens (popups, wizards, modals, deep-links,
+> role-conditional), are not detected — screen generation is silently skipped.
+> The other formats are roadmap items; don't represent them as working.
 
 ### Drift Detection
 
