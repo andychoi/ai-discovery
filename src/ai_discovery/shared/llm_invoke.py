@@ -101,6 +101,7 @@ def converse_bedrock(
     system: str = "",
     max_tokens: int = 4096,
     tools: list[dict] | None = None,
+    tool_choice: dict | None = None,
     region: str = "us-west-2",
 ) -> dict:
     """Invoke Bedrock Converse API — supports multi-turn and tool use.
@@ -112,6 +113,9 @@ def converse_bedrock(
         system: Optional system prompt.
         max_tokens: Max output tokens.
         tools: Optional list of toolSpec definitions for tool use.
+        tool_choice: Optional Converse toolChoice, e.g. {"tool": {"name": "..."}}
+                     to force the model to emit that tool's input (schema-valid
+                     JSON), {"any": {}}, or {"auto": {}}. Ignored unless tools set.
         region: AWS region.
 
     Returns:
@@ -137,7 +141,10 @@ def converse_bedrock(
     if system:
         kwargs["system"] = [{"text": system}]
     if tools:
-        kwargs["toolConfig"] = {"tools": tools}
+        tool_config: dict = {"tools": tools}
+        if tool_choice:
+            tool_config["toolChoice"] = tool_choice
+        kwargs["toolConfig"] = tool_config
 
     last_err: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):

@@ -25,14 +25,16 @@ except ImportError:
 #   Local (python -m app): 'app.shared' is the correct path
 try:
     from ai_discovery.shared.llm_invoke import (
-        invoke_bedrock, invoke_ollama, embed_bedrock, embed_ollama,
+        invoke_bedrock, invoke_ollama, converse_bedrock, embed_bedrock, embed_ollama,
         embed_ollama_batch, warm_ollama, unload_ollama,
     )
 except ImportError:
     from ai_discovery.shared.llm_invoke import (
-        invoke_bedrock, invoke_ollama, embed_bedrock, embed_ollama,
+        invoke_bedrock, invoke_ollama, converse_bedrock, embed_bedrock, embed_ollama,
         embed_ollama_batch, warm_ollama, unload_ollama,
     )
+
+from ai_discovery.shared.json_extract import extract_json_object
 
 
 @dataclass
@@ -42,6 +44,40 @@ class LLMResponse:
     tokens_out: int
     model: str
     tier: str
+
+
+@dataclass
+class StructuredResponse:
+    """Result of a schema-enforced invocation.
+
+    `data` is the parsed JSON object. `via_tool` is True when the model returned
+    it through Bedrock tool use (structurally guaranteed to match the schema) and
+    False when it came from the text-parsing fallback (Ollama / no tool support).
+    """
+    data: dict
+    tokens_in: int
+    tokens_out: int
+    model: str
+    tier: str
+    via_tool: bool = False
+    raw_text: str = ""
+
+
+def _first_tool_input(content_blocks: list[dict], tool_name: str) -> dict | None:
+    """Return the input of the first matching toolUse block, or None."""
+    for block in content_blocks or []:
+        tu = block.get("toolUse") if isinstance(block, dict) else None
+        if tu and tu.get("name") == tool_name and isinstance(tu.get("input"), dict):
+            return tu["input"]
+    return None
+
+
+def _concat_text(content_blocks: list[dict]) -> str:
+    """Concatenate the text of all text blocks in a Converse response."""
+    return "".join(
+        block["text"] for block in (content_blocks or [])
+        if isinstance(block, dict) and isinstance(block.get("text"), str)
+    )
 
 
 @dataclass
@@ -114,6 +150,72 @@ class LLMClient:
 
         self._track_cost(tier, model, tok_in, tok_out)
         return LLMResponse(text=text, tokens_in=tok_in, tokens_out=tok_out, model=model, tier=tier)
+
+    def invoke_structured(
+        self,
+        tier: str,
+        prompt: str,
+        schema: dict,
+        *,
+        tool_name: str = "emit",
+        tool_description: str = "",
+        max_tokens: int = 4096,
+    ) -> StructuredResponse:
+        """Invoke the model and get back a JSON object conforming to *schema*.
+
+        On Bedrock this uses the Converse API with a forced tool choice: the
+        model MUST return its answer as the tool's input, which Bedrock validates
+        against *schema*. There is no free text to fence-strip or truncate
+        mid-object, so the markdown-fence and token-truncation failure modes that
+        previously broke screen-spec generation cannot occur.
+
+        On Ollama-compatible providers (no reliable tool use) it falls back to a
+        plain prompt plus tolerant JSON extraction — same robustness as before,
+        but the fence handling now lives in one shared helper. Raises
+        ``json.JSONDecodeError`` only on the fallback path when no JSON is found.
+        """
+        model = self._config.get_model(tier)
+
+        if self._config.provider == "bedrock":
+            tool = {
+                "toolSpec": {
+                    "name": tool_name,
+                    "description": tool_description or "Return the structured result.",
+                    "inputSchema": {"json": schema},
+                }
+            }
+            result = converse_bedrock(
+                model,
+                [{"role": "user", "content": [{"text": prompt}]}],
+                max_tokens=max_tokens,
+                tools=[tool],
+                tool_choice={"tool": {"name": tool_name}},
+                region=self._config.bedrock.region,
+            )
+            tok_in = result["usage"]["input_tokens"]
+            tok_out = result["usage"]["output_tokens"]
+            self._track_cost(tier, model, tok_in, tok_out)
+
+            data = _first_tool_input(result["content"], tool_name)
+            if data is not None:
+                return StructuredResponse(
+                    data=data, tokens_in=tok_in, tokens_out=tok_out,
+                    model=model, tier=tier, via_tool=True,
+                )
+            # Rare: model emitted text instead of calling the tool. Parse it.
+            text = _concat_text(result["content"])
+            return StructuredResponse(
+                data=extract_json_object(text), tokens_in=tok_in, tokens_out=tok_out,
+                model=model, tier=tier, via_tool=False, raw_text=text,
+            )
+
+        # Ollama-compatible fallback: plain invoke + tolerant parse.
+        resp = self.invoke(tier, prompt, max_tokens)
+        return StructuredResponse(
+            data=extract_json_object(resp.text), tokens_in=resp.tokens_in,
+            tokens_out=resp.tokens_out, model=resp.model, tier=tier,
+            via_tool=False, raw_text=resp.text,
+        )
 
     def invoke_with_advisor(
         self,
