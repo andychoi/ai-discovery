@@ -599,6 +599,28 @@ def run_pipeline(
                 f"[green]{len(files)}[/] files"
                 + (f"  ([yellow]{parse_errors} errors[/])" if parse_errors else "")
             )
+
+            # HIGH-7: ingest OpenAPI/Swagger specs as an authoritative endpoint
+            # source. Spec endpoints flow into the same verified-facts API table
+            # as parser endpoints; dedup against AST endpoints by (method, route)
+            # so a route declared in both isn't double-counted (AST wins — it has
+            # real source line numbers).
+            from .extractors import read_openapi_files
+            openapi_nodes = read_openapi_files(resolved.repo_path)
+            if openapi_nodes:
+                ast_routes = {
+                    (n.framework_hints.get("method"), n.framework_hints.get("route"))
+                    for n in all_nodes if n.node_type == "endpoint"
+                }
+                fresh = [
+                    n for n in openapi_nodes
+                    if (n.framework_hints.get("method"), n.framework_hints.get("route")) not in ast_routes
+                ]
+                all_nodes.extend(fresh)
+                console.print(
+                    f"  OpenAPI: [green]{len(openapi_nodes)}[/] spec endpoints "
+                    f"([green]{len(fresh)}[/] new beyond AST)"
+                )
     else:
         console.print("[dim]Phase 6 (parse): loading from DB...[/]")
         all_nodes = _load_code_nodes_from_db(db_path, scan_id)

@@ -64,6 +64,8 @@ HARD_TARGETS = {
     ("js-di-collision", "call_edges"),
     # HIGH-8: external-client calls become first-class typed external-system nodes.
     ("external-systems", "external_systems"),
+    # HIGH-7: OpenAPI spec endpoints are ingested as authoritative endpoint facts.
+    ("openapi-spec", "endpoints"),
 }
 
 

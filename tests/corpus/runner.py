@@ -16,7 +16,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ai_discovery.extractors import extract_external_systems, extract_relationships
+from ai_discovery.extractors import (
+    extract_external_systems,
+    extract_relationships,
+    read_openapi_files,
+)
 from ai_discovery.graph.call_graph import build_call_graph
 from ai_discovery.graph.models import CallEdge, CodeNode, EntityRelationship
 from ai_discovery.repo.file_walker import walk_repo
@@ -87,6 +91,14 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
             nodes.extend(parser.parse_file(f))
         except Exception:  # a single unparseable file must not abort the run
             continue
+    # HIGH-7: merge OpenAPI/Swagger spec endpoints (dedup vs AST by method+route).
+    ast_routes = {
+        (n.framework_hints.get("method"), n.framework_hints.get("route"))
+        for n in nodes if n.node_type == "endpoint"
+    }
+    for n in read_openapi_files(Path(repo_path)):
+        if (n.framework_hints.get("method"), n.framework_hints.get("route")) not in ast_routes:
+            nodes.append(n)
     edges = build_call_graph(nodes)
     relationships = extract_relationships(nodes)
     ext_nodes, ext_edges = extract_external_systems(nodes)
