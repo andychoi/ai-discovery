@@ -30,6 +30,13 @@ class ScenarioFlow:
     scenario_id: str
     domain: str | None = None
     steps: list[dict] = field(default_factory=list)  # list of {step: int, name: str, type: str, description: str}
+    # Hierarchical processing-logic view. Each node:
+    #   {name, type (PHASE|PROCESS|GATEWAY|USER_TASK|DB|EXTERNAL|LOOP),
+    #    description, source_ref, children: [<node>], branches: [{condition, steps:[<node>]}]}
+    # `steps` (flat) is DERIVED from this via `_flatten_structured_steps`, so the
+    # existing sequence/BPMN/flowchart renderers and verify_flow keep working
+    # unchanged while leveled rendering reads `structured_steps` directly.
+    structured_steps: list[dict] = field(default_factory=list)
     input: list[str] = field(default_factory=list)
     process: list[str] = field(default_factory=list)
     output: list[str] = field(default_factory=list)
@@ -45,6 +52,45 @@ class ScenarioFlow:
     verified: bool = False
 
 
+# Leaf step types that map 1:1 onto the legacy flat-step renderers. PHASE and
+# LOOP are *structural wrappers* in the hierarchical view — they group children
+# but are not themselves emitted into the flat `steps` list.
+_LEAF_STEP_TYPES = {"PROCESS", "GATEWAY", "USER_TASK", "DB", "EXTERNAL", "EXTERNAL_API", "QUEUE", "ENTRY"}
+
+
+def _flatten_structured_steps(structured: list[dict]) -> list[dict]:
+    """Flatten the hierarchical `structured_steps` into the legacy flat `steps`
+    shape ([{step, name, type, description}]) via depth-first walk.
+
+    PHASE / LOOP wrappers are not emitted (their children are inlined); GATEWAY
+    is emitted as a marker step followed by the inlined steps of every branch arm
+    — so existing sequence/BPMN/flowchart renderers see the same linear stream of
+    typed steps they always have, with the leveled detail preserved separately in
+    `structured_steps`.
+    """
+    flat: list[dict] = []
+
+    def walk(nodes: list[dict]) -> None:
+        for node in nodes or []:
+            if not isinstance(node, dict):
+                continue
+            ntype = (node.get("type") or "PROCESS").upper()
+            if ntype in _LEAF_STEP_TYPES:
+                flat.append({
+                    "step": len(flat) + 1,
+                    "name": node.get("name", "Step"),
+                    "type": ntype,
+                    "description": node.get("description", ""),
+                })
+            # Recurse: GATEWAY branches, then plain children (PHASE/LOOP bodies).
+            for branch in node.get("branches", []) or []:
+                walk(branch.get("steps", []))
+            walk(node.get("children", []))
+
+    walk(structured)
+    return flat
+
+
 class ScenarioFlowInference:
     """Uses GenAI to reconstruct scenario flows from execution slices."""
 
@@ -54,7 +100,10 @@ class ScenarioFlowInference:
     def infer_flow(self, scenario: Scenario, summaries: dict[str, dict]) -> ScenarioFlow:
         """Staged inference: Flow -> IPO -> Interfaces. Every stage is grounded in
         the execution-slice node context (file:line + Tier-1 summary)."""
-        flow_steps = self._infer_steps(scenario, summaries)
+        structured = self._infer_steps(scenario, summaries)
+        # Legacy flat view is DERIVED from the hierarchy so downstream renderers
+        # and verify_flow keep working; the leveled view lives in structured.
+        flow_steps = _flatten_structured_steps(structured)
         ipo_data = self._infer_ipo(scenario, flow_steps, summaries)
         interfaces = self._infer_interfaces(scenario, flow_steps, summaries)
 
@@ -62,6 +111,7 @@ class ScenarioFlowInference:
             scenario_id=scenario.scenario_id,
             domain=scenario.domain,
             steps=flow_steps,
+            structured_steps=structured,
             input=ipo_data.get("input", []),
             process=ipo_data.get("process", []),
             output=ipo_data.get("output", []),
@@ -140,7 +190,26 @@ class ScenarioFlowInference:
                 lines.append(f"    io: {io}")
             if node.state_transition:
                 t = node.state_transition
-                lines.append(f"    transition: {t.entity}.{t.field} -> {t.to_state}")
+                line = f"    transition: {t.entity}.{t.field} -> {t.to_state}"
+                # Surface the real source-level condition so the LLM can attach it
+                # to the right branch arm instead of guessing branch structure.
+                if t.guard_expr:
+                    line += f" WHEN {t.guard_expr}"
+                lines.append(line)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _alternate_paths_context(scenario: Scenario) -> str:
+        """Render the slice builder's mined conditional branches so the LLM has
+        real branch structure (condition + path) to ground GATEWAY arms in."""
+        alts = getattr(scenario, "alternate_paths", None) or []
+        if not alts:
+            return ""
+        lines = ["Known conditional branches (from execution-slice analysis):"]
+        for alt in alts:
+            cond = alt.get("condition", "?")
+            path = alt.get("path", []) or []
+            lines.append(f"- WHEN {cond}: {' -> '.join(path) if path else '(steps)'}")
         return "\n".join(lines)
 
     def _infer_steps(self, scenario: Scenario, summaries: dict[str, dict]) -> list[dict]:
@@ -168,22 +237,37 @@ class ScenarioFlowInference:
         return self._parse_json_response(response.text, "interfaces")
 
     def _build_steps_prompt(self, scenario: Scenario, summaries: dict[str, dict]) -> str:
+        alt_block = self._alternate_paths_context(scenario)
+        alt_section = f"\n{alt_block}\n" if alt_block else ""
         return (
-            "You are a software architect. Convert the following execution path into a coherent business process flow.\n"
+            "You are a software architect. Convert the following execution path into a coherent,\n"
+            "LEVELED business process flow — a 2-3 level hierarchy, not a flat list.\n"
             f"Scenario: {scenario.name} (Trigger: {scenario.trigger_type})\n\n"
             "Execution Path Nodes (with source location and behavior):\n"
-            + self._nodes_context(scenario, summaries) + "\n\n"
+            + self._nodes_context(scenario, summaries) + "\n"
+            + alt_section + "\n"
             "TASK:\n"
-            "1. Group functions into business steps.\n"
-            "2. Order steps logically.\n"
-            "3. Name steps in business terms.\n"
-            "4. Identify validations, transformations, persistence, and external interactions.\n"
-            "5. Use type USER_TASK for manual human steps (approval, review).\n"
-            "6. Use type GATEWAY for conditional branches (if/else decisions).\n"
-            "7. Use type DB for database operations, EXTERNAL for external API calls.\n"
-            "8. Ground every step in the nodes above — do not invent steps with no corresponding node.\n\n"
-            "OUTPUT JSON:\n"
-            '{"flow": [{"step": 1, "name": "Validate Order", "type": "PROCESS|GATEWAY|USER_TASK|DB|EXTERNAL", "description": "..."}]}'
+            "1. Group the steps into a few top-level business PHASES (e.g. 'Validate & Price', 'Persist & Notify').\n"
+            "2. Under each phase, nest the concrete steps as `children`, ordered logically and named in business terms.\n"
+            "3. For conditional logic use type GATEWAY and attach `branches`: one entry per arm with its real\n"
+            "   `condition` (prefer the WHEN-condition / branch condition shown above; else describe it) and the\n"
+            "   `steps` that run only in that arm. Use an 'else' condition for the fallback arm.\n"
+            "4. For repeated/iterative processing over a collection use type LOOP with the repeated work as `children`.\n"
+            "5. Use type USER_TASK for manual human steps (approval, review), DB for database operations,\n"
+            "   EXTERNAL for external API calls, PROCESS otherwise.\n"
+            "6. Set `source_ref` to the node's file:line when the step maps to a specific node.\n"
+            "7. Ground every step in the nodes above — do not invent steps with no corresponding node.\n\n"
+            "OUTPUT JSON (nested; omit empty children/branches):\n"
+            '{"flow": [\n'
+            '  {"name": "Validate & Price", "type": "PHASE", "children": [\n'
+            '     {"name": "Validate order items", "type": "PROCESS", "description": "...", "source_ref": "svc/order.py:42"},\n'
+            '     {"name": "Apply pricing", "type": "GATEWAY", "description": "...",\n'
+            '      "branches": [\n'
+            '        {"condition": "order.total > 1000", "steps": [{"name": "Apply premium discount", "type": "PROCESS"}]},\n'
+            '        {"condition": "else", "steps": [{"name": "Apply standard pricing", "type": "PROCESS"}]}\n'
+            '      ]}\n'
+            '  ]}\n'
+            ']}'
         )
 
     def _build_ipo_prompt(self, scenario: Scenario, flow_steps: list[dict], summaries: dict[str, dict]) -> str:
@@ -553,15 +637,17 @@ def persist_scenario_flows(
             art = artifacts.get(flow.scenario_id, {})
             conn.execute(
                 """INSERT OR REPLACE INTO scenario_flows
-                   (scan_id, scenario_id, domain, steps_json, input_json, process_json,
+                   (scan_id, scenario_id, domain, steps_json, structured_steps_json,
+                    input_json, process_json,
                     output_json, data_flow_json, interfaces_json,
                     mermaid, mermaid_flowchart, bpmn_xml, ipo_md, confidence, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     scan_id,
                     flow.scenario_id,
                     flow.domain,
                     json.dumps(flow.steps),
+                    json.dumps(flow.structured_steps),
                     json.dumps(flow.input),
                     json.dumps(flow.process),
                     json.dumps(flow.output),
@@ -610,6 +696,10 @@ def load_scenario_flows(scan_id: int, db_path: Path) -> tuple[list[ScenarioFlow]
             scenario_id=row["scenario_id"],
             domain=row["domain"],
             steps=_load_json(row["steps_json"], []),
+            structured_steps=_load_json(
+                row["structured_steps_json"] if "structured_steps_json" in row.keys() else None,
+                [],
+            ),
             input=_load_json(row["input_json"], []),
             process=_load_json(row["process_json"], []),
             output=_load_json(row["output_json"], []),

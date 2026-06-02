@@ -98,7 +98,17 @@ class BPMNGenerator:
         return _STEP_ACTOR.get(step.get("type", ""), _DEFAULT_ACTOR)
 
     def generate_mermaid_sequence(self, flow: ScenarioFlow) -> str:
-        """Generate a Mermaid sequence diagram with real message arrows."""
+        """Generate a Mermaid sequence diagram with real message arrows.
+
+        With `structured_steps`, GATEWAY arms render as `alt/else <condition>`
+        blocks and LOOP nodes as `loop` blocks, nesting their substeps — so the
+        diagram shows the conditional/iterative structure rather than a flat
+        message stream. Falls back to the flat per-step rendering otherwise.
+        """
+        structured = getattr(flow, "structured_steps", None)
+        if structured:
+            return self._sequence_from_structured(structured)
+
         if not flow.steps:
             return "sequenceDiagram\n    Note over System: No steps"
 
@@ -127,6 +137,69 @@ class BPMNGenerator:
 
             prev_actor = actor
 
+        return "\n".join(lines)
+
+    def _sequence_from_structured(self, structured: list[dict]) -> str:
+        """Render a Mermaid sequence diagram from hierarchical steps (see caller)."""
+        _WRAPPERS = {"PHASE", "GATEWAY", "LOOP"}
+
+        # Declare participants in first-appearance order across the whole tree.
+        seen: dict[str, None] = {"User": None}
+
+        def collect(seq: list[dict]) -> None:
+            for node in seq or []:
+                if not isinstance(node, dict):
+                    continue
+                ntype = (node.get("type") or "PROCESS").upper()
+                if ntype not in _WRAPPERS:
+                    seen[self._step_actor(node)] = None
+                for branch in node.get("branches", []) or []:
+                    collect(branch.get("steps", []))
+                collect(node.get("children", []))
+
+        collect(structured)
+        if len(seen) <= 1:  # only the synthetic User, no real steps
+            return "sequenceDiagram\n    Note over System: No steps"
+
+        lines = ["sequenceDiagram", "    autonumber"]
+        lines.extend(f"    participant {actor}" for actor in seen)
+
+        state = {"prev": "User"}
+
+        def render(seq: list[dict], depth: int) -> None:
+            pad = "    " + "    " * depth
+            for node in seq or []:
+                if not isinstance(node, dict):
+                    continue
+                ntype = (node.get("type") or "PROCESS").upper()
+                if ntype == "PHASE":
+                    render(node.get("children", []), depth)
+                elif ntype == "GATEWAY" and node.get("branches"):
+                    for i, branch in enumerate(node.get("branches", []) or []):
+                        raw = str(branch.get("condition", "?"))
+                        cond = _mermaid_label(raw)
+                        if i == 0:
+                            header = f"alt {cond}"
+                        elif raw.strip().lower() == "else":
+                            header = "else"  # avoid redundant "else else"
+                        else:
+                            header = f"else {cond}"
+                        lines.append(f"{pad}{header}")
+                        render(branch.get("steps", []), depth + 1)
+                    lines.append(f"{pad}end")
+                elif ntype == "LOOP":
+                    lines.append(f"{pad}loop {_mermaid_label(node.get('name', 'each item'))}")
+                    render(node.get("children", []), depth + 1)
+                    lines.append(f"{pad}end")
+                else:
+                    actor = self._step_actor(node)
+                    name = _step_display_name(node)
+                    lines.append(f"{pad}{state['prev']}->>{actor}: {name}")
+                    state["prev"] = actor
+                    if node.get("children"):
+                        render(node.get("children", []), depth)
+
+        render(structured, 0)
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -207,14 +280,19 @@ class BPMNGenerator:
     def generate_mermaid_flowchart(self, flow: ScenarioFlow) -> str:
         """Generate a Mermaid flowchart activity diagram.
 
-        Renders each step as a rectangle and each GATEWAY as a diamond with
-        two labeled outgoing edges that reconverge on the following step.
-        Start and end events are circles. Branch reconvergence is drawn
-        explicitly because Mermaid has no implicit vertical merge.
+        When `structured_steps` is present, renders the leveled hierarchy:
+        GATEWAY diamonds carry their real branch conditions as edge labels and
+        each branch's actual steps render inside the arm before reconverging;
+        LOOP nodes get a dashed `repeat` back-edge. Falls back to the flat
+        per-step rendering (generic yes/no arms) when no hierarchy was inferred.
 
         The terminal node is named `end_node` because `end` is a reserved
         keyword in Mermaid (used to close subgraph blocks).
         """
+        structured = getattr(flow, "structured_steps", None)
+        if structured:
+            return self._flowchart_from_structured(structured)
+
         nodes: list[str] = ['start(("Start"))']
         edges: list[str] = []
 
@@ -247,25 +325,148 @@ class BPMNGenerator:
         out.extend(f"    {e}" for e in edges)
         return "\n".join(out)
 
+    def _flowchart_from_structured(self, structured: list[dict]) -> str:
+        """Render a Mermaid flowchart from hierarchical steps (see caller)."""
+        nodes: list[str] = ['start(("Start"))']
+        edges: list[str] = []
+        ctr = {"n": 0}
+
+        def new_id(prefix: str) -> str:
+            ctr["n"] += 1
+            return f"{prefix}_{ctr['n']}"
+
+        def link(targets: list[str], dest: str, label: str | None) -> None:
+            lbl = f"|{_mermaid_label(label)}|" if label else ""
+            for src in targets:
+                edges.append(f"{src} -->{lbl} {dest}")
+
+        def render(seq: list[dict], prev_ids: list[str], first_label: str | None = None) -> list[str]:
+            """Return exit node ids after rendering `seq` chained from prev_ids.
+            `first_label` annotates only the edge(s) into the first node drawn."""
+            pending_label = first_label
+            for node in seq or []:
+                if not isinstance(node, dict):
+                    continue
+                ntype = (node.get("type") or "PROCESS").upper()
+                label = _mermaid_label(node.get("name", "Step"))
+
+                if ntype == "PHASE":
+                    prev_ids = render(node.get("children", []), prev_ids, pending_label)
+                    pending_label = None
+                elif ntype == "GATEWAY" and node.get("branches"):
+                    gid = new_id("gw")
+                    nodes.append(f'{gid}{{"{label}"}}')
+                    link(prev_ids, gid, pending_label)
+                    pending_label = None
+                    exits: list[str] = []
+                    for branch in node.get("branches", []) or []:
+                        cond = str(branch.get("condition", "?"))
+                        exits.extend(render(branch.get("steps", []), [gid], cond) or [gid])
+                    prev_ids = exits or [gid]
+                elif ntype == "LOOP":
+                    lid = new_id("loop")
+                    nodes.append(f'{lid}["⟳ for each: {label}"]')
+                    link(prev_ids, lid, pending_label)
+                    pending_label = None
+                    body_exits = render(node.get("children", []), [lid])
+                    # dashed back-edge conveys iteration without a real cycle
+                    for ex in body_exits:
+                        if ex != lid:
+                            edges.append(f"{ex} -.->|repeat| {lid}")
+                    prev_ids = body_exits or [lid]
+                else:
+                    sid = new_id("step")
+                    nodes.append(f'{sid}["{label}"]')
+                    link(prev_ids, sid, pending_label)
+                    pending_label = None
+                    prev_ids = [sid]
+                    if node.get("children"):
+                        prev_ids = render(node.get("children", []), prev_ids)
+            return prev_ids
+
+        exit_ids = render(structured, ["start"])
+        nodes.append('end_node(("End"))')
+        link(exit_ids or ["start"], "end_node", None)
+
+        out = ["flowchart TD"]
+        out.extend(f"    {n}" for n in nodes)
+        out.extend(f"    {e}" for e in edges)
+        return "\n".join(out)
+
     # ------------------------------------------------------------------
     # IPO markdown table
     # ------------------------------------------------------------------
 
     def generate_ipo_markdown(self, flow: ScenarioFlow) -> str:
-        """Generate IPO table in Markdown."""
+        """Generate IPO in Markdown.
+
+        Input/Output stay as a compact table. Process is rendered as a LEVELED
+        bullet list from `structured_steps` (phases → steps → conditional branch
+        arms) when available, so the processing logic reads at an appropriate
+        altitude instead of collapsing into one comma-joined cell. Falls back to
+        the flat comma-joined list when no hierarchy was inferred.
+        """
         lines = [
             "### Input-Process-Output (IPO)",
             "| Component | Description |",
             "|-----------|-------------|",
             f"| **Input** | {', '.join(flow.input) or '—'} |",
-            f"| **Process** | {', '.join(flow.process) or '—'} |",
             f"| **Output** | {', '.join(flow.output) or '—'} |",
         ]
+        lines.append("")
+        lines.append("#### Process")
+        structured = getattr(flow, "structured_steps", None)
+        if structured:
+            lines.extend(self._render_process_tree(structured))
+        elif flow.process:
+            lines.extend(f"- {p}" for p in flow.process)
+        else:
+            lines.append("—")
+
         if flow.data_flow:
             lines.append("")
             lines.append("#### Data State Transitions")
             lines.extend(f"- {df}" for df in flow.data_flow)
         return "\n".join(lines)
+
+    @staticmethod
+    def _render_process_tree(structured: list[dict], indent: int = 0) -> list[str]:
+        """Render hierarchical steps as a nested Markdown bullet list.
+
+        PHASE/LOOP wrappers and leaf steps become bullets; GATEWAY branch arms
+        render as `if <condition>:` / `else:` sub-bullets containing their steps.
+        """
+        out: list[str] = []
+        pad = "  " * indent
+        for node in structured or []:
+            if not isinstance(node, dict):
+                continue
+            name = node.get("name", "Step")
+            ntype = (node.get("type") or "PROCESS").upper()
+            desc = node.get("description", "")
+            label = name
+            if ntype == "LOOP":
+                label = f"for each: {name}"
+            elif ntype in ("DB", "EXTERNAL", "EXTERNAL_API", "QUEUE", "USER_TASK"):
+                label = f"{name} ({ntype})"
+            if desc and ntype not in ("PHASE",):
+                label = f"{label} — {desc}"
+            out.append(f"{pad}- {label}")
+
+            # GATEWAY: render each branch arm with its real condition.
+            for bi, branch in enumerate(node.get("branches", []) or []):
+                cond = branch.get("condition", "?")
+                kw = "else" if str(cond).strip().lower() == "else" else (
+                    f"if {cond}" if bi == 0 else f"elif {cond}")
+                out.append(f"{pad}  - {kw}:")
+                out.extend(
+                    BPMNGenerator._render_process_tree(branch.get("steps", []), indent + 2)
+                )
+            # Nested children (PHASE / LOOP bodies).
+            out.extend(
+                BPMNGenerator._render_process_tree(node.get("children", []), indent + 1)
+            )
+        return out
 
     # ------------------------------------------------------------------
     # State Machine (FSM) diagram

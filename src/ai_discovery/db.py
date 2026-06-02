@@ -17,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS scenario_flows (
     scenario_id     TEXT NOT NULL,
     domain          TEXT,
     steps_json      TEXT,
+    structured_steps_json TEXT,
     input_json      TEXT,
     process_json    TEXT,
     output_json     TEXT,
@@ -481,6 +482,15 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         # in _SCHEMA_SQL (run before this migration), so existing DBs gain it
         # automatically; this block only records the version bump.
         pass
+
+    if current < 11:
+        # Processing-logic level structuring: scenario_flows gains a hierarchical
+        # `structured_steps_json` (phases → steps → conditional branch arms). The
+        # legacy flat `steps_json` is derived from it, so existing DBs keep
+        # rendering from flat steps until the next scan repopulates the hierarchy.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(scenario_flows)").fetchall()}
+        if "structured_steps_json" not in cols:
+            conn.execute("ALTER TABLE scenario_flows ADD COLUMN structured_steps_json TEXT")
 
 
 # ---------------------------------------------------------------------------

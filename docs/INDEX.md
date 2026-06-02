@@ -68,7 +68,8 @@ Practical guides for working on specific areas:
 
 Design decisions recorded per session:
 
-- **`specs/2026-04-17-dev-infrastructure-design.md`** — This session's design: documentation reorganization, three custom skills, modular approach
+- **`specs/2026-04-17-dev-infrastructure-design.md`** — Documentation reorganization, three custom skills, modular approach
+- **`specs/2026-06-01-processing-logic-level-structuring.md`** — Assessment of how control flow (loops/conditionals) rolls up into spec prose; hierarchical `ScenarioFlow.structured_steps` + leveled IPO/flowchart/sequence rendering
 
 ---
 
