@@ -41,6 +41,8 @@ Practical guides for working on specific areas:
 - **`guides/parsers/extension-checklist.md`** — Step-by-step checklist: pre-flight → AST mapping → integration → validation
 - **`guides/parsers/language-patterns.md`** — Python vs Java vs C# vs JavaScript vs Go: AST differences, naming conventions, framework patterns
 
+> Beyond the tree-sitter parsers, an **import-map tier** (`parsers/import_map.py`) gives lightweight symbol + import + call-site extraction for Go/Rust/Ruby/PHP, and dedicated **JSP** (`parsers/jsp.py`) and **WebForms** (`parsers/webforms.py`) parsers feed server-rendered screen detection. See `architecture/components.md`.
+
 ### Pipeline & Performance
 *"The pipeline is slow. Where's the bottleneck? How do I optimize?"*
 
@@ -62,6 +64,24 @@ Practical guides for working on specific areas:
 
 - **`guides/exploring-results/navigation.md`** — `discover view` web dashboard (quality targets, histogram, weakest-docs, diagrams), plus `chat`/`impact`/`query` commands and first-pass audit recipe
 
+> Related outputs: `discover export-graph` emits a canonical knowledge-graph JSON (`generators/graph_export.py`), and the **ONBOARD/** tour guides (`generators/onboarding_generator.py`) give a per-domain pedagogical learning path through the high-confidence call chain.
+
+---
+
+## Recently Shipped Capabilities
+
+Cross-cutting features layered onto the core pipeline (most trace to assessment 07; see `assessments/07-understand-anything-comparison.md`):
+
+- **Louvain semantic batching** (`ai/semantic_batching.py`, A-1) — clusters Tier-1 chunks by call-graph community so each batched LLM call carries chunks that reference each other.
+- **Community narrowing in call resolution** (A-3) — file communities from high-confidence edges narrow stage-4 short-name candidates to the caller's community. See `architecture/decisions.md`.
+- **Import-map parser tier** (`parsers/import_map.py`, A-6) — Go/Rust/Ruby/PHP lightweight symbol + import extraction.
+- **ONBOARD tour-guide generator** (`generators/onboarding_generator.py`, A-7) — per-domain tours from the call graph.
+- **Multi-provider LLM layer** — bedrock / ollama / mlx-gemma / mlx-qwen / openai / gemini / anthropic, routed via `shared/llm_router.py`. See `architecture/overview.md` (LLM Tier Model).
+- **Fingerprint-based incremental re-scan** (`repo/resolver.py`) — non-git folder scans get a stable content fingerprint for change detection.
+- **JSP parsing & menu detection** — server-rendered (`.jsp`/`.aspx`) screen detection feeding screen-centric specs.
+- **`discover export-graph`** — canonical knowledge-graph JSON export (`generators/graph_export.py`).
+- **Hierarchical `structured_steps`** — see `specs/2026-06-01-processing-logic-level-structuring.md`.
+
 ---
 
 ## Specifications (Design Records)
@@ -70,6 +90,20 @@ Design decisions recorded per session:
 
 - **`specs/2026-04-17-dev-infrastructure-design.md`** — Documentation reorganization, three custom skills, modular approach
 - **`specs/2026-06-01-processing-logic-level-structuring.md`** — Assessment of how control flow (loops/conditionals) rolls up into spec prose; hierarchical `ScenarioFlow.structured_steps` + leveled IPO/flowchart/sequence rendering
+
+---
+
+## Assessments (Reviews & Gap Analyses)
+
+Point-in-time reviews, gap assessments, and implementation closures (chronological):
+
+- **`assessments/02-reverse-engineering-gap-assessment.md`** — Reverse-engineering gap assessment (2026-04-16): where output fell short of true reverse-engineering
+- **`assessments/02-reverse-engineering-implementation-plan.md`** — Implementation plan answering the gap assessment
+- **`assessments/03-discovery-output-quality-assessment.md`** — Discovery output quality improvement plan (2026-05-07), evaluated on the Java Spring Boot e-commerce corpus
+- **`assessments/04-reverse-spec-solution-review.md`** — Multi-agent objective review of architecture, design & implementation (2026-05-31), with per-finding status matrix
+- **`assessments/05-implementation-summary.md`** — Closure summary for the reverse-spec review findings (2026-05-31)
+- **`assessments/06-architecture-production-readiness-audit.md`** — Principal-architect production-readiness audit (2026-05-31)
+- **`assessments/07-understand-anything-comparison.md`** — Comparative assessment vs Understand-Anything (2026-06-06); source of the A-1/A-3/A-6/A-7 items (semantic batching, community narrowing, import-map tier, ONBOARD tours)
 
 ---
 

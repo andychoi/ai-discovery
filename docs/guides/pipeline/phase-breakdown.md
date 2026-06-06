@@ -1,19 +1,21 @@
 # Pipeline Phases: Detailed Breakdown
 
-Reference guide for all AI-Discovery pipeline phases: pre-pipeline setup (phases 1–4) and checkpoint phases (5–19). All phase numbers are integers — there are no decimal sub-phases. Optional / skippable stages (`execution_slices`, `process_mining`) get their own integer slot.
+Reference guide for all AI-Discovery pipeline phases. The canonical phase list lives in `_PHASE_SPECS` (`src/ai_discovery/pipeline.py`): a screen-centric checkpoint phase (2) plus the domain-centric checkpoint phases (5–19). A few non-checkpointed setup steps run before phase 2 (DB init, repo resolution, resume/rescan logic, scan-run creation). All phase numbers are integers — there are no decimal sub-phases. Optional / skippable stages (`execution_slices`, `process_mining`) get their own integer slot.
 
 ---
 
-## Pre-Pipeline Setup Phases (Not Checkpointed)
+## Pre-Pipeline Setup Steps (Not Checkpointed)
 
-### Phase 1: Database Initialization
+These run before phase 2 and are not tracked as checkpoint phases (no entry in `_PHASE_SPECS`).
+
+### Database Initialization
 **Input**: `db_path`  
 **Output**: SQLite schema ready  
 **Time**: < 1s
 
 Initializes SQLite database with schema (code_nodes, call_edges, domains, etc.). Enables WAL mode for concurrent writes. Checks schema version for migrations.
 
-### Phase 2: Repository Resolution
+### Repository Resolution
 **Input**: Repo URL or local path, branch  
 **Output**: `ResolvedRepo(commit_sha, branch, local_path)`  
 **Time**: 1–30s (depending on clone size)
@@ -22,17 +24,15 @@ If URL: clones repository to local cache (skip if cached).
 If local path: fingerprints it (checks commit SHA, branch).  
 Fallback: if target branch unavailable, tries main/master.
 
-### Phase 3: Resume/Rescan Logic
+### Resume/Rescan Logic
 **Input**: Previous scan run (if resuming)  
 **Output**: Decision to skip, resume, or rescan  
 **Time**: < 1s
 
-If `--resume` flag: loads previous scan state, skips already-parsed files.  
-If `--rescan` flag: deletes previous scan, starts fresh.  
-If same commit SHA: skips phases 5–7 (parsing), resumes at phase 9 (chunk).
+If `--resume` flag: loads previous scan state, resumes at the phase after the last completed checkpoint.  
+If `--rescan` flag: deletes previous scan, starts fresh.
 
-
-### Phase 4: Create Scan Run
+### Create Scan Run
 **Input**: Scan metadata (repo, branch, config)  
 **Output**: `scan_id` (unique identifier for this scan)  
 **Time**: < 1s
@@ -41,7 +41,25 @@ Creates entry in `scan_runs` table. Records start time, status, config. Later up
 
 ---
 
-## Checkpoint Phases (5–19)
+## Checkpoint Phases (2, 5–19)
+
+### Phase 2: Screen-Centric LLM Spec Generation
+**Input**: Resolved repo path  
+**Output**: Screen specs (`screen_specs` rows) + rendered screen markdown  
+**Time**: 1–15 min (LLM, only when a menu system is detected)
+
+Runs **before phase 5**, parallel to the domain-centric track (phases 5–19). A checkpointed phase (`screen_llm_specs` in `_PHASE_SPECS`):
+
+1. **Detect screens** — `detect_and_build_screens(repo_path)` scans for a menu system (JSON/YAML files, TS/JS constants, framework routing, WebForms, JSP). If none matches, the phase logs the formats tried and skips screen generation (no silent 0-screen run).
+2. **Map screens to backend** — `map_all_screens` links each screen to its frontend APIs, controllers/services, tables, batch jobs, and external interfaces.
+3. **Generate specs (LLM)** — one combined spec per screen; budget-gated (`_budget_ok`).
+4. **Persist + render** — `persist_screen_specs` then `write_all_screen_specs`.
+
+Screen specs are NEW user-facing entry points that link OUT to the domain-centric docs; they do not replace them.
+
+---
+
+## Domain-Centric Checkpoint Phases (5–19)
 
 ### Phase 5: Language Detection
 **Input**: Repository files  
@@ -80,28 +98,22 @@ Groups code nodes into business domains using namespace/path heuristics:
 
 Creates domain metadata (entry points, tech stack).
 
-### Phase 8: Persist Nodes
-**Input**: `CodeNode[]`, `Domain[]`  
-**Output**: Rows in `code_nodes` and `domains` tables  
-**Time**: 1–10s  
-**Note**: Internal step; not tracked as a checkpoint phase.
+**Inline (not a separate phase): persist nodes + build call graph.** Within phase 7, parsed `CodeNode[]` and `Domain[]` rows are written to the `code_nodes` and `domains` tables (duplicates handled; resume checkpoints set), and the call graph is built (`graph/call_graph.py:build_call_graph`). This is an inline operation — it has no entry in `_PHASE_SPECS`.
 
-Writes to SQLite. Handles duplicates (same node parsed multiple times). Sets resume checkpoints.
+**Call resolution is a 4-stage graded cascade** (first match wins; higher confidence earlier), plus a stage-0 symbol-index tier. Edges are deduped per `(caller, callee, edge_type)`, keeping the highest confidence. See `docs/architecture/decisions.md` for the authoritative table.
 
-Call graph building (multi-strategy 7-level confidence scoring) is integrated into the parse/chunk phases. For each unresolved call reference:
-1. Try exact match (confidence 1.0)
-2. Try class owner prefix (0.95)
-3. Try file local (0.90)
-4. Try module local (0.85)
-5. Try suffix unique (0.85)
-6. Try prefix overlap (0.65–0.75)
-7. Mark unresolved (0.50)
+- **Stage 0 — symbol index** (LSP/SCIP/compiler, `resolved_by: index`): authoritative resolution when a `symbol_index.json` is supplied; the only tier that resolves interface/polymorphic dispatch. Confidence 1.0. Absent an index, resolution is fully heuristic.
+- **Stage 1 — exact qualified-name match** (`exact`): confidence 1.0.
+- **Stage 2 — import-scoped** (`import_scope`): receiver matches a caller import — 0.95 when the import module matches the candidate's file, 0.85 otherwise.
+- **Stage 3 — receiver-type (DI)** (`receiver_type`): receiver is a field/ctor-param of a known type `T` and `T` defines the method — pin to `T.method` at 0.93. Interface→single-impl fallback (`interface_impl`) resolves at 0.90.
+- **Stage 4 — short-name contextual** (`short_name` / `short_name_community`): graded 0.95 … 0.6 — same class 0.95, same-file unique 0.90, same-module unique / unique suffix 0.85, call-graph community narrowing (unique-in-community 0.80, multiple 0.70), best prefix overlap 0.65–0.75, fan-out 0.60. Community narrowing (A-3) is built from the stage 0–3 edges (≥ 0.93) so the noisy short-name stage never feeds its own input.
+- **Stage 5 — unresolved** (`unresolved`): no candidate; one edge to the raw call name at confidence 0.5.
 
 ---
 
 ## Phases 8–10: Execution Slicing & Embedding
 
-### Phase 8: Build Execution Slices (Optional)
+### Phase 8: Build Execution Slices
 **Input**: `CodeNode[]`, `CallEdge[]`, entry points  
 **Output**: `Scenario[]` (execution scenarios from each entry point)  
 **Time**: 5–20s
@@ -154,6 +166,10 @@ Output:
 
 Uses Claude Haiku (fast) or Ollama gemma4:e2b (local).  
 Stores in `node_summaries` table.
+
+**Louvain semantic batching (A-1)**: when `semantic_batching` is enabled (default), chunks are grouped by call-graph community before the LLM pass (`ai/semantic_batching.py`). Phase-7 call edges collapse into a confidence-weighted file graph; `networkx` `louvain_communities` partitions it, and each community becomes one structured LLM call (caps: 10 chunks / 12k tokens per batch; undersized batches pooled by domain). The summarizer therefore sees a chunk's callers/callees instead of one chunk in isolation. If clustering fails it degrades loudly to deterministic domain/path grouping — Tier 1 never crashes or drops chunks.
+
+**Fingerprint-based cross-scan reuse (A-2)**: before summarizing, `reuse_prior_summaries(db_path, scan_id)` copies Tier-1 summaries from the latest prior scan for every node whose `(qualified_name, file_path, file_hash)` is unchanged (blank hashes never match, so a blank == blank join can't reuse across real changes). The resume guard then skips those nodes, so an incremental re-scan only pays for files that actually changed.
 
 ### Phase 12: Tier 2 Flow Analysis
 **Input**: `domain[]` + `node_summaries`  
@@ -254,7 +270,8 @@ Records end time.
 
 | Phase | Typical Duration | Cost | Bottleneck |
 |-------|---|---|---|
-| 1–4 (Pre-pipeline) | 10–100s | ~$0 | Cloning large repos |
+| Pre-pipeline setup | 10–100s | ~$0 | Cloning large repos |
+| 2 (Screen specs, when a menu is detected) | 1–15 min | ~$1–3 | Per-screen LLM generation |
 | 5–8 (Parse, Graph, Slices) | 30–300s | ~$0 | Call resolution complexity |
 | 9–10 (Chunk & Embed) | 30–120s | ~$0.05 | Embedding API quota |
 | 11 (Tier 1) | 2–10 min | ~$0.50 | High volume; LLM concurrency limit |

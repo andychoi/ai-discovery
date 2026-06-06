@@ -106,6 +106,10 @@ discover detect-screens /path/to/repo --output ./data
 
 # Check if specs are out of sync with source code
 discover verify-drift /path/to/repo --spec-dir ./data/specs
+
+# Export the canonical knowledge-graph JSON (nodes, call edges, domains, FKs,
+# FSMs, doc/screen index) — portable, diffable view of a completed scan
+discover export-graph -p myproject
 ```
 
 ### Supported Menu Formats (Hybrid Detection)
@@ -243,6 +247,8 @@ Five custom skills accelerate development. The first three help build the discov
 
 **Key insight**: Template approach (in `extension-checklist.md`) makes adding languages straightforward. Don't invent new patterns; follow the template.
 
+**Import-map tier**: Before writing a full tree-sitter parser, note the lightweight import-map tier (`parsers/import_map.py`) covers Go/Rust/Ruby/PHP via regex — it extracts imports, top-level symbols, and conservative call sites (no endpoint/entity extraction), turning "unsupported language" into a gradient. It's an on-ramp, not a replacement for a real AST parser.
+
 **Start here**: `docs/guides/parsers/extension-checklist.md`
 
 ---
@@ -280,6 +286,7 @@ Five custom skills accelerate development. The first three help build the discov
 2. Spot-check one entity end-to-end: `discover impact <Entity> -p <slug>`
 3. Probe coverage gaps: `discover chat -p <slug>`
 4. Audit low-confidence edges: `discover query "SELECT ... FROM call_edge WHERE confidence < 0.65 ..."`
+5. Onboard onto a domain: read the per-domain tour guides under `ONBOARD/` (`generators/onboarding_generator.py`) — a pedagogical path through the resolved call graph, entry point first.
 
 **Reference**: `docs/guides/exploring-results/navigation.md`
 

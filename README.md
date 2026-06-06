@@ -44,7 +44,7 @@ discover init
 ```
 
 This creates `discovery.yaml` with:
-- LLM provider selection (bedrock, ollama, mlx-gemma, mlx-qwen)
+- LLM provider selection (bedrock, ollama, mlx-gemma, mlx-qwen, openai, gemini, anthropic)
 - Model tier defaults (tier1, tier2, tier3d/tier3p)
 - RAG chunk settings
 - Optional process mining (Phase 16) config
@@ -70,12 +70,24 @@ Output: `./data/discovery-output/discovery.db` + markdown docs
 
 ## Supported Languages
 
+Two parser tiers: **full tree-sitter AST** (classes, calls, endpoints, entities) and a lightweight **import-map tier** (regex import/symbol extraction, no full AST) that turns "unsupported language" into a gradient.
+
+**Full AST tier (tree-sitter):**
+
 | Language | Parser | Extracts |
 |----------|--------|----------|
 | Python | tree-sitter-python | Classes, methods, FastAPI/Flask endpoints, call refs |
 | C# / ASP.NET | tree-sitter-c-sharp | `[ApiController]` classes, `[HttpGet]` endpoints, EF Core models, DI |
 | Java / Spring | tree-sitter-java | `@RestController`, `@Entity`, `@Scheduled` batch jobs, `@Autowired` DI |
 | JS / TS / Node | tree-sitter-javascript/typescript | Express routes, React components, classes, arrow functions |
+| JSP | `parsers/jsp.py` | `.jsp`/`.jspx`/`.tag`/`.tagx` pages → `ui_component` nodes linked to useBean classes; also a fallback screen source (folder hierarchy = menu) |
+| WebForms | `parsers/webforms.py` | `.aspx`/`.ascx` pages → `ui_component` nodes linked to code-behind handlers; also a fallback screen source |
+
+**Import-map tier (regex, lightweight):**
+
+| Languages | Parser | Extracts |
+|-----------|--------|----------|
+| Go / Rust / Ruby / PHP | `parsers/import_map.py` | Imports with local bindings, top-level symbols (functions/types/methods) with qualified names + line spans, conservative receiver call sites. No endpoint/entity extraction — an on-ramp, not a full AST parser. |
 
 ## Architecture (30 seconds)
 
@@ -84,10 +96,11 @@ Code → Parse (Tree-sitter) → Build call graph → Classify domains
 → Chunk intelligently → Embed for RAG → 3-tier LLM → Generate docs
 ```
 
-### Pipeline Phases (5–19)
+### Pipeline Phases (2–19)
 
 | Phase | Name                        | What it does                                               |
 |-------|-----------------------------|------------------------------------------------------------|
+| 2     | `screen_llm_specs`          | Screen-centric spec generation (detected menus/screens)    |
 | 5     | `lang_detect`               | Detect languages (extensions + manifests)                  |
 | 6     | `parse`                     | Tree-sitter AST extraction + raw-SQL entity mining         |
 | 7     | `domain_classify`           | Namespace/path heuristics + entity-kind classification     |
@@ -115,6 +128,8 @@ Phases 8 and 16 are opt-in. All phase numbers are integers — there are no deci
 | **Tier 3** | Haiku *(dev)* / Sonnet *(prod)* | Final doc rollup; Opus is opt-in via config |
 
 Tier 3 has two slots — `tier3d` (dev-default, fast/cheap) and `tier3p` (prod-default, deeper). Pass `--prod` at scan time to switch in `tier3p`. Override any slot via `discovery.yaml` to pin Opus where you want it.
+
+Tier 1 groups related chunks via **Louvain semantic batching** (`ai/semantic_batching.py`) so each summarization call sees a coherent code community instead of arbitrary slices. Call resolution reuses those communities to **narrow candidates** to the caller's community before fanning out globally (`graph/call_graph.py`), reducing same-name false matches.
 
 > ⚠ **`--prod` caveat — set a `tier3p` model your Bedrock account can actually invoke.** `--prod` swaps in the `tier3p` slot. If its model id isn't enabled in your AWS account/region, **every Tier-3 doc rollup fails** with `ValidationException: The provided model identifier is invalid` (Tier-1/2 still run, so the scan completes — but ASIS/ASD/ASSC rollups are missing). Set `bedrock.tier3p` in `discovery.yaml` to a model you have access to (e.g. the same Sonnet you use for `tier2`, or a current Opus). Verify with `aws bedrock list-foundation-models` / your account's enabled models. (`tier3d`, used for non-`--prod` scans, is independent.)
 
@@ -205,7 +220,7 @@ DISCOVERY_LLM_PROVIDER=bedrock
 
 # Or use local Ollama
 DISCOVERY_LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_URL=http://localhost:11434
 
 # Budget limit
 DISCOVERY_BUDGET_LIMIT_USD=50.0
@@ -247,7 +262,9 @@ discover init [--config discovery.yaml] [--provider ollama]
 
 **Options:**
 - `--config` — Output path for config file (default: `discovery.yaml`)
-- `--provider` — Default provider: `bedrock`, `ollama`, `mlx-gemma`, `mlx-qwen`
+- `--provider` — Default provider: `bedrock`, `ollama`, `mlx-gemma`, `mlx-qwen`, `openai`, `gemini`, `anthropic`
+
+> The cloud API providers (`openai`, `gemini`, `anthropic`) use native structured output. `anthropic` has no embeddings API, so set a different `rag.embedding_provider` (e.g. `bedrock`, `ollama`, `openai`, `gemini`) when chatting via Anthropic.
 
 **Output:** Generates `discovery.yaml` with comments explaining each setting.
 
@@ -271,7 +288,7 @@ discover scan REPO -p PROJECT_SLUG [OPTIONS]
 | `-b, --branch` | Git branch to analyze | `main` |
 | `-o, --output` | Output directory | `./data/discovery-output` |
 | `-c, --config` | YAML config file | (uses env vars) |
-| `--provider` | LLM provider: `bedrock` \| `ollama` | (from env) |
+| `--provider` | LLM provider: `bedrock` \| `ollama` \| `mlx-gemma` \| `mlx-qwen` \| `openai` \| `gemini` \| `anthropic` | (from env) |
 | `--budget` | Budget limit in USD | (from env) |
 | `--resume` | Resume from last complete phase | (disabled) |
 | `--resume-from` | Jump to specific phase (e.g., `17`, `self_review`) | (resume from last) |
@@ -293,6 +310,8 @@ discover scan repo -p myapp --skip-phases=16
 # Resume and skip process mining
 discover scan repo -p myapp --resume --skip-phases=16
 ```
+
+**Incremental re-scan:** across scans of the same project, unchanged files are detected via a per-file SHA256 (`code_nodes.file_hash`), and their Tier-1 summaries are copied from the latest prior scan instead of being regenerated — only changed files hit the LLM. `--rescan` forces a full rescan and ignores this reuse.
 
 **Phase Numbers:**
 - 5: Language detection
@@ -419,6 +438,51 @@ discover ingest-docs ./docs -p myproject \
 ```
 
 Stale/duplicate files are ingested with `status=Deprecated` (not skipped). Subsequent runs fetch the next free doc ID to avoid collisions.
+
+### `discover view` — Local Quality Dashboard
+
+Serve a read-only HTML dashboard for a completed scan — quality targets, confidence histogram, weakest-docs ranking, artifact presence, and client-rendered markdown/Mermaid/BPMN/DMN diagrams:
+
+```bash
+discover view -p myproject                  # serves on http://127.0.0.1:8765
+discover view -p myproject --port 9000 --no-open
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--host` | Bind host | `127.0.0.1` |
+| `--port` | Bind port | `8765` |
+| `--no-open` | Don't auto-open a browser window | (opens) |
+
+### `discover test-llm` — Probe LLM Connectivity
+
+Send one tiny request to the generation tier and one to the embedding endpoint, before a long scan, to catch connectivity / credential / model-ID problems in seconds:
+
+```bash
+discover test-llm                           # uses configured provider
+discover test-llm --provider anthropic --tier tier2 --skip-embedding
+```
+
+| Option | Description |
+|--------|-------------|
+| `--provider` | Override LLM provider |
+| `--tier` | Generation tier to probe (`tier1`\|`tier2`\|`tier3d`\|`tier3p`) |
+| `--skip-gen` | Skip the text-generation probe |
+| `--skip-embedding` | Skip the embedding probe |
+
+### `discover export-graph` — Canonical Knowledge-Graph JSON
+
+Export one portable, diffable JSON view of a scan — nodes, call edges (confidence + resolution stage), domains, FK relationships, entity FSMs, and a doc/screen index. Lets teammates and tools consume scan results without the SQLite file:
+
+```bash
+discover export-graph -p myproject          # → <output-dir>/knowledge-graph-myproject.json
+discover export-graph -p myproject --out ./kg.json --scan-id 3
+```
+
+| Option | Description |
+|--------|-------------|
+| `--out` | Destination JSON path (default: `knowledge-graph-<slug>.json`) |
+| `--scan-id` | Export a specific scan (default: latest) |
 
 ## Screen-Centric Documentation (v0.3+)
 
@@ -712,7 +776,8 @@ data/output-<project-slug>/
 ├── BPMN/{actor}.md                  # BPMN per business-actor lane (Phase 15)
 ├── DMN/{entity}.md                  # DMN decision tables per entity (Phase 15)
 ├── EARS/{entity}.md                 # EARS requirements per entity (Phase 15)
-└── IMPACT/{entity}.md               # Per-entity blast-radius docs
+├── IMPACT/{entity}.md               # Per-entity blast-radius docs
+└── ONBOARD/{slug}-onboard-{domain}.md  # Per-domain tour guides (pedagogical path through the call graph)
 ```
 
 The JSON backbone artifacts are the canonical output — `discover impact` and `discover federate` read them directly, and downstream tooling (DocHub, custom scripts) should prefer them over the SQLite DB for cross-tool portability.
@@ -779,7 +844,7 @@ pytest --cov                        # Coverage report
 ai-discovery/
 ├── src/ai_discovery/               # Main package
 │   ├── cli.py                      # Typer CLI entry point
-│   ├── pipeline.py                 # Pipeline orchestrator (phases 5–16)
+│   ├── pipeline.py                 # Pipeline orchestrator (phases 2–19)
 │   ├── config.py                   # Loader for discovery.yaml + env overrides
 │   ├── db.py                       # SQLite schema + helpers
 │   ├── ai/                         # LLM ops (chunker, summarizer, advisor, process_miner)
@@ -788,7 +853,7 @@ ai-discovery/
 │   ├── generators/                 # BPMN / DMN / EARS / doc generators + push (formerly output/)
 │   │   └── templates/              # Jinja2 templates for as-is, spec, interface, data-model
 │   ├── ingest/                     # Code ingestion + markdown classifier/runner
-│   ├── parsers/                    # Language-specific parsing (Python, C#, Java, JS/TS)
+│   ├── parsers/                    # Tree-sitter parsing (Python, C#, Java, JS/TS, JSP, WebForms) + import-map tier (Go/Rust/Ruby/PHP)
 │   ├── rag/                        # Embeddings, retrieval, chat REPL
 │   ├── repo/                       # Git operations
 │   ├── shared/                     # LLM routing, invoke, model defaults

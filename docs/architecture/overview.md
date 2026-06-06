@@ -23,6 +23,9 @@ Source Repository
   [1–4] Pre-pipeline ─── DB init, repo resolve, resume/rescan, scan_run create
        │
        ▼
+  [2] Screen LLM Specs ──── menu/route detection → screen-centric specs (parallel to domain phases)
+       │
+       ▼
   [5] Detect Languages ──── extension + manifest scan ──── {python, java, csharp, javascript}
        │
        ▼
@@ -103,14 +106,45 @@ AI-Discovery reconstructs and documents business processes at multiple abstracti
 
 ## LLM Tier Model
 
+Each tier maps to a model **slot** — `tier1` (fast summarization), `tier2` (flow
+analysis), `tier3d` (dev doc rollup, fast/cheap), `tier3p` (prod doc rollup,
+deeper). Tier 3 has two slots; pass `--prod` at scan time to swap in `tier3p`.
+
 | Tier | Slot | Bedrock default | Ollama default | Role | Concurrency |
 |------|------|-----------------|----------------|------|------------|
 | Tier 1 | `tier1` | claude-haiku-4-5 | gemma4:e2b (2B) | Chunk summarization | High (`max_concurrent`) |
 | Tier 2 | `tier2` | claude-sonnet-4-6 | gemma4:26b | Flow analysis | Per domain |
-| Tier 3 dev | `tier3d` | claude-haiku-4-5 | gemma4:26b | Doc rollup (fast/cheap) | Configurable |
-| Tier 3 prod | `tier3p` | claude-sonnet-4-6 | gemma4:31b | Doc rollup (deeper) | Configurable |
+| Tier 3 dev | `tier3d` | claude-sonnet-4-6 | gemma4:26b | Doc rollup (fast/cheap) | Configurable |
+| Tier 3 prod | `tier3p` | claude-opus-4-6 | gemma4:31b | Doc rollup (deeper) | Configurable |
 
-Tier 3 has two slots — `tier3d` (dev-default, cheap) and `tier3p` (prod-default, deeper). Pass `--prod` at scan time to swap in `tier3p`. Override any slot via `discovery.yaml` to pin Opus where you want it.
+### Multi-Provider Routing
+
+The same four tier slots are defined per **provider**. Seven providers ship:
+`bedrock`, `ollama`, `mlx-gemma`, `mlx-qwen`, `openai`, `gemini`, `anthropic`
+(the cloud APIs are OpenAI-compatible except `anthropic`, which uses the
+Anthropic SDK directly). Routing is resolved by `shared/llm_router.py` with this
+precedence: **runtime overrides → `DiscoveryConfig` → env vars → hardcoded
+defaults** (`shared/model_defaults.py`). Each provider has its own config block
+in `config.py` (`BedrockConfig`, `OllamaConfig`, `MLXGemmaConfig`,
+`MLXQwenConfig`, `OpenAIConfig`, `GeminiConfig`, `AnthropicConfig`), each exposing
+`tier1` / `tier2` / `tier3d` / `tier3p` (and a `tier1_num_ctx` for local
+runtimes).
+
+Switch provider and override any slot in `discovery.yaml`:
+
+```yaml
+provider: openai        # bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic
+max_concurrent: 10
+budget_limit_usd: 50.00
+
+openai:                 # block name matches the selected provider
+  tier1: gpt-5-nano
+  tier2: gpt-5-mini
+  tier3d: gpt-5-mini
+  tier3p: gpt-5.1
+```
+
+Override any slot via `discovery.yaml` to pin a deeper model where you want it.
 
 > ⚠ **`--prod` requires a `tier3p` model enabled in your Bedrock account.** If the configured `tier3p` id isn't invokable, every Tier-3 doc rollup fails with `ValidationException: The provided model identifier is invalid` — the scan still completes (Tier-1/2 run) but ASIS/ASD/ASSC rollups are absent. Set `bedrock.tier3p` in `discovery.yaml` to a model you have access to. `tier3d` (non-`--prod`) is unaffected.
 
@@ -147,6 +181,7 @@ DocHub prefix folders:
 | as-is-schema | `ASSC/` | `myproj-orders-as-is-schema.md` |
 | process-flow | `PF/` | `myproj-scenario-create-order-process-flow.md` |
 | spec | `SPEC/` | `myproj-orders-spec.md` |
+| onboard | `ONBOARD/` | `myproj-onboard-orders.md` (per-domain tour guide, `generators/onboarding_generator.py`) |
 
 ---
 

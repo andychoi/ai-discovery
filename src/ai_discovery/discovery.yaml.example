@@ -1,7 +1,7 @@
 # discovery.yaml — Brownfield Discovery CLI configuration
 # Copy to your project directory and customize
 
-provider: bedrock              # bedrock | ollama | mlx-gemma | mlx-qwen
+provider: bedrock              # bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic
 budget_limit_usd: 50.0        # Max estimated USD spend per scan
 max_concurrent: 10             # Max concurrent Tier 1 summarization threads
 
@@ -42,6 +42,35 @@ mlx_qwen:
   tier2: mlx-community/Qwen3.5-4B-MLX-4bit
   tier3d: mlx-community/Qwen3.5-9B-MLX-4bit
   tier3p: mlx-community/Qwen3.5-27B-4bit
+
+# Cloud API providers (native structured output). Uncomment the block that
+# matches `provider:` above. api_key may be left empty to fall back to the
+# provider's standard env var (OPENAI_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY).
+#
+# openai:                          # OpenAI (api.openai.com)
+#   base_url: https://api.openai.com/v1
+#   api_key: ""                    # or OPENAI_API_KEY env
+#   tier1: gpt-5-nano              # cheap: chunk summaries
+#   tier2: gpt-5-mini              # mid: flow analysis
+#   tier3d: gpt-5-mini             # dev: doc generation
+#   tier3p: gpt-5.1                # prod: doc generation (--prod)
+#
+# gemini:                          # Google Gemini (OpenAI-compatible endpoint)
+#   base_url: https://generativelanguage.googleapis.com/v1beta/openai
+#   api_key: ""                    # or GEMINI_API_KEY env
+#   tier1: gemini-2.5-flash-lite   # cheap: chunk summaries
+#   tier2: gemini-3.5-flash        # mid: flow analysis
+#   tier3d: gemini-3.5-flash       # dev: doc generation
+#   tier3p: gemini-2.5-pro         # prod: doc generation (--prod)
+#
+# anthropic:                       # Anthropic direct (api.anthropic.com)
+#   base_url: https://api.anthropic.com
+#   api_key: ""                    # or ANTHROPIC_API_KEY env
+#   tier1: claude-haiku-4-5        # cheap: chunk summaries
+#   tier2: claude-sonnet-4-6       # mid: flow analysis
+#   tier3d: claude-sonnet-4-6      # dev: doc generation
+#   tier3p: claude-opus-4-8        # prod: doc generation (--prod)
+#   # No embeddings API — set rag.embedding_provider to bedrock/ollama/openai/gemini.
 
 rag:
   embedding_provider: bedrock   # bedrock | ollama

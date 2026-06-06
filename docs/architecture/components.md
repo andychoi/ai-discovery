@@ -19,7 +19,10 @@ src/ai_discovery/
 │   ├── python_parser.py ← Python (tree-sitter)
 │   ├── java.py          ← Java (tree-sitter)
 │   ├── csharp.py        ← C# (tree-sitter)
-│   └── javascript.py    ← JS/TS (tree-sitter)
+│   ├── javascript.py    ← JS/TS (tree-sitter)
+│   ├── import_map.py    ← Import-map tier (regex): Go/Rust/Ruby/PHP symbols + imports + call sites
+│   ├── jsp.py           ← JSP (.jsp/.jspx/.tag) → ui_component nodes
+│   └── webforms.py      ← WebForms (.aspx/.ascx) → ui_component nodes
 │
 ├── graph/
 │   ├── models.py        ← CodeNode, CallEdge, Domain, Scenario, ExecutionNode, ScenarioFlow
@@ -33,6 +36,7 @@ src/ai_discovery/
 │   ├── rollup.py        ← Tier 3: full SDLC doc generation
 │   ├── self_review.py   ← Claim extraction + RAG-grounded verification
 │   ├── llm_client.py    ← Unified Bedrock / Ollama / MLX client + cost tracking
+│   ├── semantic_batching.py ← Louvain community clustering of Tier-1 chunks (one structured call per community)
 │   ├── flow_clustering.py ← Intent clustering for scenario grouping
 │   └── process_miner.py ← PM4Py integration for process discovery
 │
@@ -42,9 +46,11 @@ src/ai_discovery/
 │   ├── retriever.py     ← KNN semantic search
 │   └── chat.py          ← Interactive RAG REPL
 │
-├── output/
+├── generators/
 │   ├── doc_generator.py ← Jinja2 render; slug doc_ids; PREFIX folder layout
 │   ├── bpmn_generator.py← Mermaid (sequence + flowchart), BPMN 2.0 XML, IPO table, FSM, pseudo event log
+│   ├── onboarding_generator.py ← ONBOARD/ per-domain tour guides from the call graph (table = deterministic, narrative = 1 Tier-2 call)
+│   ├── graph_export.py  ← Canonical knowledge-graph JSON (`discover export-graph`)
 │   ├── push.py          ← Ingest to DocHub API / Gitea / offline copy
 │   └── templates/       ← *.md.j2 per doc type
 │
@@ -62,6 +68,15 @@ src/ai_discovery/
   - Converts AST to `CodeNode` + call references
   - **Hard problem**: Name resolution (what function is being called?)
 
+- **`parsers/import_map.py`** — Import-map tier (regex, not tree-sitter)
+  - Lightweight symbol + import + call-site extraction for Go/Rust/Ruby/PHP
+  - Module separators normalized to dots so Stage-2 import-scoped resolution works unchanged
+  - Turns "unsupported language" from a cliff into a gradient (the on-ramp, not the destination)
+
+- **`parsers/jsp.py`, `parsers/webforms.py`** — Server-rendered page parsers
+  - JSP (`.jsp`/`.jspx`/`.tag`) and WebForms (`.aspx`/`.ascx`) → `ui_component` nodes linked to their backing class
+  - Feed folder-hierarchy-based screen detection when no JS menu/router exists
+
 - **`graph/call_graph.py`** — Call resolution + execution slicing
   - Multi-strategy name resolution (7-level confidence scoring)
   - `ExecutionSliceBuilder`: BFS traversal from entry points
@@ -76,6 +91,11 @@ src/ai_discovery/
 - **Tier 1: `ai/summarizer.py`** (Haiku/fast)
   - Per-chunk summaries (purpose, business_rules, io_summary)
   - High concurrency; cost-effective
+
+- **`ai/semantic_batching.py`** — Louvain community batching for Tier 1
+  - Clusters files by call-graph community (weighted file graph from Phase-7 edges) before summarization
+  - One structured LLM call per community, so each batch carries chunks that actually reference each other
+  - Degrades loudly to deterministic domain/path grouping (never drops chunks)
   
 - **Tier 2: `ai/flow_analyzer.py`** (Sonnet/standard)
   - Per-domain flow analysis
@@ -86,16 +106,20 @@ src/ai_discovery/
   - Self-review + claim verification via RAG
 
 ### Output & Storage
-- **`output/bpmn_generator.py`** — Artifact generation
+- **`generators/bpmn_generator.py`** — Artifact generation
   - BPMN 2.0 XML with swimlanes
   - Mermaid sequence/state diagrams
   - Mermaid flowchart activity diagrams (renders inline on GitHub; no external server, no extra binary)
   - IPO markdown tables
   - Pseudo event logs for process mining
 
-- **`output/doc_generator.py`** — Jinja2 rendering
+- **`generators/doc_generator.py`** — Jinja2 rendering
   - Converts generated content to markdown
   - Folder layout: `data/{slug}/{PREFIX}/{doc_id}.md`
+
+- **`generators/onboarding_generator.py`** — ONBOARD tour guides
+  - `ONBOARD/{domain}.md`: a per-domain learning path — entry points first, then BFS down the high-confidence call chain, each step carrying its file:line + Tier-1 purpose
+  - Deterministic step table; one Tier-2 call per domain writes the narrative around it (a narrative failure never blocks the table)
 
 ### Configuration & Execution
 - **`pipeline.py`** — Orchestrator

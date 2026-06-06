@@ -61,10 +61,15 @@ hard-targeted).
 headline architectural recommendation, consumer side: when a repo ships an
 authoritative `symbol_index.json` (a tool-agnostic edge list any SCIP/LSIF/
 compiler/DI-aware exporter can emit), `build_call_graph` trusts it over every
-heuristic. It is the only tier that can resolve interface/polymorphic dispatch —
-which the name/type heuristics fundamentally cannot. Absent an index, resolution
-is fully heuristic (the feature is purely additive). Producing the index is left
-to external tooling; gauged by the `lsp-interface-dispatch` corpus fixture.
+heuristic. The pipeline loads it via `graph/symbol_index.load_symbol_index`
+(filenames `symbol_index.json` / `.scip.json` / `scip_index.json` at the repo
+root or scan output dir) and passes the resulting `SymbolIndex` into
+`build_call_graph(nodes, symbol_index=…)`; a Stage-0 hit is tagged
+`resolved_by: index` at confidence 1.0. It is the only tier that can resolve
+interface/polymorphic dispatch — which the name/type heuristics fundamentally
+cannot. Absent an index, resolution is fully heuristic (the feature is purely
+additive). Producing the index is left to external tooling; gauged by the
+`lsp-interface-dispatch` corpus fixture.
 
 ### Legacy 7-level framing (historical)
 The original prose ranked levels exact → prefix → suffix → external →

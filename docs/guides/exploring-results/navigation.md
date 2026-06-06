@@ -18,6 +18,7 @@ A local read-only web viewer that shows, in one page:
 - **Artifact presence** — which of the 11 canonical artifacts (DB, FSM JSON, cross-links, BPMN dir, …) actually got written
 - **Docs tree** — every rendered markdown, with confidence / unverified-claim chips
 - **Diagram viewers** — mermaid, BPMN, and DMN render inline (CDN libraries; requires internet on first load)
+- **Node drill-down + search** — search nodes by name and open a per-node detail page (callers/callees, summary) via `/search` and `/node/<qualified_name>`
 
 ```bash
 discover view -p myproj --port 9000 --no-open   # custom port, don't auto-open
@@ -125,7 +126,7 @@ discover query \
   --db data/discovery-output/<slug>/discovery-<slug>.db
 ```
 
-The 7-level confidence scheme is designed for triage — sort ascending and hand-verify the bottom 10-20 edges. See `guides/call-graph/resolution-heuristics.md` for what each level means.
+The graded confidence scheme (a 4-stage cascade plus a stage-0 symbol-index tier, confidences 0.5–1.0) is designed for triage — sort ascending and hand-verify the bottom 10-20 edges. See `guides/call-graph/resolution-heuristics.md` for what each stage means.
 
 ### 5. Cross-repo federation (optional)
 
@@ -139,6 +140,19 @@ discover impact Order -p federated -o ./data/discovery-output
 ```
 
 `impact` works on the federated tree the same way it works on a single scan.
+
+### 6. Export a portable knowledge graph (optional)
+
+For downstream tooling that shouldn't depend on the SQLite file, export one canonical knowledge-graph JSON — nodes, call edges (with confidence + resolution stage), domains, FK relationships, entity FSMs, and a doc/screen index:
+
+```bash
+discover export-graph -p <slug>
+# → writes data/discovery-output/<slug>/knowledge-graph-<slug>.json
+
+discover export-graph -p <slug> --out ./kg.json --scan-id 3   # specific scan / path
+```
+
+It's a portable, diffable VIEW of the discovery DB — commit it so teammates and tools can consume scan results without the `.db`.
 
 ---
 
