@@ -203,3 +203,40 @@ def test_menu_item_to_dict():
     assert result["label"] == "Test Menu"
     assert result["icon"] == "icon-test"
     assert result["roles"] == ["admin", "user"]
+
+
+# ---------------------------------------------------------------------------
+# C-1: explicit skip signal — no silent 0-screen runs
+# ---------------------------------------------------------------------------
+
+def test_no_menu_emits_explicit_skip_warning(temp_repo, caplog):
+    """When no detector matches, the runtime must say so explicitly — naming
+    the formats tried — instead of silently yielding 0 screens."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger="ai_discovery.menu_detector"):
+        menu_items, screens = detect_and_build_screens(temp_repo)
+    assert menu_items is None and screens == []
+    warning = "\n".join(r.message for r in caplog.records)
+    assert "No menu system detected" in warning
+    assert "tried:" in warning
+    assert "screen generation skipped" in warning
+
+
+def test_detect_records_matched_format(temp_repo):
+    """HybridMenuDetector exposes which strategy matched, for diagnostics."""
+    (temp_repo / "menu.json").write_text(
+        '[{"label": "Orders", "path": "/orders"}]'
+    )
+    detector = HybridMenuDetector()
+    items = detector.detect(temp_repo)
+    assert items
+    assert detector.matched_format == "JSON/YAML menu file"
+
+
+def test_supported_menu_formats_constant():
+    """The formats list the skip message names must match the detector chain."""
+    from ai_discovery.menu_detector import SUPPORTED_MENU_FORMATS
+    assert len(SUPPORTED_MENU_FORMATS) == 5
+    joined = " ".join(SUPPORTED_MENU_FORMATS).lower()
+    for needle in ("json", "typescript", "router", "webforms", "jsp"):
+        assert needle in joined

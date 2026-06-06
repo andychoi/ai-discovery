@@ -404,11 +404,24 @@ class JspMenuDetector(MenuDetector):
         return build(root, "")
 
 
+# Human-readable labels for the detector chain, in detection order. The
+# explicit "menu format unsupported — skipped" signal (C-1) names these so a
+# 0-screen run is diagnosable instead of silent.
+SUPPORTED_MENU_FORMATS: tuple[str, ...] = (
+    "JSON/YAML menu file",
+    "TypeScript/JS menu constant",
+    "Vue/React/Angular router",
+    "WebForms .aspx pages",
+    "JSP pages",
+)
+
+
 class HybridMenuDetector:
     """
     Hybrid detector that tries multiple strategies.
 
-    Returns the first format that matches.
+    Returns the first format that matches; `matched_format` records which
+    strategy won (None when nothing matched) for skip diagnostics.
     """
 
     def __init__(self):
@@ -419,6 +432,7 @@ class HybridMenuDetector:
             WebFormsMenuDetector(),
             JspMenuDetector(),
         ]
+        self.matched_format: Optional[str] = None
 
     def detect(self, repo_path: Path) -> Optional[list[MenuItem]]:
         """
@@ -427,14 +441,16 @@ class HybridMenuDetector:
         Returns list of root MenuItem objects, or None if no menu found.
         """
         repo = Path(repo_path)
+        self.matched_format = None
 
-        for detector in self.detectors:
+        for detector, label in zip(self.detectors, SUPPORTED_MENU_FORMATS):
             try:
                 result = detector.detect(repo)
                 if result:
+                    self.matched_format = label
                     return result
             except Exception as e:
-                print(f"Warning: {detector.__class__.__name__} failed: {e}")
+                logger.warning("%s failed: %s", detector.__class__.__name__, e)
 
         return None
 
@@ -520,7 +536,18 @@ def detect_and_build_screens(repo_path: Path) -> tuple[Optional[list[MenuItem]],
     menu_items = detector.detect(repo_path)
 
     if not menu_items:
+        # C-1: an app with no detectable menu must say so loudly — a silent
+        # 0-screen run reads as "no screens in this app" when it usually means
+        # "menu format unsupported".
+        logger.warning(
+            "No menu system detected — tried: %s. Menu format unsupported or "
+            "no menu present; screen generation skipped.",
+            ", ".join(SUPPORTED_MENU_FORMATS),
+        )
         return None, []
 
+    logger.info(
+        "Menu detected via %s", detector.matched_format or "unknown format"
+    )
     screens = build_screen_map(menu_items, repo_path)
     return menu_items, screens

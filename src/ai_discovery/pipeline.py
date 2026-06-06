@@ -497,7 +497,12 @@ def run_pipeline(
                 menu_items, screens = detect_and_build_screens(resolved.repo_path)
 
             if not screens:
-                console.print("[yellow]No screens detected — skipping Phase 2 LLM.[/]")
+                from .menu_detector import SUPPORTED_MENU_FORMATS
+                console.print(
+                    "[yellow]No menu system detected — menu format unsupported "
+                    "or no menu present; skipping screen specs.[/]\n"
+                    f"  [dim]Formats tried: {', '.join(SUPPORTED_MENU_FORMATS)}[/]"
+                )
             else:
                 console.print(f"  Screens detected: [green]{len(screens)}[/]")
 
