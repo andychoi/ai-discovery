@@ -339,6 +339,48 @@ def test_max_tokens_field_for():
     assert llm_router.max_tokens_field_for("gemini") == "max_tokens"
 
 
+# ── model_defaults.rates_for_model ($/1M tokens, per model family) ───────────
+
+
+from ai_discovery.shared.model_defaults import rates_for_model  # noqa: E402
+
+
+@pytest.mark.parametrize("model,expected", [
+    # Claude — current pricing, both direct aliases and Bedrock-prefixed IDs
+    ("claude-opus-4-8", (5.0, 25.0)),
+    ("us.anthropic.claude-sonnet-4-6", (3.0, 15.0)),
+    ("us.anthropic.claude-haiku-4-5-20251001-v1:0", (1.0, 5.0)),
+    # OpenAI gpt-5 family — specific variants must win over the family match
+    ("gpt-5-nano", (0.05, 0.40)),
+    ("gpt-5-mini", (0.25, 2.0)),
+    ("gpt-5.1", (1.25, 10.0)),
+    # Gemini — flash-lite must win over flash; pro family is the general match
+    ("gemini-2.5-flash-lite", (0.10, 0.40)),
+    ("gemini-3.5-flash", (0.30, 2.50)),
+    ("gemini-2.5-pro", (1.25, 10.0)),
+])
+def test_rates_for_model_families(model, expected):
+    assert rates_for_model(model) == expected
+
+
+def test_rates_for_model_local_providers_are_free():
+    assert rates_for_model("gemma4:31b", provider="ollama") == (0.0, 0.0)
+    assert rates_for_model(
+        "mlx-community/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit",
+        provider="mlx-qwen") == (0.0, 0.0)
+
+
+def test_rates_for_model_local_claude_distill_still_free():
+    """A local model whose NAME mentions a Claude family must not be billed —
+    provider locality wins over name matching."""
+    assert rates_for_model("Qwen3.5-27B-Claude-4.6-Opus-Distilled",
+                           provider="ollama") == (0.0, 0.0)
+
+
+def test_rates_for_model_unknown_cloud_uses_conservative_default():
+    assert rates_for_model("some-future-model", provider="openai") == (3.0, 15.0)
+
+
 # ── llm_router: resolution + dispatch ────────────────────────────────────────
 
 

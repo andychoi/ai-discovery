@@ -23,7 +23,7 @@ from ..config import DiscoveryConfig
 log = logging.getLogger(__name__)
 
 from ai_discovery.shared import llm_router
-from ai_discovery.shared.model_defaults import MODELS
+from ai_discovery.shared.model_defaults import MODELS, rates_for_model
 from ai_discovery.shared.llm_invoke import (
     converse_bedrock, invoke_anthropic_structured, invoke_openai_compat_structured,
     warm_ollama, unload_ollama,
@@ -595,12 +595,12 @@ class LLMClient:
         entry["calls"] += 1
         entry["tokens_in"] += tokens_in
         entry["tokens_out"] += tokens_out
-        cost_per_1m = {
-            "tier1": (0.80, 4.0), "tier2": (3.0, 15.0), "tier3": (15.0, 75.0),
-            "screen": (3.0, 15.0),  # Sonnet 4.6 rates (same as tier2)
-            "advisor": (15.0, 75.0),  # Opus 4.7 rates
-        }
-        in_rate, out_rate = cost_per_1m.get(tier, (3.0, 15.0))
+        # Per-model rates (shared/model_defaults.MODEL_RATES): each tier runs a
+        # fixed model per scan, so recomputing the cumulative estimate with the
+        # current model's rate is exact. Local providers rate at $0 — phantom
+        # cost previously accrued at Bedrock rates and could trip the pipeline
+        # budget guard on long Ollama/MLX scans.
+        in_rate, out_rate = rates_for_model(model, self._config.provider)
         entry["est_usd"] = (
             entry["tokens_in"] / 1_000_000 * in_rate
             + entry["tokens_out"] / 1_000_000 * out_rate

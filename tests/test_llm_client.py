@@ -100,6 +100,36 @@ def test_total_cost():
     assert client.total_cost_usd() > 0
 
 
+def test_cost_rates_per_model_bedrock_haiku():
+    """tier1 on Bedrock runs Haiku 4.5 — $1/1M in, $5/1M out."""
+    cfg = DiscoveryConfig(provider="bedrock")
+    client = LLMClient(cfg)
+    with patch(_BEDROCK_TARGET, return_value=("text", 1_000_000, 500_000)):
+        client.invoke("tier1", "p")
+    assert client.total_cost_usd() == pytest.approx(1.0 * 1.0 + 0.5 * 5.0)
+
+
+def test_cost_rates_per_model_openai_mini():
+    """tier2 on OpenAI runs gpt-5-mini — $0.25/1M in, $2/1M out."""
+    cfg = DiscoveryConfig(provider="openai")
+    client = LLMClient(cfg)
+    with patch(_OPENAI_TARGET, return_value=("text", 1_000_000, 1_000_000)):
+        client.invoke("tier2", "p")
+    assert client.total_cost_usd() == pytest.approx(0.25 + 2.0)
+
+
+def test_cost_rates_local_provider_is_free():
+    """Local inference has no per-token cost — phantom cost would trip the
+    pipeline budget guard on long Ollama/MLX scans."""
+    cfg = DiscoveryConfig(provider="ollama")
+    client = LLMClient(cfg)
+    with patch(_OLLAMA_TARGET, return_value=("text", 5_000_000, 5_000_000)):
+        client.invoke("tier1", "p")
+        client.invoke("tier3", "p")
+    assert client.total_cost_usd() == 0.0
+    assert client.get_costs()["tier1"]["calls"] == 1  # tokens still tracked
+
+
 def test_invalid_provider():
     cfg = DiscoveryConfig(provider="unknown")
     client = LLMClient(cfg)

@@ -140,3 +140,55 @@ for _provider, _models in MODELS.items():
         _models.setdefault("deep", _models["expert"])
 
 DEFAULT_PROVIDER = "ollama"
+
+
+# ── Cost rates ($ per 1M tokens: input, output) ───────────────────────────────
+# Estimates for cost reporting and budget guarding — matched by model-ID
+# substring, most specific fragment first. Update alongside MODELS when
+# provider pricing changes.
+
+_LOCAL_PROVIDERS = frozenset({"ollama", "mlx-gemma", "mlx-qwen"})
+
+MODEL_RATES: tuple[tuple[str, float, float], ...] = (
+    # Anthropic Claude — matches direct aliases AND Bedrock-prefixed IDs
+    # (us.anthropic.claude-…). Opus 4.x $5/$25, Sonnet 4.6 $3/$15,
+    # Haiku 4.5 $1/$5.
+    ("opus",   5.0, 25.0),
+    ("sonnet", 3.0, 15.0),
+    ("haiku",  1.0, 5.0),
+    # OpenAI gpt-5 family (specific variants before the family match).
+    ("gpt-5-nano", 0.05, 0.40),
+    ("gpt-5-mini", 0.25, 2.0),
+    ("gpt-5",      1.25, 10.0),   # gpt-5 / gpt-5.1
+    # Google Gemini (embedding and flash-lite before flash; bare "gemini"
+    # catches the pro family). gemini-3.x flash rates approximated with the
+    # 2.5-flash tier — verify against current pricing when it matters.
+    ("gemini-embedding", 0.15, 0.0),
+    ("flash-lite", 0.10, 0.40),
+    ("flash",      0.30, 2.50),
+    ("gemini",     1.25, 10.0),
+    # Embeddings (no output tokens)
+    ("titan-embed",            0.02, 0.0),
+    ("text-embedding-3-small", 0.02, 0.0),
+    ("text-embedding-3-large", 0.13, 0.0),
+)
+
+_DEFAULT_CLOUD_RATE = (3.0, 15.0)  # unknown cloud model — Sonnet-class, conservative
+
+
+def rates_for_model(model: str, provider: str | None = None) -> tuple[float, float]:
+    """($ per 1M input tokens, $ per 1M output tokens) for *model*.
+
+    Local providers are free regardless of the model name — checked before
+    name matching so a local distill named after a Claude family (e.g.
+    Qwen…-Claude-4.6-Opus-Distilled) is not billed. Unknown cloud models fall
+    back to a conservative Sonnet-class default so budget guards stay safe
+    rather than optimistic.
+    """
+    if provider in _LOCAL_PROVIDERS:
+        return 0.0, 0.0
+    needle = model.lower()
+    for fragment, in_rate, out_rate in MODEL_RATES:
+        if fragment in needle:
+            return in_rate, out_rate
+    return _DEFAULT_CLOUD_RATE
