@@ -422,17 +422,10 @@ def embed_openai_compat(
 # ── Anthropic direct (api.anthropic.com via the anthropic SDK) ─────────────
 
 
-def invoke_anthropic(
-    model: str, prompt: str, max_tokens: int = 4096,
-    api_key: str = "", base_url: str = "",
-) -> tuple[str, int, int]:
-    """Invoke the Anthropic Messages API directly. Returns (text, tokens_in, tokens_out).
-
-    Uses the official ``anthropic`` SDK (optional dependency — same lazy-import
-    pattern as the native advisor in ai/llm_client.py). With no ``api_key``
-    argument the SDK resolves ANTHROPIC_API_KEY from the environment. The SDK
-    auto-retries 429/5xx with exponential backoff.
-    """
+def _anthropic_client(api_key: str = "", base_url: str = ""):
+    """Build an Anthropic SDK client (lazy optional import — same pattern as
+    the native advisor in ai/llm_client.py). With no ``api_key`` the SDK
+    resolves ANTHROPIC_API_KEY from the environment."""
     try:
         import anthropic
     except ImportError:
@@ -444,8 +437,26 @@ def invoke_anthropic(
         kwargs["api_key"] = api_key
     if base_url and base_url != "https://api.anthropic.com":
         kwargs["base_url"] = base_url
+    return anthropic.Anthropic(**kwargs)
+
+
+def _anthropic_usage(response) -> tuple[int, int]:
+    tok_in = getattr(response.usage, "input_tokens", 0) or 0
+    tok_out = getattr(response.usage, "output_tokens", 0) or 0
+    return int(tok_in), int(tok_out)
+
+
+def invoke_anthropic(
+    model: str, prompt: str, max_tokens: int = 4096,
+    api_key: str = "", base_url: str = "",
+) -> tuple[str, int, int]:
+    """Invoke the Anthropic Messages API directly. Returns (text, tokens_in, tokens_out).
+
+    Uses the official ``anthropic`` SDK (optional dependency). The SDK
+    auto-retries 429/5xx with exponential backoff.
+    """
+    client = _anthropic_client(api_key, base_url)
     try:
-        client = anthropic.Anthropic(**kwargs)
         response = client.messages.create(
             model=model,
             max_tokens=max_tokens,
@@ -455,12 +466,56 @@ def invoke_anthropic(
             block.text for block in response.content
             if getattr(block, "type", None) == "text"
         )
-        tok_in = getattr(response.usage, "input_tokens", 0) or 0
-        tok_out = getattr(response.usage, "output_tokens", 0) or 0
-        return text.strip(), int(tok_in), int(tok_out)
+        tok_in, tok_out = _anthropic_usage(response)
+        return text.strip(), tok_in, tok_out
     except Exception as e:
         _log_llm_error("anthropic", model, str(e))
         raise RuntimeError(f"Anthropic invocation failed (model={model}): {e}") from e
+
+
+def invoke_anthropic_structured(
+    model: str, prompt: str, schema: dict, *,
+    tool_name: str = "emit", tool_description: str = "",
+    max_tokens: int = 4096,
+    api_key: str = "", base_url: str = "",
+) -> tuple[dict | None, str, int, int]:
+    """Schema-enforced invocation via Anthropic tool use with a forced
+    ``tool_choice`` — the native counterpart of the Bedrock Converse path.
+
+    Returns (data, text, tokens_in, tokens_out). ``data`` is the tool input
+    dict when the model called the tool (shaped by *schema*); ``None``
+    otherwise, in which case ``text`` carries the prose for tolerant parsing.
+    """
+    client = _anthropic_client(api_key, base_url)
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            tools=[{
+                "name": tool_name,
+                "description": tool_description or "Return the structured result.",
+                "input_schema": schema,
+            }],
+            tool_choice={"type": "tool", "name": tool_name},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        data: dict | None = None
+        texts: list[str] = []
+        for block in response.content:
+            block_type = getattr(block, "type", None)
+            if (data is None and block_type == "tool_use"
+                    and getattr(block, "name", "") == tool_name
+                    and isinstance(getattr(block, "input", None), dict)):
+                data = block.input
+            elif block_type == "text":
+                texts.append(block.text)
+        tok_in, tok_out = _anthropic_usage(response)
+        return data, "".join(texts).strip(), tok_in, tok_out
+    except Exception as e:
+        _log_llm_error("anthropic", model, str(e))
+        raise RuntimeError(
+            f"Anthropic structured invocation failed (model={model}): {e}"
+        ) from e
 
 
 # ── Ollama keep-alive helpers ──────────────────────────────────────────────

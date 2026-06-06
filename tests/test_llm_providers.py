@@ -203,6 +203,84 @@ def test_invoke_anthropic_missing_package(monkeypatch):
         llm_invoke.invoke_anthropic("claude-opus-4-8", "Hi")
 
 
+# ── llm_invoke.invoke_anthropic_structured ──────────────────────────────────
+
+
+def _install_fake_anthropic_structured(monkeypatch, captured, content_blocks):
+    class _Usage:
+        input_tokens = 33
+        output_tokens = 12
+
+    class _Response:
+        content = content_blocks
+        usage = _Usage()
+
+    class _Messages:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _Response()
+
+    class _Anthropic:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.messages = _Messages()
+
+    fake = types.ModuleType("anthropic")
+    fake.Anthropic = _Anthropic
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+
+
+class _ToolUseBlock:
+    type = "tool_use"
+
+    def __init__(self, name, input_):
+        self.name = name
+        self.input = input_
+
+
+class _TextBlock:
+    type = "text"
+
+    def __init__(self, text):
+        self.text = text
+
+
+_SCHEMA = {"type": "object", "properties": {"purpose": {"type": "string"}}}
+
+
+def test_invoke_anthropic_structured_forced_tool(monkeypatch):
+    captured = {}
+    _install_fake_anthropic_structured(
+        monkeypatch, captured, [_ToolUseBlock("emit", {"purpose": "x"})])
+    data, text, tok_in, tok_out = llm_invoke.invoke_anthropic_structured(
+        "claude-opus-4-8", "Extract.", _SCHEMA, tool_name="emit", max_tokens=512,
+    )
+    assert data == {"purpose": "x"}
+    assert (tok_in, tok_out) == (33, 12)
+    # The tool choice must FORCE the named tool (mirrors the Bedrock path)
+    assert captured["tool_choice"] == {"type": "tool", "name": "emit"}
+    assert captured["tools"][0]["name"] == "emit"
+    assert captured["tools"][0]["input_schema"] == _SCHEMA
+    assert captured["max_tokens"] == 512
+
+
+def test_invoke_anthropic_structured_text_fallback(monkeypatch):
+    captured = {}
+    _install_fake_anthropic_structured(
+        monkeypatch, captured, [_TextBlock('{"purpose": "y"}')])
+    data, text, tok_in, tok_out = llm_invoke.invoke_anthropic_structured(
+        "claude-opus-4-8", "Extract.", _SCHEMA,
+    )
+    assert data is None
+    assert text == '{"purpose": "y"}'
+
+
+def test_invoke_anthropic_structured_missing_package(monkeypatch):
+    monkeypatch.setitem(sys.modules, "anthropic", None)
+    with pytest.raises(RuntimeError, match="pip install anthropic"):
+        llm_invoke.invoke_anthropic_structured("claude-opus-4-8", "Hi", _SCHEMA)
+
+
 # ── llm_router: resolution + dispatch ────────────────────────────────────────
 
 

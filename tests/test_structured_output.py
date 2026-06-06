@@ -94,6 +94,44 @@ def test_invoke_structured_bedrock_falls_back_when_model_emits_text(monkeypatch)
     assert result.via_tool is False
 
 
+def test_invoke_structured_anthropic_uses_forced_tool(monkeypatch):
+    cfg = DiscoveryConfig()
+    cfg.provider = "anthropic"
+    captured = {}
+
+    def fake_structured(model, prompt, schema, *, tool_name, tool_description,
+                        max_tokens, api_key, base_url):
+        captured.update(model=model, schema=schema, tool_name=tool_name)
+        return {"purpose": "x"}, "", 10, 20
+
+    monkeypatch.setattr(llm_client_mod, "invoke_anthropic_structured", fake_structured)
+    client = LLMClient(cfg)
+    result = client.invoke_structured(
+        "screen", "prompt", _SCHEMA, tool_name="emit_screen_spec", max_tokens=512,
+    )
+
+    assert result.data == {"purpose": "x"}
+    assert result.via_tool is True
+    assert captured["model"] == cfg.get_model("screen")
+    assert captured["schema"] == _SCHEMA
+    assert captured["tool_name"] == "emit_screen_spec"
+    assert client.get_costs()["screen"]["tokens_out"] == 20
+
+
+def test_invoke_structured_anthropic_falls_back_when_model_emits_text(monkeypatch):
+    cfg = DiscoveryConfig()
+    cfg.provider = "anthropic"
+
+    def fake_structured(model, prompt, schema, *, tool_name, tool_description,
+                        max_tokens, api_key, base_url):
+        return None, '```json\n{"purpose": "y"}\n```', 5, 5
+
+    monkeypatch.setattr(llm_client_mod, "invoke_anthropic_structured", fake_structured)
+    result = LLMClient(cfg).invoke_structured("screen", "p", _SCHEMA, tool_name="t")
+    assert result.data == {"purpose": "y"}
+    assert result.via_tool is False
+
+
 def test_invoke_structured_ollama_fallback_parses_fenced_text(monkeypatch):
     cfg = DiscoveryConfig()
     cfg.provider = "ollama"

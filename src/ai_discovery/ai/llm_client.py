@@ -5,9 +5,10 @@ multi-provider router (bedrock | ollama | mlx-gemma | mlx-qwen | openai |
 gemini | anthropic). Config comes from DiscoveryConfig (YAML > env >
 defaults) and is registered with the router via ``llm_router.configure()``.
 
-The Bedrock structured-output path (``invoke_structured``) calls
-``converse_bedrock`` directly — it needs a forced ``tool_choice``, which the
-router's converse fallback does not expose.
+The structured-output path (``invoke_structured``) calls the shared invoke
+layer directly — Bedrock via ``converse_bedrock`` and Anthropic via
+``invoke_anthropic_structured`` — because both need a forced ``tool_choice``,
+which the router's converse fallback does not expose.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ log = logging.getLogger(__name__)
 from ai_discovery.shared import llm_router
 from ai_discovery.shared.model_defaults import MODELS
 from ai_discovery.shared.llm_invoke import (
-    converse_bedrock, warm_ollama, unload_ollama,
+    converse_bedrock, invoke_anthropic_structured, warm_ollama, unload_ollama,
 )
 from ai_discovery.shared.json_extract import extract_json_object
 
@@ -170,12 +171,36 @@ class LLMClient:
         mid-object, so the markdown-fence and token-truncation failure modes that
         previously broke screen-spec generation cannot occur.
 
-        On Ollama-compatible providers (no reliable tool use) it falls back to a
-        plain prompt plus tolerant JSON extraction — same robustness as before,
-        but the fence handling now lives in one shared helper. Raises
+        On Anthropic direct the same guarantee comes from native tool use with a
+        forced ``tool_choice`` via the official SDK.
+
+        On the remaining providers (Ollama-compatible, OpenAI, Gemini) it falls
+        back to a plain prompt plus tolerant JSON extraction — same robustness
+        as before, but the fence handling now lives in one shared helper. Raises
         ``json.JSONDecodeError`` only on the fallback path when no JSON is found.
         """
         model = self._config.get_model(tier)
+
+        if self._config.provider == "anthropic":
+            data, text, tok_in, tok_out = invoke_anthropic_structured(
+                model, prompt, schema,
+                tool_name=tool_name,
+                tool_description=tool_description,
+                max_tokens=max_tokens,
+                api_key=self._config.anthropic.api_key,
+                base_url=self._config.anthropic.base_url,
+            )
+            self._track_cost(tier, model, tok_in, tok_out)
+            if data is not None:
+                return StructuredResponse(
+                    data=data, tokens_in=tok_in, tokens_out=tok_out,
+                    model=model, tier=tier, via_tool=True,
+                )
+            # Rare: model emitted text instead of calling the tool. Parse it.
+            return StructuredResponse(
+                data=extract_json_object(text), tokens_in=tok_in, tokens_out=tok_out,
+                model=model, tier=tier, via_tool=False, raw_text=text,
+            )
 
         if self._config.provider == "bedrock":
             tool = {
@@ -210,7 +235,8 @@ class LLMClient:
                 model=model, tier=tier, via_tool=False, raw_text=text,
             )
 
-        # Ollama-compatible fallback: plain invoke + tolerant parse.
+        # Remaining providers (Ollama-compatible, OpenAI, Gemini): plain
+        # invoke + tolerant parse.
         resp = self.invoke(tier, prompt, max_tokens)
         return StructuredResponse(
             data=extract_json_object(resp.text), tokens_in=resp.tokens_in,
