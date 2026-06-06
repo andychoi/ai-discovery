@@ -1398,6 +1398,35 @@ def run_pipeline(
         persist_scenario_flows(scenario_flows, scenario_artifacts, scan_id, db_path)
         console.print(f"  Visual artifacts: [green]{len(scenario_artifacts)}[/] scenarios persisted")
 
+        # A-7: tour/onboarding guides — deterministic call-graph learning path
+        # per domain + ONE Tier-2 narrative call each. Budget-gated; a domain
+        # too small to tour costs nothing.
+        if _budget_ok(llm_client, config, "Onboarding guides"):
+            from .generators.onboarding_generator import generate_onboarding_docs
+
+            onboard_docs = generate_onboarding_docs(
+                domains, edges, summaries_dict, llm_client, docs_dir, project_slug
+            )
+            if onboard_docs:
+                conn = get_conn(db_path)
+                try:
+                    for d in onboard_docs:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO generated_docs "
+                            "(scan_id, domain, doc_type, doc_id, title, content_md, "
+                            "confidence, verified_row_count, created_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (
+                                scan_id, d["domain"], d["doc_type"], d["doc_id"],
+                                d["title"], d["content_md"], d["confidence"],
+                                d["verified_row_count"], now_iso(),
+                            ),
+                        )
+                    conn.commit()
+                finally:
+                    conn.close()
+                console.print(f"  Onboarding guides: [green]{len(onboard_docs)}[/] domains")
+
     # ------------------------------------------------------------------
     # 16 OPTIONAL: Process Mining & Conformance
     # ------------------------------------------------------------------

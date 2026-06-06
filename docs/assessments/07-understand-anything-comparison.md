@@ -113,7 +113,7 @@ Ordered by leverage. Every item names the U-A source and the ai-discovery integr
 | 6 | ~~`discover export-graph` canonical JSON~~ **Done 2026-06-06** | Adopt (A-4) | S | `generators/graph_export.py` + `discover export-graph -p SLUG` — nodes, edges (confidence + `resolved_by`, now persisted via schema v14), domains, FK relationships, FSMs (`load_entity_state_machines` reused), doc/screen index. A diffable VIEW of the DB; SQLite stays primary (N-3 honored); source code and doc bodies excluded. |
 | 7 | Multi-provider router: refactor `llm_router.py` off `sdlc_db` onto `DiscoveryConfig`; add OpenAI/Gemini/Anthropic-direct invoke fns | Complete (D-1 decision) | M | `shared/llm_router.py`, `shared/llm_invoke.py`, `config.py` |
 | 8 | Viewer drill-down + search | Adopt (A-5) | M | `viewer/dashboard.py`, `viewer/server.py` |
-| 9 | Tour/onboarding artifact | Adopt (A-7) | S–M | new generator in `generators/` |
+| 9 | ~~Tour/onboarding artifact~~ **Done 2026-06-06** | Adopt (A-7) | S–M | `generators/onboarding_generator.py` → `ONBOARD/{slug}-onboard-{domain}.md` (Phase 15, budget-gated). Deterministic BFS learning path (entry points → ≥0.8-confidence call chain, file:line + Tier-1 purpose per step, 3–15 steps) + ONE Tier-2 narrative per domain; `unreviewed_confidence` honesty; table ships even when the narrative call fails. |
 | 10 | Import-map tier for Go/Rust/Ruby/PHP | Adopt (A-6) | M | `parsers/`, `lang_detector.py`; follow extension checklist |
 | 11 | Scale benchmark in corpus harness, then perf work if warranted | Fix (F-3) | M | `tests/corpus/` |
 | 12 | Corpus Phase 3 (pinned external repos) | Fix (F-4) | M | `tests/corpus/` |
