@@ -1,17 +1,28 @@
-"""LLM Router — provider/model abstraction for DocHub handlers.
+"""LLM Router — provider/model abstraction for the Discovery CLI.
 
-Resolution order: llm_config DB → env var → hardcoded default.
-Supports AWS Bedrock and Ollama (OpenAI-compatible API).
+Resolution order: runtime ``save_config`` override → ``configure(DiscoveryConfig)``
+→ env var → hardcoded default (``model_defaults.MODELS``). The DiscoveryConfig
+layer itself already embodies YAML > env > defaults, so callers normally just
+``configure(DiscoveryConfig.load(...))`` once at startup.
 
-For local Apple Silicon inference, Ollama uses the MLX backend automatically.
-For advanced use (LoRA, custom embeddings), point OLLAMA_URL at ai-mlx-server.
+Vendored from DocHub, where overrides lived in an ``llm_config`` DB table;
+this version is standalone — no DB dependencies. Usage accounting is exposed
+via ``set_usage_logger`` so the host app can hook in its own cost tracking.
+
+Supports AWS Bedrock and Ollama-compatible providers (ollama, mlx-gemma,
+mlx-qwen). For local Apple Silicon inference, Ollama uses the MLX backend
+automatically; for advanced use (LoRA, custom embeddings), point OLLAMA_URL
+at ai-mlx-server.
 """
+from __future__ import annotations
+
 import logging
 import os
 import re
-from datetime import date
+from typing import TYPE_CHECKING, Callable, Optional
 
-from ai_discovery.shared.sdlc_db import get_read_conn, return_read_conn, now_iso
+if TYPE_CHECKING:  # avoid an upward dependency from shared/ at runtime
+    from ai_discovery.config import DiscoveryConfig
 
 from ai_discovery.shared.model_defaults import MODELS, DEFAULT_PROVIDER
 from ai_discovery.shared.llm_invoke import (  # re-exported
@@ -166,63 +177,98 @@ DOC_TYPE_TIER: dict[str, str] = {
 }
 
 
+# ── Override layers (replaces the DocHub llm_config DB table) ─────────────────
+#
+# _discovery_overrides — flattened from a DiscoveryConfig via configure()
+# _runtime_overrides   — explicit save_config() calls (highest priority)
+
+_discovery_overrides: dict[str, str] = {}
+_runtime_overrides: dict[str, str] = {}
+
+
+def _flatten_discovery_config(cfg: "DiscoveryConfig") -> dict[str, str]:
+    """Map DiscoveryConfig fields onto the router's flat key space.
+
+    Discovery tier → router tier (see config.py "Discovery tier mapping"):
+      tier1 → fast, tier2 → standard,
+      tier3 (active) → expert (tier3p if cfg.prod else tier3d),
+      tier3p → heavy, expert value also aliased to legacy "deep".
+    """
+    o: dict[str, str] = {"provider": cfg.provider}
+    provider_cfgs = {
+        "bedrock": cfg.bedrock,
+        "ollama": cfg.ollama,
+        "mlx-gemma": cfg.mlx_gemma,
+        "mlx-qwen": cfg.mlx_qwen,
+    }
+    for name, pc in provider_cfgs.items():
+        suffix = f"{name}_model"
+        o[f"tier.fast.{suffix}"] = pc.tier1
+        o[f"tier.standard.{suffix}"] = pc.tier2
+        expert = pc.tier3p if cfg.prod else pc.tier3d
+        o[f"tier.expert.{suffix}"] = expert
+        o[f"tier.deep.{suffix}"] = expert  # legacy alias
+        o[f"tier.heavy.{suffix}"] = pc.tier3p
+        if name == "bedrock":
+            o["bedrock.region"] = pc.region
+        else:
+            o[f"{name}.url"] = pc.base_url
+    o["tier.embedding.bedrock_model"] = cfg.rag.bedrock_model
+    o["tier.embedding.ollama_model"] = cfg.rag.ollama_model
+    return o
+
+
+def configure(cfg: "Optional[DiscoveryConfig]") -> None:
+    """Register a DiscoveryConfig as the router's config source.
+
+    Call once at startup with ``DiscoveryConfig.load(...)``. Pass ``None``
+    to unregister (env/defaults resolution only). Replaces the DocHub
+    DB-override layer.
+    """
+    global _discovery_overrides
+    _discovery_overrides = _flatten_discovery_config(cfg) if cfg is not None else {}
+
+
 def get_config() -> dict[str, str]:
-    """Return resolved config: DB > env > default."""
+    """Return resolved config: save_config > DiscoveryConfig > env > default."""
     config = dict(_DEFAULTS)
     # Apply env overrides
     for key, env_var in _ENV_MAP.items():
         val = os.getenv(env_var)
         if val:
             config[key] = val
-    # Apply DB overrides (highest priority)
-    conn = get_read_conn()
-    try:
-        rows = conn.execute("SELECT key, value FROM llm_config").fetchall()
-        for row in rows:
-            config[row["key"]] = row["value"]
-    except Exception as e:
-        log.warning("Could not read llm_config from DB: %s", e)
-    finally:
-        return_read_conn(conn)
+    # Apply DiscoveryConfig overrides (registered via configure())
+    config.update(_discovery_overrides)
+    # Apply runtime overrides (highest priority)
+    config.update(_runtime_overrides)
     return config
 
 
 def reset_config(key: str | None = None) -> int:
-    """Delete DB overrides so env/defaults take effect. Returns row count.
+    """Drop runtime overrides so configure()/env/defaults take effect.
 
-    With ``key=None`` wipes every row in ``llm_config``. With a specific key,
-    wipes just that row. Unknown keys are a no-op (return 0) — the UI passes
-    whatever the user clicks, so raising here would just surface spurious
-    errors after a schema change.
+    With ``key=None`` wipes every runtime override. With a specific key,
+    wipes just that one. Unknown keys are a no-op (return 0). Returns the
+    number of overrides removed.
     """
-    from ai_discovery.shared.db.connection import execute_write
-    count = {"n": 0}
-    def _do(conn):
-        if key is None:
-            cur = conn.execute("DELETE FROM llm_config")
-        else:
-            cur = conn.execute("DELETE FROM llm_config WHERE key = %s", (key,))
-        count["n"] = cur.rowcount or 0
-    execute_write(_do)
-    return count["n"]
+    if key is None:
+        n = len(_runtime_overrides)
+        _runtime_overrides.clear()
+        return n
+    return 1 if _runtime_overrides.pop(key, None) is not None else 0
 
 
 def save_config(updates: dict[str, str]) -> None:
-    """Upsert config keys into the llm_config table."""
+    """Set in-memory runtime overrides (highest-priority config layer).
+
+    Keys are validated against the known key space. Persistent configuration
+    belongs in discovery.yaml (loaded via DiscoveryConfig + configure()).
+    """
     _ALLOWED_KEYS = set(_DEFAULTS.keys())
     bad = set(updates) - _ALLOWED_KEYS
     if bad:
         raise ValueError(f"Unknown LLM config key(s): {sorted(bad)}")
-    from ai_discovery.shared.db.connection import execute_write
-    ts = now_iso()
-    def _do(conn):
-        for key, value in updates.items():
-            conn.execute(
-                "INSERT INTO llm_config (key, value, updated_at) VALUES (?, ?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                (key, value, ts),
-            )
-    execute_write(_do)
+    _runtime_overrides.update(updates)
 
 
 def _tier_for_doc_type(doc_type: str) -> str:
@@ -448,30 +494,41 @@ def get_embeddings_batch(texts: list[str], *, project_slug: str = "",
     return results
 
 
-# ── Usage logging (fire-and-forget) ──────────────────────────────────────────
+# ── Usage logging (fire-and-forget, pluggable) ───────────────────────────────
+#
+# DocHub wrote usage rows to an llm_usage_log table; Discovery tracks costs
+# in its own llm_costs ledger. Rather than hard-wire either, the host app
+# registers a callback. Default: debug log only.
+
+UsageLogger = Callable[..., None]
+
+_usage_logger: UsageLogger | None = None
+
+
+def set_usage_logger(fn: UsageLogger | None) -> None:
+    """Register a usage callback, called per LLM invocation with keyword args:
+    project_slug, model_id, tier, tokens_in, tokens_out, provider.
+    Pass ``None`` to reset to the default (debug log only). Exceptions raised
+    by the callback are swallowed — usage accounting must never break a call.
+    """
+    global _usage_logger
+    _usage_logger = fn
+
 
 def _log_usage(project_slug: str, model_id: str, tier: str, tok_in: int, tok_out: int,
                *, provider: str = "bedrock") -> None:
-    today = date.today().isoformat()
     # Coerce to safe types — some providers return numpy ints or None
     tok_in = int(tok_in or 0)
     tok_out = int(tok_out or 0)
+    if _usage_logger is None:
+        log.debug("LLM usage: provider=%s model=%s tier=%s in=%d out=%d",
+                  provider, model_id, tier, tok_in, tok_out)
+        return
     try:
-        from ai_discovery.shared.db.connection import execute_log_write
-        execute_log_write(lambda conn: conn.execute(
-            """-- pg-native
-            INSERT INTO llm_usage_log
-                (project_slug, date, model_id, tier, provider, invocations, input_tokens, output_tokens)
-            VALUES (%s, %s, %s, %s, %s, 1, %s, %s)
-            ON CONFLICT(project_slug, date, model_id, tier, provider) DO UPDATE SET
-                invocations   = llm_usage_log.invocations + 1,
-                input_tokens  = llm_usage_log.input_tokens + excluded.input_tokens,
-                output_tokens = llm_usage_log.output_tokens + excluded.output_tokens
-            """,
-            (project_slug, today, model_id, tier, provider, tok_in, tok_out),
-        ))
+        _usage_logger(project_slug=project_slug, model_id=model_id, tier=tier,
+                      tokens_in=tok_in, tokens_out=tok_out, provider=provider)
     except Exception:
-        log.debug("LLM usage log skipped (pool unavailable)")
+        log.debug("LLM usage logger raised; usage entry skipped", exc_info=True)
 
 
 # ── Bedrock (config-aware private wrappers) ───────────────────────────────────
