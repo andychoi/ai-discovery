@@ -17,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS call_edges (
     callee_name TEXT,
     edge_type   TEXT,
     confidence  REAL DEFAULT 1.0,
+    resolved_by TEXT DEFAULT '',
     -- P1-a: prevent duplicate edges when phase 7 re-runs on the same scan_id.
     UNIQUE(scan_id, caller_id, callee_name, edge_type)
 );
@@ -515,6 +516,14 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(code_nodes)").fetchall()}
         if "file_hash" not in cols:
             conn.execute("ALTER TABLE code_nodes ADD COLUMN file_hash TEXT DEFAULT ''")
+
+    if current < 14:
+        # A-4 export-graph: persist resolution-stage provenance on call edges
+        # (CallEdge.metadata["resolved_by"]) so the canonical JSON export and
+        # triage queries carry it. Pre-migration rows keep '' (unknown stage).
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(call_edges)").fetchall()}
+        if "resolved_by" not in cols:
+            conn.execute("ALTER TABLE call_edges ADD COLUMN resolved_by TEXT DEFAULT ''")
 
 
 # ---------------------------------------------------------------------------

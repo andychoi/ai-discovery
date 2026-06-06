@@ -788,6 +788,62 @@ def ingest_docs(
     )
 
 
+@app.command("export-graph")
+def export_graph(
+    project_slug: str = typer.Option(..., "--project-slug", "-p", help="Project slug whose scan to export."),
+    output: Path = typer.Option(
+        Path("./data/discovery-output"), "--output", "-o",
+        help="Output dir (must match the scan's --output).",
+    ),
+    out_file: Optional[Path] = typer.Option(
+        None, "--out",
+        help="Destination JSON path (default: <output-dir>/knowledge-graph-<slug>.json).",
+    ),
+    scan_id: Optional[int] = typer.Option(
+        None, "--scan-id", help="Export a specific scan (default: latest).",
+    ),
+) -> None:
+    """Export one canonical knowledge-graph JSON for a completed scan (A-4).
+
+    Contains nodes, call edges (confidence + resolution stage), domains, FK
+    relationships, entity FSMs, and a doc/screen index — a portable, diffable
+    VIEW of the discovery DB. Commit it so teammates and tools can consume
+    scan results without the SQLite file.
+
+    Examples:
+
+        discover export-graph -p todoapp
+        discover export-graph -p todoapp --out ./kg.json --scan-id 3
+    """
+    from ai_discovery.generators.graph_export import write_graph_export
+
+    slug_output = _project_output_dir(output, project_slug).resolve()
+    db_path = slug_output / f"discovery-{project_slug}.db"
+    if not db_path.exists():
+        console.print(
+            f"[red]Database not found:[/] {db_path}. Run `discover scan` first, "
+            f"or check --output/--project-slug."
+        )
+        raise typer.Exit(code=1)
+
+    dest = out_file or (slug_output / f"knowledge-graph-{project_slug}.json")
+    try:
+        path = write_graph_export(db_path, project_slug, dest, scan_id=scan_id)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+
+    import json as _json
+    graph = _json.loads(path.read_text())
+    console.print(
+        f"[bold green]export-graph[/] wrote [cyan]{path}[/]\n"
+        f"  scan #{graph['scan']['id']} ({graph['scan']['commit_sha'] or 'no sha'}) — "
+        f"{len(graph['nodes'])} nodes, {len(graph['edges'])} edges, "
+        f"{len(graph['domains'])} domains, {len(graph['fsms'])} FSMs, "
+        f"{len(graph['docs'])} docs, {len(graph['screens'])} screens"
+    )
+
+
 @app.command()
 def detect_screens(
     repo: str = typer.Argument(..., help="Path to repository to scan for screens."),

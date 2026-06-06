@@ -840,6 +840,7 @@ def run_pipeline(
                         edge.callee,
                         edge.edge_type,
                         edge.confidence,
+                        (edge.metadata or {}).get("resolved_by", ""),
                     )
                     for edge in edges
                     if qn_to_id.get(edge.caller) is not None
@@ -852,7 +853,7 @@ def run_pipeline(
                 # constraint as defense-in-depth on databases that have it.
                 conn.execute("DELETE FROM call_edges WHERE scan_id = ?", (scan_id,))
                 conn.executemany(
-                    "INSERT OR IGNORE INTO call_edges (scan_id, caller_id, callee_id, callee_name, edge_type, confidence) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO call_edges (scan_id, caller_id, callee_id, callee_name, edge_type, confidence, resolved_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     edge_rows,
                 )
                 conn.commit()
