@@ -473,19 +473,13 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             )
 
     if current < 9:
-        # Activity diagrams are emitted as inline Mermaid flowcharts. Databases
-        # created before this carried the diagram source in a legacy `plantuml`
-        # or `d2` column (PlantUML, then D2). Ensure the Mermaid column exists
-        # and drop the legacy columns so no DB retains them. The old PlantUML/D2
-        # source is format-incompatible and is not preserved; the flowchart is
+        # Activity diagrams are emitted as inline Mermaid flowcharts; ensure
+        # the column exists on databases created before it was added. Diagram
+        # source from earlier formats is not preserved; the flowchart is
         # regenerated on the next scan (or via scripts/regen_pf_diagrams.py).
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(scenario_flows)").fetchall()}
         if "mermaid_flowchart" not in cols:
             conn.execute("ALTER TABLE scenario_flows ADD COLUMN mermaid_flowchart TEXT")
-        cols = {r["name"] for r in conn.execute("PRAGMA table_info(scenario_flows)").fetchall()}
-        for legacy in ("plantuml", "d2"):
-            if legacy in cols:
-                conn.execute(f"ALTER TABLE scenario_flows DROP COLUMN {legacy}")
 
     if current < 10:
         # FK-aware table docs (Phase 1): db_relationship stores foreign-key edges
