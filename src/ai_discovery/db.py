@@ -17,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -222,6 +222,17 @@ CREATE TABLE IF NOT EXISTS screen_specs (
 );
 CREATE INDEX IF NOT EXISTS idx_screen_specs_scan ON screen_specs(scan_id);
 CREATE INDEX IF NOT EXISTS idx_screen_specs_id ON screen_specs(screen_id);
+
+CREATE TABLE IF NOT EXISTS screen_review_claims (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    screen_spec_id INTEGER NOT NULL REFERENCES screen_specs(id) ON DELETE CASCADE,
+    claim_text     TEXT NOT NULL,
+    status         TEXT,
+    evidence       TEXT,
+    source_file    TEXT,
+    created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_screen_claims_spec ON screen_review_claims(screen_spec_id);
 
 CREATE TABLE IF NOT EXISTS llm_costs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -491,6 +502,15 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(scenario_flows)").fetchall()}
         if "structured_steps_json" not in cols:
             conn.execute("ALTER TABLE scenario_flows ADD COLUMN structured_steps_json TEXT")
+
+    if current < 12:
+        # Screen-spec claim audit trail (CRIT-3 parity): screen_review_claims
+        # stores per-claim verdicts for screen specs the way review_claims does
+        # for rollup docs, so triage can inspect contradicted/unverified screen
+        # claims. The table is created by the CREATE TABLE IF NOT EXISTS in
+        # _SCHEMA_SQL (run before this migration), so existing DBs gain it
+        # automatically; this block only records the version bump.
+        pass
 
 
 # ---------------------------------------------------------------------------

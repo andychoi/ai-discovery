@@ -76,6 +76,25 @@ WHERE g.scan_id = (SELECT MAX(id) FROM scan_runs)
 ORDER BY g.domain, g.doc_type;
 ```
 
+### Step 2.4: Screen-spec claims
+
+Screen specs live in their own tables (`screen_specs` + `screen_review_claims`,
+not `generated_docs` + `review_claims`). Claims exist only for `--prod` scans
+(screen verification runs in the self-review phase, gated on prod).
+
+```sql
+-- Contradicted/unverified screen-spec claims, worst screens first.
+SELECT s.screen_id, s.confidence, c.status, c.claim_text, c.source_file
+FROM screen_review_claims c
+JOIN screen_specs s ON s.id = c.screen_spec_id
+WHERE s.scan_id = (SELECT MAX(id) FROM scan_runs)
+  AND c.status IN ('contradicted', 'unverified')
+ORDER BY s.confidence ASC, s.screen_id;
+```
+
+The same flagged claims are also reader-visible in each screen doc's
+**Self-Review Notes** section (`docs/screens/{screen_id}.md`).
+
 ---
 
 ## Phase 3: Verify Each Flagged Claim (5–15 min)

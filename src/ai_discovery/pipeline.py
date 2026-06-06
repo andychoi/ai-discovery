@@ -1597,7 +1597,10 @@ def run_pipeline(
     if config.prod and _budget_ok(llm_client, config, "Screen verification"):
         from .ai.screen_spec_generator import verify_screen_specs
         try:
-            n_verified = verify_screen_specs(db_path, scan_id, llm_client, docs_dir)
+            n_verified = verify_screen_specs(
+                db_path, scan_id, llm_client, docs_dir,
+                max_workers=max(1, config.max_concurrent or 1),
+            )
             if n_verified:
                 console.print(f"  Screen specs source-verified: [green]{n_verified}[/]")
         except Exception as exc:

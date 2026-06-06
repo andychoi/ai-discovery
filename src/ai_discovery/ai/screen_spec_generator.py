@@ -403,6 +403,20 @@ def persist_screen_specs(
         conn.close()
 
 
+def _mapping_row_count(spec: dict) -> int:
+    """Count the deterministic mapping rows in a screen spec.
+
+    These rows (API calls, controllers, services, tables, batch jobs) come
+    from the screen mapper — static analysis, not LLM prose — and are rendered
+    verbatim in the spec's Technical Reference. They play the same role as
+    `verified_row_count` does for rollup docs: each counts as confidence 1.0
+    in `blend_confidence`, so a spec with rich verified structure isn't scored
+    on its narrative claims alone.
+    """
+    keys = ("fe_api_calls", "be_controllers", "be_services", "db_tables", "batch_jobs")
+    return sum(len(spec.get(k) or []) for k in keys)
+
+
 def _screen_narrative(spec: dict) -> str:
     """Assemble the LLM-authored prose of a screen spec for claim verification."""
     parts = [spec.get("purpose", ""), spec.get("when_used", ""), spec.get("rules_narrative", "")]
@@ -437,15 +451,83 @@ def _patch_screen_doc(path: Path, confidence: float, verified: bool) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def verify_screen_specs(db_path: Path, scan_id: int, llm_client, docs_dir) -> int:
+def _persist_screen_claims(claims: list, screen_spec_db_id: int, db_path: Path) -> None:
+    """Write per-claim verdicts to screen_review_claims (parity with
+    review_claims for rollup docs — gives triage an audit trail for screens).
+
+    Idempotent: re-verification (resume) replaces the spec's prior claims.
+    """
+    conn = get_conn(db_path)
+    try:
+        conn.execute(
+            "DELETE FROM screen_review_claims WHERE screen_spec_id = ?",
+            (screen_spec_db_id,),
+        )
+        for claim in claims:
+            conn.execute(
+                """INSERT INTO screen_review_claims
+                   (screen_spec_id, claim_text, status, evidence, source_file, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    screen_spec_db_id,
+                    claim.claim_text,
+                    claim.status,
+                    claim.evidence,
+                    claim.source_file,
+                    now_iso(),
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _annotate_screen_doc(path: Path, claims: list) -> None:
+    """Append the Self-Review Notes section to a screen doc on disk, so
+    contradicted/unverified claims are reader-visible (parity with rollup
+    docs, which get annotate_document() before rendering).
+
+    Idempotent: a notes section from a previous verification run is stripped
+    before the fresh one is appended.
+    """
+    from .self_review import annotate_document
+
+    if not path.exists() or not claims:
+        return
+    text = path.read_text(encoding="utf-8")
+    idx = text.find("## Self-Review Notes")
+    if idx != -1:
+        # Strip the previous notes section (annotate_document appends it at
+        # EOF, preceded by an `---` rule). Only consume that rule if nothing
+        # but whitespace sits between it and the heading — never eat a real
+        # document separator.
+        sep = text.rfind("\n---\n", 0, idx)
+        if sep != -1 and not text[sep + 5 : idx].strip():
+            text = text[:sep]
+        else:
+            text = text[:idx]
+        text = text.rstrip() + "\n"
+    path.write_text(annotate_document(text, claims), encoding="utf-8")
+
+
+def verify_screen_specs(
+    db_path: Path, scan_id: int, llm_client, docs_dir, max_workers: int = 4
+) -> int:
     """CRIT-3: claim-verify each persisted screen spec against RAG-indexed source,
     replace its unverified confidence with a blended score, and patch the on-disk
-    markdown (confidence + provenance banner). Returns the count verified.
+    markdown (confidence + provenance banner + Self-Review Notes). Returns the
+    count verified.
 
     Runs in the self-review phase (RAG available), since screen generation itself
     happens before embedding. LLM-heavy (one review per screen) so callers gate it
-    (prod scans). Per-screen failures are swallowed — a screen keeps its capped
-    unverified confidence rather than a fake one.
+    (prod scans); screens are reviewed concurrently (max_workers). Per-screen
+    failures are swallowed — a screen keeps its capped unverified confidence
+    rather than a fake one.
+
+    Parity with the rollup self-review path:
+    - per-claim verdicts persist to screen_review_claims (audit trail / triage)
+    - deterministic mapping rows count as AST-verified rows in the blend
+    - contradicted/unverified claims are annotated into the doc body
     """
     from .self_review import review_document, get_review_summary
     from .rollup import blend_confidence
@@ -453,40 +535,55 @@ def verify_screen_specs(db_path: Path, scan_id: int, llm_client, docs_dir) -> in
     conn = get_conn(db_path)
     try:
         rows = conn.execute(
-            "SELECT screen_id, spec_json FROM screen_specs WHERE scan_id = ?", (scan_id,)
+            "SELECT id, screen_id, spec_json FROM screen_specs WHERE scan_id = ?", (scan_id,)
         ).fetchall()
     finally:
         conn.close()
 
-    verified = 0
-    for row in rows:
+    def _verify_one(row) -> bool:
+        """Review one screen spec; returns True if any claim verified."""
         try:
             spec = json.loads(row["spec_json"])
         except Exception:
-            continue
+            return False
         narrative = _screen_narrative(spec)
         if not narrative.strip():
-            continue
-        try:
-            claims = review_document(narrative, db_path, llm_client, max_claims=15)
-            summary = get_review_summary(claims)
-            conf = blend_confidence(0, summary)
-            is_verified = summary.get("verified", 0) > 0
-        except Exception as exc:
-            logger.warning("Screen verification failed for %s: %s", row["screen_id"], exc)
-            continue
+            return False
+        # No max_claims override: inherit review_document's default (HIGH-2 —
+        # confidence must reflect the full claim set, not a sample). Screen
+        # narratives are short, so the cap rarely binds anyway.
+        claims = review_document(narrative, db_path, llm_client)
+        summary = get_review_summary(claims)
+        conf = blend_confidence(_mapping_row_count(spec), summary)
+        is_verified = summary.get("verified", 0) > 0
+
+        _persist_screen_claims(claims, row["id"], db_path)
         conn = get_conn(db_path)
         try:
             conn.execute(
-                "UPDATE screen_specs SET confidence = ? WHERE scan_id = ? AND screen_id = ?",
-                (conf, scan_id, row["screen_id"]),
+                "UPDATE screen_specs SET confidence = ? WHERE id = ?",
+                (conf, row["id"]),
             )
             conn.commit()
         finally:
             conn.close()
-        _patch_screen_doc(Path(docs_dir) / "screens" / f"{row['screen_id']}.md", conf, is_verified)
-        if is_verified:
-            verified += 1
+        doc_path = Path(docs_dir) / "screens" / f"{row['screen_id']}.md"
+        _patch_screen_doc(doc_path, conf, is_verified)
+        _annotate_screen_doc(doc_path, claims)
+        return is_verified
+
+    verified = 0
+    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(rows) or 1))) as executor:
+        futures = {executor.submit(_verify_one, row): row for row in rows}
+        for future in as_completed(futures):
+            try:
+                if future.result():
+                    verified += 1
+            except Exception as exc:
+                logger.warning(
+                    "Screen verification failed for %s: %s",
+                    futures[future]["screen_id"], exc,
+                )
     return verified
 
 
