@@ -528,6 +528,64 @@ def summarize_chunks(
     return results
 
 
+def reuse_prior_summaries(db_path: Path, scan_id: int) -> int:
+    """A-2 incremental re-scan: copy Tier-1 summaries from the most recent
+    prior scan for nodes whose (qualified_name, file_path, file_hash) are
+    unchanged. Returns the number of summaries copied.
+
+    Runs before summarize_chunks: the copied rows make the existing same-scan
+    resume guard skip those nodes, so only changed/new files pay an LLM call.
+
+    - Blank hashes never match (extractor nodes, pre-migration scans) — a
+      blank == blank join would "reuse" across real changes.
+    - Token counts are zeroed: this scan paid nothing for reused rows, and
+      copying the prior counts would double-bill the aggregate ledger.
+    - INSERT OR IGNORE: an existing summary for the node (same-scan resume)
+      is never clobbered.
+    """
+    conn = get_conn(db_path)
+    try:
+        row = conn.execute(
+            """SELECT MAX(cn.scan_id) AS prev
+                 FROM node_summaries ns
+                 JOIN code_nodes cn ON cn.id = ns.node_id
+                WHERE cn.scan_id < ?""",
+            (scan_id,),
+        ).fetchone()
+        prev_scan = row["prev"] if row else None
+        if prev_scan is None:
+            return 0
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO node_summaries
+                   (node_id, tier, model_used, purpose, business_rules,
+                    io_summary, tech_debt_signals, raw_response,
+                    tokens_in, tokens_out, created_at)
+               SELECT new.id, ns.tier, ns.model_used, ns.purpose, ns.business_rules,
+                      ns.io_summary, ns.tech_debt_signals, ns.raw_response,
+                      0, 0, ?
+                 FROM code_nodes new
+                 JOIN code_nodes prev
+                   ON prev.qualified_name = new.qualified_name
+                  AND prev.file_path = new.file_path
+                  AND prev.file_hash = new.file_hash
+                  AND prev.file_hash != ''
+                  AND prev.scan_id = ?
+                 JOIN node_summaries ns ON ns.node_id = prev.id
+                WHERE new.scan_id = ?""",
+            (now_iso(), prev_scan, scan_id),
+        )
+        conn.commit()
+        copied = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+        if copied:
+            logger.info(
+                "Incremental re-scan: reused %d Tier-1 summaries from scan %d (unchanged files)",
+                copied, prev_scan,
+            )
+        return copied
+    finally:
+        conn.close()
+
+
 def persist_summaries(
     summaries: list[dict],
     scan_id: int,

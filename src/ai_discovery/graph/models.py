@@ -39,6 +39,10 @@ class CodeNode:
     return_type: str | None = None
     framework_hints: dict = field(default_factory=dict)
     domain: str | None = None
+    # A-2 incremental re-scan: SHA256 of the source file's bytes, stamped at
+    # parse time. Empty for nodes without a backing file (OpenAPI/GraphQL/proto
+    # extractor nodes) — blank hashes never participate in cross-scan reuse.
+    file_hash: str = ""
 
 
 @dataclass

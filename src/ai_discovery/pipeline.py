@@ -593,7 +593,9 @@ def run_pipeline(
                 for p in parsers:
                     if p.can_parse(file_path):
                         try:
-                            return p.parse_file(file_path), None
+                            nodes = p.parse_file(file_path)
+                            _stamp_file_hash(nodes, file_path)  # A-2: cross-scan identity
+                            return nodes, None
                         except Exception as exc:
                             return [], (file_path, exc)
                 return [], None
@@ -719,8 +721,8 @@ def run_pipeline(
                             "INSERT OR IGNORE INTO code_nodes "
                             "(scan_id, file_path, language, node_type, name, qualified_name, "
                             "line_start, line_end, source_code, annotations, params, "
-                            "return_type, framework_hints, domain) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "return_type, framework_hints, domain, file_hash) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 scan_id,
                                 node.file_path,
@@ -736,6 +738,7 @@ def run_pipeline(
                                 node.return_type,
                                 json.dumps(node.framework_hints),
                                 node.domain,
+                                node.file_hash,
                             ),
                         )
                     conn.commit()
@@ -1166,7 +1169,7 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 11. Tier 1: Summarize
     # ------------------------------------------------------------------
-    from .ai.summarizer import summarize_chunks, persist_summaries
+    from .ai.summarizer import summarize_chunks, persist_summaries, reuse_prior_summaries
 
     if not _phase_should_run(11, start_phase, skip_phases):
         console.print("[dim]Phase 11 (tier1_summarize): loading from DB...[/]")
@@ -1178,6 +1181,13 @@ def run_pipeline(
     else:
         with _with_checkpoint(db_path, scan_id, 11, "tier1_summarize"):
             console.print("[bold cyan]Tier 1: Summarizing code chunks...[/]")
+            # A-2 incremental re-scan: copy summaries from the latest prior
+            # scan for unchanged files; the resume guard below then skips them.
+            n_reused = reuse_prior_summaries(db_path, scan_id)
+            if n_reused:
+                console.print(
+                    f"  Reused [green]{n_reused}[/] summaries from prior scan (unchanged files)"
+                )
             with _timed("Tier 1 summarize"), Progress(
                 SpinnerColumn(),
                 TextColumn("[bold]Tier 1 summaries"),
@@ -1730,6 +1740,23 @@ def _display_checkpoint_status(db_path: Path, scan_id: int) -> None:
             console.print(f"      Error: {cp['error_msg']}")
 
 
+def _stamp_file_hash(nodes: list, file_path) -> None:
+    """Stamp SHA256(file bytes) on every node parsed from *file_path* (A-2).
+
+    The hash is the cross-scan identity for "this file is unchanged" — it
+    gates Tier-1 summary reuse on re-scans. Unreadable files leave the hash
+    blank, which excludes their nodes from reuse (never a false match).
+    """
+    import hashlib
+
+    try:
+        file_hash = hashlib.sha256(Path(file_path).read_bytes()).hexdigest()
+    except OSError:
+        return
+    for node in nodes:
+        node.file_hash = file_hash
+
+
 def _load_code_nodes_from_db(db_path: Path, scan_id: int) -> list:
     """Load all code nodes from the DB for a scan."""
     from .graph.models import CodeNode  # Import here to avoid circular deps
@@ -1756,6 +1783,7 @@ def _load_code_nodes_from_db(db_path: Path, scan_id: int) -> list:
                 return_type=row["return_type"],
                 framework_hints=json.loads(row["framework_hints"] or "{}"),
                 domain=row["domain"],
+                file_hash=row["file_hash"] or "",
             )
             nodes.append(node)
         return nodes

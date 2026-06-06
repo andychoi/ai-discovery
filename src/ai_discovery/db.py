@@ -17,7 +17,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS code_nodes (
     return_type     TEXT,
     framework_hints TEXT,
     domain          TEXT,
+    file_hash       TEXT DEFAULT '',
     UNIQUE(scan_id, qualified_name)
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_scan_domain ON code_nodes(scan_id, domain);
@@ -505,6 +506,15 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         # _SCHEMA_SQL (run before this migration), so existing DBs gain it
         # automatically; this block only records the version bump.
         pass
+
+    if current < 13:
+        # A-2 incremental re-scan: code_nodes gains a per-file content hash
+        # stamped at parse time. Pre-migration rows keep '' — blank hashes are
+        # excluded from cross-scan summary reuse, so old scans simply don't
+        # contribute reusable summaries (no false matches).
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(code_nodes)").fetchall()}
+        if "file_hash" not in cols:
+            conn.execute("ALTER TABLE code_nodes ADD COLUMN file_hash TEXT DEFAULT ''")
 
 
 # ---------------------------------------------------------------------------

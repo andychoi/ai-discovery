@@ -107,7 +107,7 @@ Ordered by leverage. Every item names the U-A source and the ai-discovery integr
 |---|---|---|---|---|
 | 1 | ~~Screen-spec per-claim verification (Phase-17 verify pass)~~ **Done 2026-06-06** | Fix/Complete (F-1/C-3) | M | `ai/screen_spec_generator.py` (`verify_screen_specs`), `db.py` (`screen_review_claims`), `pipeline.py` Phase 17 |
 | 2 | ~~Louvain semantic batching for Tier-1~~ **Done 2026-06-06** | Adopt (A-1) | M | `ai/semantic_batching.py` (networkx `louvain_communities` over confidence-weighted file graph from Phase-7 call edges; fallback + caps + singleton merge per `compute-batches.mjs`), batched structured Tier-1 calls in `ai/summarizer.py`, `config.semantic_batching` |
-| 3 | Pipeline-wide fingerprint incremental re-scan | Adopt (A-2) | M–L | Phases 6/11/14; generalize screen-drift SHA256 machinery |
+| 3 | Pipeline-wide fingerprint incremental re-scan — **core landed 2026-06-06** (◑) | Adopt (A-2) | M–L | Done: `code_nodes.file_hash` stamped at parse (schema v13) + cross-scan Tier-1 summary reuse (`summarizer.reuse_prior_summaries`, wired before Phase 11; embeddings were already cross-scan content-addressed). Deferred: parse-skip for unchanged files (CPU-cheap, low value) and domain-fingerprint rollup-skip for Phase 14 (needs claims/confidence copy semantics — scope separately). |
 | 4 | Cross-batch neighbor symbols → Stage-5 candidate narrowing | Adopt (A-3) | M | `graph/call_graph.py`; **add corpus fixture first** |
 | 5 | SPA menu detectors (TS const, Vue/React/Angular) + explicit skip signal | Complete (C-1) | M | `menu_detector.py` |
 | 6 | `discover export-graph` canonical JSON | Adopt (A-4) | S | new CLI command; reuse FSM backbone export patterns |
