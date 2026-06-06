@@ -1,4 +1,4 @@
-"""Discovery LLM client — thin wrapper over shared.llm_router invoke functions.
+"""Discovery LLM client — thin wrapper over shared.llm_invoke functions.
 
 Adds Discovery-specific cost tracking on top of the shared Bedrock/Ollama
 invoke layer.  Config comes from DiscoveryConfig (YAML > env > defaults).
