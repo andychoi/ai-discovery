@@ -263,6 +263,13 @@ export default async function handler(req, res) {
 
 ## Go
 
+> **Shipped as import-map tier (A-6, 2026-06-06)** — `parsers/import_map.py`
+> `GoImportMapParser`: regex-based imports + top-level symbols + conservative
+> call sites, NOT a full tree-sitter parser. The sections below describe the
+> full-parser target if/when one replaces it. Qualified names in the shipped
+> tier are stem-based (`{file_stem}.{Name}`) for consistency with the other
+> parsers. Gauged by the `go-import-map` corpus fixture.
+
 ### Module & Package Structure
 ```
 Go:         package.FunctionName or package.ReceiverType.MethodName
@@ -353,6 +360,31 @@ func (repo *OrderRepository) Save(order *Order) error {
 | C# | `class Order { }` | `Company.Orders.Order` | `order.Validate()` |
 | JavaScript | `class Order { }` | `validators.Order` | `order.validate()` |
 | Go | `type Order struct { }` | `validators.Order` | `order.Validate()` |
+
+---
+
+## Import-Map Tier: Rust / Ruby / PHP (A-6, 2026-06-06)
+
+Alongside Go, three more languages ship as **lightweight import-map
+extractors** (`parsers/import_map.py`) — regex-based, no tree-sitter
+dependency. Each extracts imports (with correct local bindings, separators
+normalized to dots), top-level symbols with stem-based qualified names and
+real line spans, conservative receiver-aware call sites, and import-derived
+framework hints. This powers Stage-2 import-scoped call resolution, Tier-1
+summarization, RAG, semantic batching, and domain classification — *before* a
+deep parser exists.
+
+| Language | Imports | Symbols | Receiver call forms | Frameworks hinted |
+|----------|---------|---------|---------------------|-------------------|
+| Go (`.go`) | `import "a/b"` (binds `b`), aliased, block form | `func`, methods `func (r *T) M`, `type T struct/interface` | `recv.Method(` | gin, echo, net/http, gorm, grpc |
+| Rust (`.rs`) | `use a::b::C;` incl. `{C, D as E}` groups | `fn`, `struct/enum/trait`, `impl T { fn m }` → `stem.T.m` | `Recv::m(`, `recv.m(` | actix, axum, rocket, tokio, diesel |
+| Ruby (`.rb`) | `require` / `require_relative` | `class/module`, `def` (indent-stack class nesting) | `Recv.m(` | rails, sinatra, sidekiq, rspec |
+| PHP (`.php`) | `use A\B\C;` incl. `as` alias | `class/interface/trait`, methods (brace depth), `function` | `$x->m(`, `Recv::m(` | laravel, symfony, wordpress |
+
+**Accepted bounds** (documented, not bugs): brace matching can be confused by
+braces inside strings/comments; Ruby nesting is an indentation heuristic; no
+endpoint/entity extraction. Replacing any of these with a full tree-sitter
+parser follows `extension-checklist.md` — registration points are identical.
 
 ---
 

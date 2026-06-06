@@ -2,6 +2,15 @@
 
 This checklist walks you through adding support for a new language to AI-Discovery.
 
+> **Cheaper first step — the import-map tier (A-6).** Before investing 8–13h
+> in a full tree-sitter parser, consider a lightweight regex extractor in
+> `src/ai_discovery/parsers/import_map.py` (Go/Rust/Ruby/PHP ship this way):
+> imports with correct bindings, top-level symbols, conservative call sites.
+> It powers Stage-2 import-scoped resolution, Tier-1 summaries, RAG, and
+> domain classification on day one; this checklist's full parser can replace
+> it later — registration points (lang_detector, file_walker, pipeline,
+> corpus runner) are identical. See `language-patterns.md` § Import-Map Tier.
+
 ---
 
 ## Overview: Adding a New Language (e.g., Go)

@@ -66,6 +66,11 @@ HARD_TARGETS = {
     # the receiver-type stage cannot — no false cross-community edges.
     ("python-community-collision", "di_resolution"),
     ("python-community-collision", "call_edges"),
+    # A-6: import-map tier — Go imports bind correctly so Stage-2 import-scoped
+    # resolution pins cross-package calls without a deep parser; the same-name
+    # decoy package must never receive an edge.
+    ("go-import-map", "di_resolution"),
+    ("go-import-map", "call_edges"),
     # LSP/SCIP tier resolves interface dispatch heuristics cannot.
     ("lsp-interface-dispatch", "di_resolution"),
     ("lsp-interface-dispatch", "call_edges"),

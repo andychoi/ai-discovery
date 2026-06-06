@@ -1,0 +1,24 @@
+{
+  "_README": "Human-labeled from SOURCE (never from parser output). A-6 import-map tier gauge (Go): main.main imports \"app/orders\" and calls orders.CreateOrder(1). billing.CreateOrder is a same-short-name decoy in an unimported package. The lightweight Go extractor must (a) emit the import with its last-segment binding so Stage-2 import-scoped resolution pins the call to orders.CreateOrder at high confidence, and (b) never fan out to billing.CreateOrder.",
+  "project": "go-import-map",
+  "language": "go",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {
+      "caller_suffix": "main.main",
+      "callee_suffix": "orders.CreateOrder",
+      "min_confidence": 0.9
+    }
+  ],
+  "forbidden_call_edges": [
+    {
+      "caller_suffix": "main.main",
+      "callee_suffix": "billing.CreateOrder"
+    }
+  ],
+  "external_systems": [],
+  "_di_resolution_note": "Gauges the import-map tier's reason for existing: import-scoped resolution for a language with no deep parser. di_resolution = 1.0 requires the billing decoy edge to be absent; the key edge requires the Go import binding ('app/orders' binds 'orders', separators normalized to dots) to reach Stage 2 before short-name fan-out."
+}

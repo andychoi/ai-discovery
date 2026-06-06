@@ -34,6 +34,11 @@ _PARSERS = {
     "csharp": ("ai_discovery.parsers.csharp", "CSharpParser"),
     "python": ("ai_discovery.parsers.python_parser", "PythonParser"),
     "javascript": ("ai_discovery.parsers.javascript", "JavaScriptParser"),
+    # A-6 import-map tier (lightweight extractors)
+    "go": ("ai_discovery.parsers.import_map", "GoImportMapParser"),
+    "rust": ("ai_discovery.parsers.import_map", "RustImportMapParser"),
+    "ruby": ("ai_discovery.parsers.import_map", "RubyImportMapParser"),
+    "php": ("ai_discovery.parsers.import_map", "PhpImportMapParser"),
 }
 
 

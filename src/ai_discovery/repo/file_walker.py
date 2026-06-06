@@ -14,6 +14,11 @@ _LANG_EXTENSIONS: dict[str, frozenset[str]] = {
     "javascript": frozenset({".js", ".ts", ".tsx", ".jsx"}),
     "webforms": frozenset({".aspx", ".ascx"}),
     "jsp": frozenset({".jsp", ".jspx", ".tag", ".tagx"}),
+    # A-6 import-map tier
+    "go": frozenset({".go"}),
+    "rust": frozenset({".rs"}),
+    "ruby": frozenset({".rb"}),
+    "php": frozenset({".php"}),
 }
 
 # Union of all recognized extensions for the "yield all" case.

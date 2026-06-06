@@ -588,7 +588,11 @@ def run_pipeline(
 
     if _phase_should_run(6, start_phase, skip_phases):
         with _with_checkpoint(db_path, scan_id, 6, "parse"):
+            from .parsers.import_map import IMPORT_MAP_PARSERS
+
             parsers = [PythonParser(), CSharpParser(), JavaParser(), JavaScriptParser(), WebFormsParser(), JspParser()]
+            # A-6 import-map tier: Go/Rust/Ruby/PHP via lightweight extractors.
+            parsers += [cls() for cls in IMPORT_MAP_PARSERS]
             all_nodes: list = []
             parse_errors = 0
 

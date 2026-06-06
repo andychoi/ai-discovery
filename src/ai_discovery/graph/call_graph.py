@@ -360,7 +360,9 @@ def _module_matches_file(module: str, file_path: str) -> bool:
 
     Tolerates shorter tails (e.g. `orders` matches `.../orders.py`) so the
     check still helps when callers use short relative imports or when the
-    repo doesn't map packages strictly to directory layout.
+    repo doesn't map packages strictly to directory layout. Extension set
+    covers the deep parsers and the A-6 import-map tier (Go/Rust/Ruby/PHP),
+    whose extractors normalize module separators to dots.
     """
     if not module:
         return False
@@ -368,7 +370,10 @@ def _module_matches_file(module: str, file_path: str) -> bool:
     posix = file_path.replace("\\", "/")
     for n in range(len(parts), 0, -1):
         tail = "/".join(parts[-n:])
-        if posix.endswith(f"/{tail}.py") or posix.endswith(f"/{tail}/__init__.py"):
+        for ext in (".py", ".go", ".rs", ".rb", ".php"):
+            if posix.endswith(f"/{tail}{ext}"):
+                return True
+        if posix.endswith(f"/{tail}/__init__.py"):
             return True
     return False
 

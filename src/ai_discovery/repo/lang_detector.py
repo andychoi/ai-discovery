@@ -33,6 +33,11 @@ _EXT_MAP: dict[str, str] = {
     ".jspx": "jsp",
     ".tag": "jsp",
     ".tagx": "jsp",
+    # A-6 import-map tier (lightweight extractors, not full parsers)
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".php": "php",
 }
 
 _MANIFEST_MAP: dict[str, str] = {
@@ -46,6 +51,10 @@ _MANIFEST_MAP: dict[str, str] = {
     "setup.py": "python",
     "Pipfile": "python",
     "package.json": "javascript",
+    "go.mod": "go",
+    "Cargo.toml": "rust",
+    "Gemfile": "ruby",
+    "composer.json": "php",
 }
 
 
