@@ -1197,6 +1197,10 @@ def run_pipeline(
                     skip_rag=True,
                     skip_tests=True,
                     budget_exhausted=_budget_exhausted_fn(llm_client, config),
+                    # A-1 Louvain semantic batching: Phase-7 call edges group
+                    # chunks into community batches (one structured call each).
+                    call_edges=edges,
+                    semantic_batching=config.semantic_batching,
                 )
 
             persist_summaries(summaries, scan_id, db_path)

@@ -79,6 +79,167 @@ Return ONLY valid JSON, no markdown fences, no extra text.
 ```{rag_section}"""
 
 
+# Structured-output schema for batched Tier-1 calls (A-1 semantic batching):
+# one summary object per chunk, keyed by qualified_name so members can be
+# matched back and missing ones re-summarized individually.
+_BATCH_SUMMARY_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "summaries": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "qualified_name": {"type": "string"},
+                    "purpose": {"type": "string"},
+                    "business_rules": {"type": "string"},
+                    "io_summary": {"type": "string"},
+                    "tech_debt_signals": {"type": "string"},
+                },
+                "required": [
+                    "qualified_name", "purpose", "business_rules",
+                    "io_summary", "tech_debt_signals",
+                ],
+            },
+        }
+    },
+    "required": ["summaries"],
+}
+
+
+def _build_batch_prompt(chunks: list[CodeChunk]) -> str:
+    """Build one Tier-1 prompt covering a whole semantic batch.
+
+    The instruction block is paid once per batch (not once per chunk), and the
+    model sees the chunk's callers/callees from the same call-graph community —
+    context a per-chunk prompt can't provide without RAG.
+    """
+    header = (
+        f"Analyze the following {len(chunks)} code chunks. They belong to the "
+        "same module community — they call or are called by each other, so use "
+        "the surrounding chunks as context when describing each one.\n\n"
+        "For EVERY chunk, emit one summary object with exactly these fields:\n"
+        '- "qualified_name": the chunk\'s qualified name, copied exactly.\n'
+        '- "purpose": a concise 1-2 sentence description of what the code does and why it exists.\n'
+        '- "business_rules": key business rules or domain logic. Use "None detected" if none.\n'
+        '- "io_summary": inputs, outputs, side effects (DB writes, API calls, file I/O, events).\n'
+        '- "tech_debt_signals": code smells, TODOs, complexity, missing error handling. Use "None detected" if none.\n'
+    )
+    sections = []
+    for i, chunk in enumerate(chunks, start=1):
+        sections.append(
+            f"## Chunk {i}\n"
+            f"- File: {chunk.file_path}\n"
+            f"- Type: {chunk.chunk_type}\n"
+            f"- Name: {chunk.qualified_name}\n"
+            f"- Language: {chunk.language}\n"
+            f"- Annotations: {', '.join(chunk.annotations) if chunk.annotations else 'none'}\n"
+            f"- Calls: {', '.join(chunk.calls[:10]) if chunk.calls else 'none'}\n\n"
+            f"```{chunk.language}\n{chunk.text}\n```"
+        )
+    return header + "\n" + "\n\n".join(sections)
+
+
+def _failed_summary(qualified_name: str) -> dict:
+    return {
+        "purpose": "Summarization failed",
+        "business_rules": "",
+        "io_summary": "",
+        "tech_debt_signals": "",
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "model": "",
+        "tier": "tier1",
+        "qualified_name": qualified_name,
+        "raw_response": "",
+    }
+
+
+def summarize_batch(
+    chunks: list[CodeChunk],
+    llm_client: LLMClient,
+    db_path: Path | None = None,
+    skip_rag: bool = True,
+) -> list[dict]:
+    """Summarize a semantic batch with ONE structured Tier-1 call.
+
+    Members the model skipped (or the whole batch, if the structured call
+    fails) fall back to individual `summarize_chunk` calls — batching is a
+    cost optimization, never a coverage regression. Returns one summary dict
+    per input chunk, same shape as `summarize_chunk`.
+    """
+    if not chunks:
+        return []
+
+    raw_items: list | None
+    response = None
+    try:
+        response = llm_client.invoke_structured(
+            "tier1",
+            _build_batch_prompt(chunks),
+            _BATCH_SUMMARY_SCHEMA,
+            tool_name="emit_summaries",
+            tool_description="Emit one summary object per code chunk.",
+            max_tokens=4096,
+        )
+        raw_items = response.data.get("summaries") or []
+    except Exception as exc:
+        logger.warning(
+            "Batched Tier-1 call failed for %d chunks (%s) — falling back to per-chunk",
+            len(chunks), exc,
+        )
+        raw_items = None
+
+    results: list[dict] = []
+    missing: list[CodeChunk] = []
+    if raw_items is None:
+        missing = list(chunks)
+    else:
+        by_qname = {
+            item["qualified_name"]: item
+            for item in raw_items
+            if isinstance(item, dict) and item.get("qualified_name")
+        }
+        for chunk in chunks:
+            item = by_qname.get(chunk.qualified_name)
+            if item is None:
+                missing.append(chunk)
+                continue
+            results.append({
+                "purpose": str(item.get("purpose", "")),
+                "business_rules": str(item.get("business_rules", "")),
+                "io_summary": str(item.get("io_summary", "")),
+                "tech_debt_signals": str(item.get("tech_debt_signals", "")),
+                "tokens_in": 0,  # split below
+                "tokens_out": 0,
+                "model": response.model,
+                "tier": response.tier,
+                "qualified_name": chunk.qualified_name,
+                "raw_response": response.raw_text,
+            })
+        # Split the batch's token cost across matched members so per-node
+        # ledger rows in node_summaries stay meaningful in aggregate.
+        if results:
+            per_in, rem_in = divmod(response.tokens_in, len(results))
+            per_out, rem_out = divmod(response.tokens_out, len(results))
+            for i, summary in enumerate(results):
+                summary["tokens_in"] = per_in + (rem_in if i == 0 else 0)
+                summary["tokens_out"] = per_out + (rem_out if i == 0 else 0)
+        if missing:
+            logger.warning(
+                "Batched Tier-1 response missing %d/%d members — summarizing individually",
+                len(missing), len(chunks),
+            )
+
+    for chunk in missing:
+        try:
+            results.append(summarize_chunk(chunk, llm_client, db_path, None, skip_rag))
+        except Exception:
+            logger.exception("Per-chunk fallback failed for %s", chunk.qualified_name)
+            results.append(_failed_summary(chunk.qualified_name))
+    return results
+
+
 def _parse_response(text: str) -> dict:
     """Parse LLM JSON response. Return dict with purpose, business_rules, io_summary, tech_debt_signals.
     Gracefully handle non-JSON responses by extracting what we can."""
@@ -170,6 +331,8 @@ def summarize_chunks(
     skip_rag: bool = False,
     skip_tests: bool = False,
     budget_exhausted: Callable[[], bool] | None = None,
+    call_edges: list | None = None,
+    semantic_batching: bool = False,
 ) -> list[dict]:
     """Summarize multiple chunks concurrently using ThreadPoolExecutor.
 
@@ -183,6 +346,10 @@ def summarize_chunks(
       db_path is still used for the resume guard.
     - If skip_tests is True, bypass LLM summarization for test files (still parsed
       into the graph; just no Tier 1 summary).
+    - If semantic_batching is True and call_edges are provided, group chunks by
+      call-graph community (A-1 Louvain batching) and fire ONE structured call
+      per batch instead of one call per chunk. Community context replaces RAG
+      in this mode; per-chunk fallback covers failed/missing members.
     - Return list of summary dicts
     """
     to_summarize = [c for c in chunks if c.chunk_type not in _SKIP_TYPES]
@@ -259,6 +426,42 @@ def summarize_chunks(
     completed = 0
 
     if total == 0:
+        return results
+
+    # A-1 semantic batching: one structured call per call-graph community.
+    # Runs after all filters so dedup/resume/test-skip semantics are identical
+    # to the per-chunk path.
+    if semantic_batching and call_edges is not None:
+        from .semantic_batching import compute_semantic_batches
+
+        batches = compute_semantic_batches(to_summarize, call_edges)
+        logger.info(
+            "Tier-1 semantic batching: %d chunks -> %d batches (%s)",
+            total, len(batches), batches[0].algorithm if batches else "n/a",
+        )
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            future_to_batch = {
+                executor.submit(summarize_batch, b.chunks, llm_client, db_path, True): b
+                for b in batches
+            }
+            for future in as_completed(future_to_batch):
+                batch = future_to_batch[future]
+                try:
+                    results.extend(future.result())
+                except Exception:
+                    logger.exception("Failed to summarize batch %d", batch.index)
+                    results.extend(_failed_summary(c.qualified_name) for c in batch.chunks)
+                completed += len(batch.chunks)
+                if on_progress is not None:
+                    on_progress(completed, total)
+                # P1-e: stop mid-phase once the budget is spent; cancel queued batches.
+                if budget_exhausted is not None and budget_exhausted():
+                    cancelled = sum(1 for f in future_to_batch if f.cancel())
+                    logger.warning(
+                        "Tier-1 budget limit reached after %d/%d chunks; skipping %d remaining batches",
+                        completed, total, cancelled,
+                    )
+                    break
         return results
 
     # Pre-embed all qualified names concurrently to avoid N serial API calls before summarization.

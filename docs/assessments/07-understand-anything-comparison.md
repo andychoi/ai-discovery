@@ -106,7 +106,7 @@ Ordered by leverage. Every item names the U-A source and the ai-discovery integr
 | Pri | Action | Type | Effort | Where |
 |---|---|---|---|---|
 | 1 | ~~Screen-spec per-claim verification (Phase-17 verify pass)~~ **Done 2026-06-06** | Fix/Complete (F-1/C-3) | M | `ai/screen_spec_generator.py` (`verify_screen_specs`), `db.py` (`screen_review_claims`), `pipeline.py` Phase 17 |
-| 2 | Louvain semantic batching for Tier-1 | Adopt (A-1) | M | new batching step feeding Phase 11; ref `compute-batches.mjs` |
+| 2 | ~~Louvain semantic batching for Tier-1~~ **Done 2026-06-06** | Adopt (A-1) | M | `ai/semantic_batching.py` (networkx `louvain_communities` over confidence-weighted file graph from Phase-7 call edges; fallback + caps + singleton merge per `compute-batches.mjs`), batched structured Tier-1 calls in `ai/summarizer.py`, `config.semantic_batching` |
 | 3 | Pipeline-wide fingerprint incremental re-scan | Adopt (A-2) | M–L | Phases 6/11/14; generalize screen-drift SHA256 machinery |
 | 4 | Cross-batch neighbor symbols → Stage-5 candidate narrowing | Adopt (A-3) | M | `graph/call_graph.py`; **add corpus fixture first** |
 | 5 | SPA menu detectors (TS const, Vue/React/Angular) + explicit skip signal | Complete (C-1) | M | `menu_detector.py` |

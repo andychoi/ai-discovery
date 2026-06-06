@@ -193,6 +193,11 @@ class DiscoveryConfig:
     budget_limit_usd: float = 50.0
     max_concurrent: int = 10
     prod: bool = False  # True → use tier3p for doc generation; False → tier3d
+    # A-1 Louvain semantic batching: group Tier-1 chunks by call-graph
+    # community and fire one structured call per batch (cheaper, and the
+    # summarizer sees the callers/callees it describes). Degrades to the
+    # per-chunk path automatically when clustering fails.
+    semantic_batching: bool = True
 
     bedrock: BedrockConfig = field(default_factory=BedrockConfig)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
@@ -272,6 +277,8 @@ class DiscoveryConfig:
                 cfg.budget_limit_usd = float(raw["budget_limit_usd"])
             if "max_concurrent" in raw:
                 cfg.max_concurrent = int(raw["max_concurrent"])
+            if "semantic_batching" in raw:
+                cfg.semantic_batching = bool(raw["semantic_batching"])
 
             # Nested sections — filter to known fields so forward/backward
             # compatible YAMLs don't raise TypeError on unexpected keys.
