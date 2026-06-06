@@ -335,23 +335,15 @@ def embed_ollama_batch(
 # /chat/completions | /embeddings. Bearer auth is required.
 
 
-def invoke_openai_compat(
-    model: str, prompt: str, max_tokens: int = 4096,
-    base_url: str = "https://api.openai.com/v1",
-    api_key: str = "",
-    max_tokens_field: str = "max_completion_tokens",
+def _openai_compat_chat(
+    model: str, prompt: str, max_tokens: int,
+    base_url: str, api_key: str, max_tokens_field: str,
+    extra_payload: dict | None = None,
 ) -> tuple[str, int, int]:
-    """Invoke an OpenAI-compatible chat-completions endpoint.
+    """POST an OpenAI-compatible chat-completions request with retries.
 
-    Returns (text, tokens_in, tokens_out).
-
-    ``max_tokens_field`` names the output-cap parameter: OpenAI's gpt-5
-    family rejects ``max_tokens`` in favor of ``max_completion_tokens``;
-    Gemini's compatibility layer uses ``max_tokens``.
-
-    Per-request timeout defaults to 600s; override with env var
-    OPENAI_COMPAT_INVOKE_TIMEOUT (seconds). Transient errors (429/5xx,
-    timeouts) retry with exponential backoff like invoke_bedrock.
+    Returns (text, tokens_in, tokens_out). Shared by invoke_openai_compat
+    and invoke_openai_compat_structured (which adds ``response_format``).
     """
     import os
     timeout = float(os.environ.get("OPENAI_COMPAT_INVOKE_TIMEOUT", "600"))
@@ -362,6 +354,7 @@ def invoke_openai_compat(
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         max_tokens_field: max_tokens,
+        **(extra_payload or {}),
     }
     last_err: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):
@@ -392,6 +385,64 @@ def invoke_openai_compat(
         f"OpenAI-compatible invocation failed after {_MAX_RETRIES} retries "
         f"(model={model} at {base_url}): {last_err}"
     ) from last_err
+
+
+def invoke_openai_compat(
+    model: str, prompt: str, max_tokens: int = 4096,
+    base_url: str = "https://api.openai.com/v1",
+    api_key: str = "",
+    max_tokens_field: str = "max_completion_tokens",
+) -> tuple[str, int, int]:
+    """Invoke an OpenAI-compatible chat-completions endpoint.
+
+    Returns (text, tokens_in, tokens_out).
+
+    ``max_tokens_field`` names the output-cap parameter: OpenAI's gpt-5
+    family rejects ``max_tokens`` in favor of ``max_completion_tokens``;
+    Gemini's compatibility layer uses ``max_tokens``.
+
+    Per-request timeout defaults to 600s; override with env var
+    OPENAI_COMPAT_INVOKE_TIMEOUT (seconds). Transient errors (429/5xx,
+    timeouts) retry with exponential backoff like invoke_bedrock.
+    """
+    return _openai_compat_chat(model, prompt, max_tokens, base_url, api_key,
+                               max_tokens_field)
+
+
+def invoke_openai_compat_structured(
+    model: str, prompt: str, schema: dict, *,
+    schema_name: str = "emit", schema_description: str = "",
+    max_tokens: int = 4096,
+    base_url: str = "https://api.openai.com/v1",
+    api_key: str = "",
+    max_tokens_field: str = "max_completion_tokens",
+) -> tuple[dict | None, str, int, int]:
+    """Schema-enforced invocation via the OpenAI-compatible
+    ``response_format: json_schema`` channel (OpenAI structured outputs;
+    Gemini's compatibility layer supports the same field).
+
+    Returns (data, text, tokens_in, tokens_out). ``data`` is the parsed JSON
+    object when the response content is valid JSON; ``None`` otherwise, with
+    ``text`` carrying the raw content for tolerant parsing. ``strict`` is
+    deliberately not set — strict mode requires ``additionalProperties:
+    false`` throughout, which existing Discovery schemas don't guarantee.
+    """
+    import json as _json
+    json_schema: dict = {"name": schema_name, "schema": schema}
+    if schema_description:
+        json_schema["description"] = schema_description
+    text, tok_in, tok_out = _openai_compat_chat(
+        model, prompt, max_tokens, base_url, api_key, max_tokens_field,
+        extra_payload={"response_format": {"type": "json_schema",
+                                           "json_schema": json_schema}},
+    )
+    try:
+        data = _json.loads(text)
+        if not isinstance(data, dict):
+            data = None
+    except ValueError:
+        data = None
+    return data, text, tok_in, tok_out
 
 
 def embed_openai_compat(

@@ -281,6 +281,64 @@ def test_invoke_anthropic_structured_missing_package(monkeypatch):
         llm_invoke.invoke_anthropic_structured("claude-opus-4-8", "Hi", _SCHEMA)
 
 
+# ── llm_invoke.invoke_openai_compat_structured ───────────────────────────────
+
+
+def test_invoke_openai_compat_structured_sends_response_format(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        captured.update(url=url, json=json)
+        return _FakeResponse(_chat_payload('{"purpose": "x"}'))
+
+    monkeypatch.setattr(llm_invoke.httpx, "post", fake_post)
+    data, text, tok_in, tok_out = llm_invoke.invoke_openai_compat_structured(
+        "gpt-5-mini", "Extract.", _SCHEMA, schema_name="emit_screen_spec",
+        max_tokens=512, base_url="https://api.openai.com/v1", api_key="sk-test",
+    )
+    assert data == {"purpose": "x"}
+    assert (tok_in, tok_out) == (11, 7)
+    rf = captured["json"]["response_format"]
+    assert rf["type"] == "json_schema"
+    assert rf["json_schema"]["name"] == "emit_screen_spec"
+    assert rf["json_schema"]["schema"] == _SCHEMA
+    # OpenAI default output-cap field
+    assert captured["json"]["max_completion_tokens"] == 512
+
+
+def test_invoke_openai_compat_structured_non_json_returns_none(monkeypatch):
+    def fake_post(url, json=None, timeout=None, headers=None):
+        return _FakeResponse(_chat_payload("Sorry, here is prose."))
+
+    monkeypatch.setattr(llm_invoke.httpx, "post", fake_post)
+    data, text, _, _ = llm_invoke.invoke_openai_compat_structured(
+        "gpt-5-mini", "Extract.", _SCHEMA, base_url="https://api.openai.com/v1",
+    )
+    assert data is None
+    assert text == "Sorry, here is prose."
+
+
+def test_invoke_openai_compat_structured_gemini_max_tokens_field(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        captured.update(json=json)
+        return _FakeResponse(_chat_payload('{"a": 1}'))
+
+    monkeypatch.setattr(llm_invoke.httpx, "post", fake_post)
+    llm_invoke.invoke_openai_compat_structured(
+        "gemini-3.5-flash", "Extract.", _SCHEMA, max_tokens=64,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        max_tokens_field="max_tokens",
+    )
+    assert captured["json"]["max_tokens"] == 64
+
+
+def test_max_tokens_field_for():
+    assert llm_router.max_tokens_field_for("openai") == "max_completion_tokens"
+    assert llm_router.max_tokens_field_for("gemini") == "max_tokens"
+
+
 # ── llm_router: resolution + dispatch ────────────────────────────────────────
 
 

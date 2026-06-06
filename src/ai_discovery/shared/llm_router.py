@@ -141,6 +141,12 @@ def _is_openai_compat(provider: str) -> bool:
     return provider in _OPENAI_COMPAT_PROVIDERS
 
 
+def max_tokens_field_for(provider: str) -> str:
+    """Output-cap parameter name for an OpenAI-compatible provider
+    (gpt-5 family requires max_completion_tokens; Gemini uses max_tokens)."""
+    return _OPENAI_COMPAT_PROVIDERS[provider][4]
+
+
 def _resolve_api_key(config: dict, provider: str, env_var: str) -> str:
     """API key for a provider: config-supplied (via configure(), e.g. from
     discovery.yaml) takes precedence over the environment variable."""

@@ -132,6 +132,74 @@ def test_invoke_structured_anthropic_falls_back_when_model_emits_text(monkeypatc
     assert result.via_tool is False
 
 
+@pytest.mark.parametrize("provider", ["openai", "gemini"])
+def test_invoke_structured_openai_compat_uses_response_format(monkeypatch, provider):
+    cfg = DiscoveryConfig()
+    cfg.provider = provider
+    captured = {}
+
+    def fake_structured(model, prompt, schema, *, schema_name, schema_description,
+                        max_tokens, base_url, api_key, max_tokens_field):
+        captured.update(model=model, schema=schema, schema_name=schema_name,
+                        max_tokens_field=max_tokens_field)
+        return {"purpose": "x"}, '{"purpose": "x"}', 10, 20
+
+    monkeypatch.setattr(llm_client_mod, "invoke_openai_compat_structured",
+                        fake_structured)
+    client = LLMClient(cfg)
+    result = client.invoke_structured(
+        "screen", "prompt", _SCHEMA, tool_name="emit_screen_spec", max_tokens=512,
+    )
+
+    assert result.data == {"purpose": "x"}
+    assert result.via_tool is True
+    assert captured["model"] == cfg.get_model("screen")
+    assert captured["schema"] == _SCHEMA
+    assert captured["schema_name"] == "emit_screen_spec"
+    expected_field = "max_completion_tokens" if provider == "openai" else "max_tokens"
+    assert captured["max_tokens_field"] == expected_field
+    assert client.get_costs()["screen"]["tokens_out"] == 20
+
+
+def test_invoke_structured_openai_compat_text_fallback(monkeypatch):
+    cfg = DiscoveryConfig()
+    cfg.provider = "openai"
+
+    def fake_structured(model, prompt, schema, *, schema_name, schema_description,
+                        max_tokens, base_url, api_key, max_tokens_field):
+        return None, '```json\n{"purpose": "y"}\n```', 5, 5
+
+    monkeypatch.setattr(llm_client_mod, "invoke_openai_compat_structured",
+                        fake_structured)
+    result = LLMClient(cfg).invoke_structured("screen", "p", _SCHEMA, tool_name="t")
+    assert result.data == {"purpose": "y"}
+    assert result.via_tool is False
+
+
+def test_invoke_structured_openai_compat_falls_back_on_request_error(monkeypatch):
+    """If the structured request itself errors (e.g. the endpoint rejects
+    response_format), invoke_structured degrades to the plain-invoke path
+    instead of failing the caller."""
+    cfg = DiscoveryConfig()
+    cfg.provider = "gemini"
+
+    def fake_structured(*args, **kwargs):
+        raise RuntimeError("response_format not supported")
+
+    monkeypatch.setattr(llm_client_mod, "invoke_openai_compat_structured",
+                        fake_structured)
+    monkeypatch.setattr(
+        LLMClient, "invoke",
+        lambda self, tier, prompt, max_tokens=4096: LLMResponse(
+            text='```json\n{"purpose": "fallback"}\n```', tokens_in=1,
+            tokens_out=2, model="gemini-3.5-flash", tier=tier,
+        ),
+    )
+    result = LLMClient(cfg).invoke_structured("screen", "p", _SCHEMA, tool_name="t")
+    assert result.data == {"purpose": "fallback"}
+    assert result.via_tool is False
+
+
 def test_invoke_structured_ollama_fallback_parses_fenced_text(monkeypatch):
     cfg = DiscoveryConfig()
     cfg.provider = "ollama"

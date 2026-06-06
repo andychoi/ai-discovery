@@ -25,7 +25,8 @@ log = logging.getLogger(__name__)
 from ai_discovery.shared import llm_router
 from ai_discovery.shared.model_defaults import MODELS
 from ai_discovery.shared.llm_invoke import (
-    converse_bedrock, invoke_anthropic_structured, warm_ollama, unload_ollama,
+    converse_bedrock, invoke_anthropic_structured, invoke_openai_compat_structured,
+    warm_ollama, unload_ollama,
 )
 from ai_discovery.shared.json_extract import extract_json_object
 
@@ -53,9 +54,11 @@ class LLMResponse:
 class StructuredResponse:
     """Result of a schema-enforced invocation.
 
-    `data` is the parsed JSON object. `via_tool` is True when the model returned
-    it through Bedrock tool use (structurally guaranteed to match the schema) and
-    False when it came from the text-parsing fallback (Ollama / no tool support).
+    `data` is the parsed JSON object. `via_tool` is True when the model
+    returned it through an enforced structured channel — Bedrock/Anthropic
+    forced tool use, or the OpenAI/Gemini ``response_format: json_schema``
+    channel — and False when it came from the text-parsing fallback
+    (Ollama-like providers, or a model that ignored the channel).
     """
     data: dict
     tokens_in: int
@@ -174,12 +177,51 @@ class LLMClient:
         On Anthropic direct the same guarantee comes from native tool use with a
         forced ``tool_choice`` via the official SDK.
 
-        On the remaining providers (Ollama-compatible, OpenAI, Gemini) it falls
-        back to a plain prompt plus tolerant JSON extraction — same robustness
-        as before, but the fence handling now lives in one shared helper. Raises
+        On OpenAI and Gemini it uses the ``response_format: json_schema``
+        channel (OpenAI structured outputs; Gemini's OpenAI-compatible layer
+        supports the same field). If that request itself errors — e.g. the
+        endpoint rejects the schema — it degrades to the plain-invoke path.
+
+        On Ollama-compatible providers (no reliable tool use) it falls back to a
+        plain prompt plus tolerant JSON extraction — same robustness as before,
+        but the fence handling now lives in one shared helper. Raises
         ``json.JSONDecodeError`` only on the fallback path when no JSON is found.
         """
         model = self._config.get_model(tier)
+
+        if self._config.provider in ("openai", "gemini"):
+            from ai_discovery.shared.llm_router import max_tokens_field_for
+            base_url, api_key = self._config.get_endpoint()
+            try:
+                data, text, tok_in, tok_out = invoke_openai_compat_structured(
+                    model, prompt, schema,
+                    schema_name=tool_name,
+                    schema_description=tool_description,
+                    max_tokens=max_tokens,
+                    base_url=base_url,
+                    api_key=api_key or os.environ.get(
+                        f"{self._config.provider.upper()}_API_KEY", ""),
+                    max_tokens_field=max_tokens_field_for(self._config.provider),
+                )
+            except RuntimeError as exc:
+                # e.g. endpoint rejects response_format / schema construct —
+                # degrade to the plain-invoke + tolerant-parse path below.
+                log.warning(
+                    "Structured response_format failed on %s, falling back to "
+                    "plain invoke: %s", self._config.provider, exc,
+                )
+            else:
+                self._track_cost(tier, model, tok_in, tok_out)
+                if data is not None:
+                    return StructuredResponse(
+                        data=data, tokens_in=tok_in, tokens_out=tok_out,
+                        model=model, tier=tier, via_tool=True,
+                    )
+                return StructuredResponse(
+                    data=extract_json_object(text), tokens_in=tok_in,
+                    tokens_out=tok_out, model=model, tier=tier,
+                    via_tool=False, raw_text=text,
+                )
 
         if self._config.provider == "anthropic":
             data, text, tok_in, tok_out = invoke_anthropic_structured(
