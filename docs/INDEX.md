@@ -19,7 +19,8 @@ Learn how the system is built:
 
 - **`architecture/overview.md`** — Purpose, data flow, L1–L7 framework, LLM tiers, storage layout
 - **`architecture/components.md`** — Module map, data models, hard problem areas (A & D)
-- **`architecture/decisions.md`** — Design rationale: why 7-level confidence? Why 3 LLM tiers? Trade-offs explained.
+- **`architecture/decisions.md`** — Design rationale: why 4-stage graded call resolution? Why 3 LLM tiers? Trade-offs explained.
+- **`review/system-logic.md`** — Detailed system-logic walkthrough for engineering review (pipeline, resolution cascade, confidence formulas, data model — with diagrams). Korean version: `review/system-logic.ko.md`
 
 ---
 
