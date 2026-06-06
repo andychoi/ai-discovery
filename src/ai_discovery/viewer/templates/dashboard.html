@@ -3,6 +3,48 @@
 
 {% block main %}
 <section class="panel">
+  <h2>Find code</h2>
+  <input id="node-search" type="search" placeholder="Search symbols or files… (e.g. OrderService, orders.py)"
+         autocomplete="off" style="width:100%;padding:.5em;font:inherit;">
+  <ul id="search-results" class="search-results"></ul>
+  <script>
+    (function () {
+      const input = document.getElementById("node-search");
+      const list = document.getElementById("search-results");
+      let timer = null;
+      input.addEventListener("input", function () {
+        clearTimeout(timer);
+        timer = setTimeout(async function () {
+          const q = input.value.trim();
+          list.innerHTML = "";
+          if (!q) return;
+          const resp = await fetch("/api/search?q=" + encodeURIComponent(q));
+          if (!resp.ok) return;
+          const data = await resp.json();
+          for (const r of data.results) {
+            const li = document.createElement("li");
+            const a = document.createElement("a");
+            a.href = "/node/" + encodeURIComponent(r.qualified_name);
+            a.textContent = r.qualified_name;
+            const meta = document.createElement("span");
+            meta.className = "dim";
+            meta.textContent = " — " + r.node_type + " · " + r.file_path +
+              (r.domain ? " · " + r.domain : "");
+            li.appendChild(a); li.appendChild(meta);
+            list.appendChild(li);
+          }
+          if (!data.results.length) {
+            const li = document.createElement("li");
+            li.className = "dim"; li.textContent = "No matches.";
+            list.appendChild(li);
+          }
+        }, 200);
+      });
+    })();
+  </script>
+</section>
+
+<section class="panel">
   <h1>Scan quality — {{ slug }}</h1>
 
   {% if data.quality %}

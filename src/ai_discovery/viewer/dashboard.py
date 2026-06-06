@@ -294,6 +294,106 @@ def _parse_int(v: Optional[str]) -> Optional[int]:
 # ---------------------------------------------------------------------------
 # Top-level aggregator
 # ---------------------------------------------------------------------------
+# A-5: node drill-down + search — the dashboard answers "is the scan good?";
+# these answer "what does this code do?". Latest-scan scoped: qualified_name
+# is only unique per scan, so unscoped queries would surface stale duplicates.
+# ---------------------------------------------------------------------------
+
+def _latest_scan_id(conn: sqlite3.Connection) -> Optional[int]:
+    row = conn.execute("SELECT MAX(id) FROM scan_runs").fetchone()
+    return row[0] if row else None
+
+
+def search_nodes(db_path: Path, query: str, limit: int = 20) -> list[dict]:
+    """Case-insensitive substring search over symbols and file paths.
+
+    Returns [{qualified_name, name, node_type, file_path, domain, line_start}]
+    from the latest scan, ordered by qualified_name. Empty/blank queries
+    return [] (no accidental full-table dumps into the UI).
+    """
+    q = (query or "").strip()
+    if not q:
+        return []
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    with _connect(db_path) as conn:
+        scan_id = _latest_scan_id(conn)
+        if scan_id is None:
+            return []
+        rows = conn.execute(
+            r"""
+            SELECT qualified_name, name, node_type, file_path, domain, line_start
+            FROM code_nodes
+            WHERE scan_id = ?
+              AND (qualified_name LIKE ? ESCAPE '\' OR file_path LIKE ? ESCAPE '\')
+            ORDER BY qualified_name
+            LIMIT ?
+            """,
+            (scan_id, pattern, pattern, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def node_detail(db_path: Path, qualified_name: str) -> Optional[dict]:
+    """Everything the drill-down page needs for one node, latest scan:
+
+    metadata + source snippet, the Tier-1 summary (None when unsummarized —
+    honesty over filler), and incoming/outgoing call edges carrying confidence
+    AND resolution-stage provenance (`resolved_by`).
+    """
+    with _connect(db_path) as conn:
+        scan_id = _latest_scan_id(conn)
+        if scan_id is None:
+            return None
+        node = conn.execute(
+            """
+            SELECT id, qualified_name, name, node_type, language, file_path,
+                   line_start, line_end, domain, source_code
+            FROM code_nodes WHERE scan_id = ? AND qualified_name = ?
+            """,
+            (scan_id, qualified_name),
+        ).fetchone()
+        if node is None:
+            return None
+
+        summary_row = conn.execute(
+            "SELECT purpose, business_rules, io_summary, tech_debt_signals "
+            "FROM node_summaries WHERE node_id = ?",
+            (node["id"],),
+        ).fetchone()
+
+        edges_out = conn.execute(
+            """
+            SELECT callee.qualified_name AS callee, ce.callee_name,
+                   ce.edge_type, ce.confidence, ce.resolved_by
+              FROM call_edges ce
+         LEFT JOIN code_nodes callee ON callee.id = ce.callee_id
+             WHERE ce.scan_id = ? AND ce.caller_id = ?
+          ORDER BY ce.confidence DESC, ce.callee_name
+            """,
+            (scan_id, node["id"]),
+        ).fetchall()
+
+        edges_in = conn.execute(
+            """
+            SELECT caller.qualified_name AS caller,
+                   ce.edge_type, ce.confidence, ce.resolved_by
+              FROM call_edges ce
+              JOIN code_nodes caller ON caller.id = ce.caller_id
+             WHERE ce.scan_id = ? AND ce.callee_id = ?
+          ORDER BY ce.confidence DESC, caller
+            """,
+            (scan_id, node["id"]),
+        ).fetchall()
+
+    detail = {k: node[k] for k in node.keys() if k != "id"}
+    detail["summary"] = dict(summary_row) if summary_row else None
+    detail["edges_out"] = [dict(r) for r in edges_out]
+    detail["edges_in"] = [dict(r) for r in edges_in]
+    return detail
+
+
+# ---------------------------------------------------------------------------
 
 def build_summary(
     output_dir: Path,
@@ -341,6 +441,8 @@ __all__ = [
     "confidence_histogram",
     "discover_artifacts",
     "doc_tree",
+    "node_detail",
     "quality_status",
+    "search_nodes",
     "weakest_docs",
 ]

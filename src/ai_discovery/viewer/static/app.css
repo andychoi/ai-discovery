@@ -129,3 +129,12 @@ table.rows a:hover { text-decoration: underline; }
 /* Diagram canvas */
 .diagram-canvas { height: 70vh; min-height: 500px; border: 1px solid var(--border); border-radius: 4px; background: #fdfdfd; }
 .diagram-canvas svg { max-width: 100%; }
+
+/* A-5: node search + drill-down */
+.search-results { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.search-results li { padding: 0.3rem 0.2rem; border-bottom: 1px solid #eee; }
+.search-results a { font-family: ui-monospace, monospace; }
+.node-meta { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.summary-grid { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; }
+.summary-grid dt { font-weight: 600; color: #555; }
+.summary-grid dd { margin: 0; }

@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block title %}{{ node.qualified_name }} — {{ slug }}{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/index.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+{% endblock %}
+
+{% block main %}
+<section class="panel">
+  <div class="doc-header">
+    <a class="back" href="/">← Dashboard</a>
+    <h1><code>{{ node.qualified_name }}</code></h1>
+  </div>
+
+  <p class="node-meta">
+    <span class="chip">{{ node.node_type }}</span>
+    <span class="chip">{{ node.language }}</span>
+    {% if node.domain %}<span class="chip">domain: {{ node.domain }}</span>{% endif %}
+    <code>{{ node.file_path }}:{{ node.line_start }}–{{ node.line_end }}</code>
+  </p>
+
+  {% if node.summary %}
+  <h2>Tier-1 summary</h2>
+  <dl class="summary-grid">
+    <dt>Purpose</dt><dd>{{ node.summary.purpose }}</dd>
+    <dt>Business rules</dt><dd>{{ node.summary.business_rules }}</dd>
+    <dt>I/O</dt><dd>{{ node.summary.io_summary }}</dd>
+    <dt>Tech-debt signals</dt><dd>{{ node.summary.tech_debt_signals }}</dd>
+  </dl>
+  {% else %}
+  <p class="dim">No Tier-1 summary for this node (skipped type, test file, or budget stop).</p>
+  {% endif %}
+
+  <h2>Calls ({{ node.edges_out | length }})</h2>
+  {% if node.edges_out %}
+  <table>
+    <thead><tr><th>Callee</th><th>Confidence</th><th>Resolved by</th></tr></thead>
+    <tbody>
+    {% for e in node.edges_out %}
+      <tr>
+        <td>
+          {% if e.callee %}<a href="/node/{{ e.callee | urlencode }}"><code>{{ e.callee }}</code></a>
+          {% else %}<code>{{ e.callee_name }}</code> <span class="dim">(unresolved)</span>{% endif %}
+        </td>
+        <td>{{ "%.2f" | format(e.confidence) }}</td>
+        <td><span class="chip">{{ e.resolved_by or "?" }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="dim">No outgoing calls.</p>{% endif %}
+
+  <h2>Called by ({{ node.edges_in | length }})</h2>
+  {% if node.edges_in %}
+  <table>
+    <thead><tr><th>Caller</th><th>Confidence</th><th>Resolved by</th></tr></thead>
+    <tbody>
+    {% for e in node.edges_in %}
+      <tr>
+        <td><a href="/node/{{ e.caller | urlencode }}"><code>{{ e.caller }}</code></a></td>
+        <td>{{ "%.2f" | format(e.confidence) }}</td>
+        <td><span class="chip">{{ e.resolved_by or "?" }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="dim">No incoming calls.</p>{% endif %}
+
+  {% if node.source_code %}
+  <h2>Source</h2>
+  <pre><code id="src" class="language-{{ node.language }}">{{ node.source_code }}</code></pre>
+  <script>hljs.highlightElement(document.getElementById("src"));</script>
+  {% endif %}
+</section>
+{% endblock %}

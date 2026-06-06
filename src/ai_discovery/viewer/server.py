@@ -78,6 +78,17 @@ class ViewerContext:
         # without restarting the viewer.
         return build_summary(self.output_dir, self.docs_root, self.slug)
 
+    def db_path(self) -> Optional[Path]:
+        """Resolve the discovery DB the same way build_summary does (handles
+        both the output-<slug> and legacy <slug> layouts)."""
+        from .dashboard import discover_artifacts
+
+        db_artifact = next(
+            (a for a in discover_artifacts(self.output_dir, self.slug) if a.key == "db"),
+            None,
+        )
+        return db_artifact.path if db_artifact and db_artifact.exists else None
+
     def resolve_raw(self, tree: str, rel: str) -> Optional[Path]:
         """Resolve /raw/<tree>/<rel> to a filesystem path, or None if escape."""
         root = {"output": self.slug_output_root, "docs": self.slug_docs_root}.get(tree)
@@ -128,6 +139,13 @@ class _ViewerHandler(BaseHTTPRequestHandler):
                 self._serve_dashboard()
             elif path == "/api/summary":
                 self._serve_summary_json()
+            elif path == "/api/search":
+                query = urllib.parse.parse_qs(parsed.query).get("q", [""])[0]
+                self._serve_search_json(query)
+            elif path.startswith("/api/node/"):
+                self._serve_node_json(urllib.parse.unquote(path[len("/api/node/"):]))
+            elif path.startswith("/node/"):
+                self._serve_node_page(urllib.parse.unquote(path[len("/node/"):]))
             elif path.startswith("/doc/"):
                 self._serve_doc(path[len("/doc/"):])
             elif path.startswith("/diagram/"):
@@ -153,6 +171,36 @@ class _ViewerHandler(BaseHTTPRequestHandler):
     def _serve_summary_json(self) -> None:
         data = self.ctx.summary()
         self._send_json(_dashboard_as_dict(data))
+
+    # ----- A-5: node drill-down + search -----
+
+    def _serve_search_json(self, query: str) -> None:
+        from .dashboard import search_nodes
+
+        db = self.ctx.db_path()
+        results = search_nodes(db, query) if db else []
+        self._send_json({"query": query, "results": results})
+
+    def _serve_node_json(self, qualified_name: str) -> None:
+        from .dashboard import node_detail
+
+        db = self.ctx.db_path()
+        detail = node_detail(db, qualified_name) if db else None
+        if detail is None:
+            self._send_error(HTTPStatus.NOT_FOUND, f"Unknown node: {qualified_name}")
+            return
+        self._send_json(detail)
+
+    def _serve_node_page(self, qualified_name: str) -> None:
+        from .dashboard import node_detail
+
+        db = self.ctx.db_path()
+        detail = node_detail(db, qualified_name) if db else None
+        if detail is None:
+            self._send_error(HTTPStatus.NOT_FOUND, f"Unknown node: {qualified_name}")
+            return
+        tpl = self.ctx.env.get_template("node.html")
+        self._send_html(tpl.render(slug=self.ctx.slug, node=detail))
 
     def _serve_doc(self, rel: str) -> None:
         # Expect "<BUCKET>/<file>.md". Validate each segment.
