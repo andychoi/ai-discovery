@@ -1,7 +1,13 @@
-"""Discovery LLM client — thin wrapper over shared.llm_invoke functions.
+"""Discovery LLM client — routes invocation through shared.llm_router.
 
-Adds Discovery-specific cost tracking on top of the shared Bedrock/Ollama
-invoke layer.  Config comes from DiscoveryConfig (YAML > env > defaults).
+Adds Discovery-specific cost tracking and tier mapping on top of the shared
+multi-provider router (bedrock | ollama | mlx-gemma | mlx-qwen | openai |
+gemini | anthropic). Config comes from DiscoveryConfig (YAML > env >
+defaults) and is registered with the router via ``llm_router.configure()``.
+
+The Bedrock structured-output path (``invoke_structured``) calls
+``converse_bedrock`` directly — it needs a forced ``tool_choice``, which the
+router's converse fallback does not expose.
 """
 
 from __future__ import annotations
@@ -15,26 +21,22 @@ from ..config import DiscoveryConfig
 
 log = logging.getLogger(__name__)
 
-try:
-    from ai_discovery.shared.model_defaults import MODELS
-except ImportError:
-    from ai_discovery.shared.model_defaults import MODELS
-
-# llm_invoke has no DB dependencies — safe to import in both Docker and local.
-#   Docker (PYTHONPATH=/app): 'shared' is a top-level package
-#   Local (python -m app): 'app.shared' is the correct path
-try:
-    from ai_discovery.shared.llm_invoke import (
-        invoke_bedrock, invoke_ollama, converse_bedrock, embed_bedrock, embed_ollama,
-        embed_ollama_batch, warm_ollama, unload_ollama,
-    )
-except ImportError:
-    from ai_discovery.shared.llm_invoke import (
-        invoke_bedrock, invoke_ollama, converse_bedrock, embed_bedrock, embed_ollama,
-        embed_ollama_batch, warm_ollama, unload_ollama,
-    )
-
+from ai_discovery.shared import llm_router
+from ai_discovery.shared.model_defaults import MODELS
+from ai_discovery.shared.llm_invoke import (
+    converse_bedrock, warm_ollama, unload_ollama,
+)
 from ai_discovery.shared.json_extract import extract_json_object
+
+# Discovery tier → router tier. The router's configure() flattening encodes
+# the same prod-flag logic as DiscoveryConfig.get_model (expert ≡ tier3p if
+# prod else tier3d), so model resolution is identical on both paths.
+_ROUTER_TIER = {
+    "tier1": "fast",
+    "tier2": "standard",
+    "tier3": "expert",
+    "screen": "standard",  # screen uses the tier2 model (see get_model)
+}
 
 
 @dataclass
@@ -129,27 +131,26 @@ class LLMClient:
         return None
 
     def invoke(self, tier: str, prompt: str, max_tokens: int = 4096) -> LLMResponse:
-        """Invoke LLM for given tier. Routes to Bedrock or Ollama-compatible."""
-        model = self._config.get_model(tier)
-        if self._config.provider == "bedrock":
-            text, tok_in, tok_out = invoke_bedrock(
-                model, prompt, max_tokens, self._config.bedrock.region,
-            )
-        elif self._config.provider in self._OLLAMA_LIKE:
-            base_url, api_key = self._config.get_endpoint()
-            text, tok_in, tok_out = invoke_ollama(
-                model, prompt, max_tokens, base_url,
-                num_ctx=self._tier1_num_ctx(tier),
-                api_key=api_key,
-            )
-        else:
+        """Invoke LLM for given tier — dispatched through shared.llm_router."""
+        if self._config.provider not in MODELS:
             raise ValueError(
-                f"Unknown provider {self._config.provider!r} — expected "
-                f"'bedrock', 'ollama', 'mlx-gemma', or 'mlx-qwen'"
+                f"Unknown provider {self._config.provider!r} — expected one of "
+                f"{sorted(MODELS)}"
             )
+        router_tier = _ROUTER_TIER.get(tier)
+        if router_tier is None:
+            raise ValueError(f"Invalid tier {tier!r}, must be one of {sorted(_ROUTER_TIER)}")
 
-        self._track_cost(tier, model, tok_in, tok_out)
-        return LLMResponse(text=text, tokens_in=tok_in, tokens_out=tok_out, model=model, tier=tier)
+        llm_router.configure(self._config)
+        meta = llm_router.invoke_llm_with_meta(
+            router_tier, prompt, max_tokens,
+            enable_thinking=True,  # preserve the pre-router invoke_ollama default
+            num_ctx=self._tier1_num_ctx(tier),
+        )
+        self._track_cost(tier, meta["model_id"], meta["input_tokens"], meta["output_tokens"])
+        return LLMResponse(text=meta["text"], tokens_in=meta["input_tokens"],
+                           tokens_out=meta["output_tokens"], model=meta["model_id"],
+                           tier=tier)
 
     def invoke_structured(
         self,
@@ -427,58 +428,53 @@ class LLMClient:
             f"<task>\n{prompt[:2000]}\n</task>"  # truncate to avoid bloat
         )
 
-        if self._config.provider == "bedrock":
-            adv_model = (
-                self._config.bedrock.tier3p if self._config.prod
-                else self._config.bedrock.tier3d
-            )
-            adv_text, adv_in, adv_out = invoke_bedrock(
-                adv_model, advisor_prompt, 256, self._config.bedrock.region,
-            )
-        elif self._config.provider in self._OLLAMA_LIKE:
-            base_url, api_key = self._config.get_endpoint()
-            adv_model = self._config.get_model("tier3")
-            adv_text, adv_in, adv_out = invoke_ollama(
-                adv_model, advisor_prompt, 256, base_url, api_key=api_key,
-            )
-        else:
-            return self.invoke(tier, prompt, max_tokens)
-
-        self._track_cost("advisor", adv_model, adv_in, adv_out)
+        # Advisor pre-call uses the active tier3 (expert) model on whatever
+        # provider is configured — routed through the shared router, so all
+        # providers (including openai/gemini/anthropic) get advisor support.
+        llm_router.configure(self._config)
+        meta = llm_router.invoke_llm_with_meta("expert", advisor_prompt, 256,
+                                               enable_thinking=True)
+        self._track_cost("advisor", meta["model_id"],
+                         meta["input_tokens"], meta["output_tokens"])
 
         # Inject advisor plan into main prompt
-        augmented = f"<advisor_plan>\n{adv_text}\n</advisor_plan>\n\n{prompt}"
+        augmented = f"<advisor_plan>\n{meta['text']}\n</advisor_plan>\n\n{prompt}"
         return self.invoke(tier, augmented, max_tokens)
 
+    def _embedding_provider(self) -> str:
+        """Resolve which provider serves embeddings.
+
+        rag.embedding_provider drives the choice: bedrock / openai / gemini are
+        honored directly. For ollama-like values, legacy behavior is preserved:
+        when the active chat provider is itself ollama-like, embed via the
+        active provider's endpoint (mlx servers host their own embedding
+        models); otherwise honor the embedding provider as-is (e.g. chat on
+        anthropic, embed on local ollama)."""
+        ep = self._config.rag.embedding_provider
+        if ep in ("bedrock", "openai", "gemini"):
+            return ep
+        if self._config.provider in self._OLLAMA_LIKE:
+            return self._config.provider
+        return ep
+
     def get_embedding(self, text: str) -> list[float]:
-        """Get embedding vector."""
-        if self._config.rag.embedding_provider == "bedrock":
-            return embed_bedrock(
-                self._config.rag.bedrock_model, text, self._config.bedrock.region,
-            )
-        # Ollama-compatible: use the active provider's endpoint
-        base_url, api_key = self._config.get_endpoint()
-        model = self._embedding_model_for(self._config.provider)
-        return embed_ollama(model, text, base_url, api_key=api_key)
+        """Get embedding vector — dispatched through shared.llm_router."""
+        llm_router.configure(self._config)
+        return llm_router.get_embedding(text, provider=self._embedding_provider())
 
     def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Batch embedding — one HTTP round-trip per batch where the backend
         supports it. Preserves input order.
 
-        Ollama-compatible backends use the native batch endpoint (10–30× less
-        per-request overhead). Bedrock Titan has no batch API at the model
-        level, so we fall back to per-text calls (caller still benefits from
-        threaded fan-out at the call site)."""
+        OpenAI-shape backends (Ollama-compatible, OpenAI, Gemini) use the
+        native batch endpoint (10–30× less per-request overhead). Bedrock
+        Titan has no batch API at the model level, so the router falls back
+        to per-text calls (caller still benefits from threaded fan-out at the
+        call site)."""
         if not texts:
             return []
-        if self._config.rag.embedding_provider == "bedrock":
-            return [
-                embed_bedrock(self._config.rag.bedrock_model, t, self._config.bedrock.region)
-                for t in texts
-            ]
-        base_url, api_key = self._config.get_endpoint()
-        model = self._embedding_model_for(self._config.provider)
-        return embed_ollama_batch(model, texts, base_url, api_key=api_key)
+        llm_router.configure(self._config)
+        return llm_router.get_embeddings_batch(texts, provider=self._embedding_provider())
 
     def _embedding_model_for(self, provider: str) -> str:
         """Return the embedding model ID for the active ollama-compatible provider."""
