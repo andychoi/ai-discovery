@@ -43,7 +43,7 @@ def init(
     ),
     provider: str = typer.Option(
         "ollama", "--provider",
-        help="Default LLM provider (bedrock|ollama|mlx-gemma|mlx-qwen)."
+        help="Default LLM provider (bedrock|ollama|mlx-gemma|mlx-qwen|openai|gemini|anthropic)."
     ),
 ) -> None:
     """Generate a discovery.yaml config template.
@@ -53,6 +53,7 @@ def init(
     """
     from ai_discovery.config import (
         BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig,
+        OpenAIConfig, GeminiConfig, AnthropicConfig,
         RagConfig, ProcessMiningConfig, AdvisorConfig
     )
 
@@ -69,7 +70,7 @@ def init(
         ("# AI-Discovery Configuration", None),
         ("# Customize discovery behavior, model selection, and optional features", None),
         ("", None),
-        ("# Provider: bedrock | ollama | mlx-gemma | mlx-qwen", None),
+        ("# Provider: bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic", None),
         ("provider", provider),
         ("", None),
         ("# LLM cost limit (USD) — stops pipeline if exceeded", None),
@@ -108,6 +109,33 @@ def init(
             ("mlx_qwen", {"base_url": mlx.base_url, "api_key": mlx.api_key,
                           "tier1": mlx.tier1, "tier2": mlx.tier2, "tier3d": mlx.tier3d,
                           "tier3p": mlx.tier3p, "tier1_num_ctx": mlx.tier1_num_ctx}),
+        ])
+    elif provider == "openai":
+        oai = OpenAIConfig()
+        template.extend([
+            ("", None),
+            ("# OpenAI configuration — set OPENAI_API_KEY in the environment (not here)", None),
+            ("openai", {"base_url": oai.base_url, "tier1": oai.tier1,
+                        "tier2": oai.tier2, "tier3d": oai.tier3d, "tier3p": oai.tier3p}),
+        ])
+    elif provider == "gemini":
+        gem = GeminiConfig()
+        template.extend([
+            ("", None),
+            ("# Gemini (OpenAI-compatible endpoint) — set GEMINI_API_KEY in the environment", None),
+            ("gemini", {"base_url": gem.base_url, "tier1": gem.tier1,
+                        "tier2": gem.tier2, "tier3d": gem.tier3d, "tier3p": gem.tier3p}),
+        ])
+    elif provider == "anthropic":
+        ant = AnthropicConfig()
+        template.extend([
+            ("", None),
+            ("# Anthropic direct — set ANTHROPIC_API_KEY in the environment.", None),
+            ("# Requires the optional SDK: pip install anthropic", None),
+            ("# Note: Anthropic has no embedding API — keep rag.embedding_provider on", None),
+            ("# bedrock/ollama/openai/gemini.", None),
+            ("anthropic", {"base_url": ant.base_url, "tier1": ant.tier1,
+                           "tier2": ant.tier2, "tier3d": ant.tier3d, "tier3p": ant.tier3p}),
         ])
     else:  # ollama
         ollama = OllamaConfig()

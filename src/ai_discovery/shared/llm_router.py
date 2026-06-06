@@ -29,6 +29,8 @@ from ai_discovery.shared.llm_invoke import (  # re-exported
     invoke_bedrock, invoke_ollama,
     embed_bedrock, embed_ollama,
     converse_bedrock,
+    invoke_openai_compat, embed_openai_compat,
+    invoke_anthropic,
 )
 
 log = logging.getLogger(__name__)
@@ -122,6 +124,34 @@ def _is_ollama_like(provider: str) -> bool:
     return provider in _OLLAMA_LIKE_PROVIDERS
 
 
+# OpenAI-compatible cloud providers — same chat-completions wire shape,
+# different base URL / auth / output-cap field. Adding another compatible
+# provider is one new entry here plus a MODELS entry.
+# Tuple: (url_key, model_suffix, api_key_env, default_url, max_tokens_field)
+_OPENAI_COMPAT_PROVIDERS: dict[str, tuple[str, str, str, str, str]] = {
+    "openai": ("openai.url", "openai_model", "OPENAI_API_KEY",
+               "https://api.openai.com/v1", "max_completion_tokens"),
+    "gemini": ("gemini.url", "gemini_model", "GEMINI_API_KEY",
+               "https://generativelanguage.googleapis.com/v1beta/openai",
+               "max_tokens"),
+}
+
+
+def _is_openai_compat(provider: str) -> bool:
+    return provider in _OPENAI_COMPAT_PROVIDERS
+
+
+def _model_suffix(provider: str) -> str:
+    """Tier-model config-key suffix for any provider (e.g. 'openai_model')."""
+    if provider == "bedrock":
+        return "bedrock_model"
+    if provider == "anthropic":
+        return "anthropic_model"
+    if _is_openai_compat(provider):
+        return _OPENAI_COMPAT_PROVIDERS[provider][1]
+    return _ollama_like_keys(provider)[1]
+
+
 # Env var overrides (middle priority)
 _ENV_MAP: dict[str, str] = {
     "provider":               "LLM_PROVIDER",
@@ -151,6 +181,23 @@ _ENV_MAP: dict[str, str] = {
     "tier.standard.mlx-qwen_model":   "LLM_STANDARD_MLX_QWEN_MODEL",
     "tier.expert.mlx-qwen_model":     "LLM_EXPERT_MLX_QWEN_MODEL",
     "tier.heavy.mlx-qwen_model":      "LLM_HEAVY_MLX_QWEN_MODEL",
+    "openai.url":                     "OPENAI_BASE_URL",
+    "tier.embedding.openai_model":    "LLM_EMBEDDING_OPENAI_MODEL",
+    "tier.fast.openai_model":         "LLM_FAST_OPENAI_MODEL",
+    "tier.standard.openai_model":     "LLM_STANDARD_OPENAI_MODEL",
+    "tier.expert.openai_model":       "LLM_EXPERT_OPENAI_MODEL",
+    "tier.heavy.openai_model":        "LLM_HEAVY_OPENAI_MODEL",
+    "gemini.url":                     "GEMINI_BASE_URL",
+    "tier.embedding.gemini_model":    "LLM_EMBEDDING_GEMINI_MODEL",
+    "tier.fast.gemini_model":         "LLM_FAST_GEMINI_MODEL",
+    "tier.standard.gemini_model":     "LLM_STANDARD_GEMINI_MODEL",
+    "tier.expert.gemini_model":       "LLM_EXPERT_GEMINI_MODEL",
+    "tier.heavy.gemini_model":        "LLM_HEAVY_GEMINI_MODEL",
+    "anthropic.url":                  "ANTHROPIC_BASE_URL",
+    "tier.fast.anthropic_model":      "LLM_FAST_ANTHROPIC_MODEL",
+    "tier.standard.anthropic_model":  "LLM_STANDARD_ANTHROPIC_MODEL",
+    "tier.expert.anthropic_model":    "LLM_EXPERT_ANTHROPIC_MODEL",
+    "tier.heavy.anthropic_model":     "LLM_HEAVY_ANTHROPIC_MODEL",
 }
 
 # Doc-type → tier mapping
@@ -200,6 +247,9 @@ def _flatten_discovery_config(cfg: "DiscoveryConfig") -> dict[str, str]:
         "ollama": cfg.ollama,
         "mlx-gemma": cfg.mlx_gemma,
         "mlx-qwen": cfg.mlx_qwen,
+        "openai": cfg.openai,
+        "gemini": cfg.gemini,
+        "anthropic": cfg.anthropic,
     }
     for name, pc in provider_cfgs.items():
         suffix = f"{name}_model"
@@ -280,29 +330,32 @@ def resolve_model_id(tier: str, *, doc_type: str | None = None) -> str:
     if doc_type:
         tier = _tier_for_doc_type(doc_type)
     config = get_config()
-    provider = config["provider"]
-    if provider == "bedrock":
-        return config.get(f"tier.{tier}.bedrock_model", config["tier.standard.bedrock_model"])
-    _, suffix, _, _ = _ollama_like_keys(provider)
+    suffix = _model_suffix(config["provider"])
     return config.get(f"tier.{tier}.{suffix}", config[f"tier.standard.{suffix}"])
 
 
 def resolve_tier_target(tier: str) -> tuple[str, str, str]:
     """Return (provider, model_id, base_url_or_region) for a tier.
 
-    For Bedrock the third element is the AWS region; for Ollama-like providers
-    it is the base URL. Used by startup-time warming to look up the model and
-    URL without duplicating config logic.
+    For Bedrock the third element is the AWS region; for all URL-based
+    providers (Ollama-like, OpenAI-compatible, Anthropic) it is the base URL.
+    Used by startup-time warming to look up the model and URL without
+    duplicating config logic.
     """
     config = get_config()
     provider = config["provider"]
-    if provider == "bedrock":
-        model = config.get(f"tier.{tier}.bedrock_model", config["tier.standard.bedrock_model"])
-        return provider, model, config.get("bedrock.region", "us-west-2")
-    url_key, suffix, _, default_url = _ollama_like_keys(provider)
+    suffix = _model_suffix(provider)
     model = config.get(f"tier.{tier}.{suffix}", config[f"tier.standard.{suffix}"])
-    base_url = config.get(url_key, default_url)
-    return provider, model, base_url
+    if provider == "bedrock":
+        return provider, model, config.get("bedrock.region", "us-west-2")
+    if provider == "anthropic":
+        return provider, model, config.get("anthropic.url",
+                                           _DEFAULTS.get("anthropic.url", "https://api.anthropic.com"))
+    if _is_openai_compat(provider):
+        url_key, _, _, default_url, _ = _OPENAI_COMPAT_PROVIDERS[provider]
+        return provider, model, config.get(url_key, default_url)
+    url_key, _, _, default_url = _ollama_like_keys(provider)
+    return provider, model, config.get(url_key, default_url)
 
 
 def invoke_llm(
@@ -317,12 +370,23 @@ def invoke_llm(
     if doc_type:
         tier = _tier_for_doc_type(doc_type)
     config = get_config()
+    text = _invoke_text(config, tier, prompt, max_tokens, project_slug=project_slug)
+    return strip_thinking(text)
+
+
+def _invoke_text(config: dict, tier: str, prompt: str, max_tokens: int, *,
+                 project_slug: str = "") -> str:
+    """Provider dispatch for simple text-in/text-out invocation."""
     provider = config["provider"]
     if provider == "bedrock":
-        text = _invoke_bedrock(config, tier, prompt, max_tokens, project_slug=project_slug)
-    else:
-        text = _invoke_ollama_like(config, tier, prompt, max_tokens, project_slug=project_slug)
-    return strip_thinking(text)
+        return _invoke_bedrock(config, tier, prompt, max_tokens, project_slug=project_slug)
+    if provider == "anthropic":
+        return _invoke_anthropic_direct(config, tier, prompt, max_tokens,
+                                        project_slug=project_slug)
+    if _is_openai_compat(provider):
+        return _invoke_openai_compat_like(config, tier, prompt, max_tokens,
+                                          project_slug=project_slug)
+    return _invoke_ollama_like(config, tier, prompt, max_tokens, project_slug=project_slug)
 
 
 def invoke_llm_with_meta(
@@ -344,14 +408,26 @@ def invoke_llm_with_meta(
         tier = _tier_for_doc_type(doc_type)
     config = get_config()
     provider = config["provider"]
+    suffix = _model_suffix(provider)
+    model_id = config.get(f"tier.{tier}.{suffix}", config[f"tier.standard.{suffix}"])
 
     if provider == "bedrock":
         region = config.get("bedrock.region", "us-west-2")
-        model_id = config.get(f"tier.{tier}.bedrock_model", config["tier.standard.bedrock_model"])
         text, tok_in, tok_out = invoke_bedrock(model_id, prompt, max_tokens, region)
+    elif provider == "anthropic":
+        text, tok_in, tok_out = invoke_anthropic(
+            model_id, prompt, max_tokens,
+            api_key=os.getenv("ANTHROPIC_API_KEY") or "",
+            base_url=config.get("anthropic.url", ""))
+    elif _is_openai_compat(provider):
+        url_key, _, api_key_env, default_url, mt_field = _OPENAI_COMPAT_PROVIDERS[provider]
+        text, tok_in, tok_out = invoke_openai_compat(
+            model_id, prompt, max_tokens,
+            base_url=config.get(url_key, default_url),
+            api_key=os.getenv(api_key_env) or "",
+            max_tokens_field=mt_field)
     else:
-        url_key, suffix, api_key_env, default_url = _ollama_like_keys(provider)
-        model_id = config.get(f"tier.{tier}.{suffix}", config[f"tier.standard.{suffix}"])
+        url_key, _, api_key_env, default_url = _ollama_like_keys(provider)
         base_url = config.get(url_key, default_url)
         api_key = os.getenv(api_key_env) if api_key_env else ""
         text, tok_in, tok_out = invoke_ollama(model_id, prompt, max_tokens, base_url,
@@ -394,8 +470,9 @@ def converse_llm(
         return _converse_bedrock(config, tier, messages, system=system, max_tokens=max_tokens,
                                 tools=tools, project_slug=project_slug)
     if tools:
-        log.warning("%s provider does not support tool use — tools will be ignored", provider)
-    return _converse_ollama_fallback(config, tier, messages, system, max_tokens, project_slug)
+        log.warning("%s provider does not support tool use here — tools will be ignored",
+                    provider)
+    return _converse_text_fallback(config, tier, messages, system, max_tokens, project_slug)
 
 
 def _converse_bedrock(
@@ -413,11 +490,12 @@ def _converse_bedrock(
     return result
 
 
-def _converse_ollama_fallback(
+def _converse_text_fallback(
     config: dict, tier: str, messages: list[dict],
     system: str, max_tokens: int, project_slug: str,
 ) -> dict:
-    """Ollama doesn't support Converse — flatten messages to text and use chat API."""
+    """Non-Bedrock providers don't speak Converse here — flatten messages to a
+    single prompt and dispatch through the provider's plain text path."""
     parts = []
     if system:
         parts.append(f"[system]: {system}")
@@ -428,7 +506,7 @@ def _converse_ollama_fallback(
             if "text" in block:
                 parts.append(f"[{role}]: {block['text']}" if role != "user" else block["text"])
     prompt = "\n\n".join(parts)
-    text = _invoke_ollama_like(config, tier, prompt, max_tokens, project_slug=project_slug)
+    text = _invoke_text(config, tier, prompt, max_tokens, project_slug=project_slug)
     return {
         "content": [{"text": text}],
         "stop_reason": "end_turn",
@@ -442,6 +520,13 @@ def get_embedding(text: str, *, project_slug: str = "") -> list[float]:
     provider = config["provider"]
     if provider == "bedrock":
         return _embed_bedrock(config, text, project_slug=project_slug)
+    if provider == "anthropic":
+        raise RuntimeError(
+            "Anthropic has no embedding API — set a different embedding provider "
+            "(e.g. rag.embedding_provider: bedrock | ollama | openai | gemini)"
+        )
+    if _is_openai_compat(provider):
+        return _embed_openai_compat_like(config, text, project_slug=project_slug)
     return _embed_ollama_like(config, text, project_slug=project_slug)
 
 
@@ -456,15 +541,24 @@ def get_embeddings_batch(texts: list[str], *, project_slug: str = "",
     """
     config = get_config()
     provider = config["provider"]
+    if provider == "anthropic":
+        raise RuntimeError(
+            "Anthropic has no embedding API — set a different embedding provider "
+            "(e.g. rag.embedding_provider: bedrock | ollama | openai | gemini)"
+        )
     results: list[list[float]] = []
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
 
         if provider != "bedrock":
-            # Ollama-compatible /v1/embeddings supports {"input": [...]} for batch
-            url_key, suffix, api_key_env, default_url = _ollama_like_keys(provider)
-            base_url = config.get(url_key, default_url)
+            # OpenAI-shape /embeddings endpoints accept {"input": [...]} for batch.
+            if _is_openai_compat(provider):
+                url_key, suffix, api_key_env, default_url, _ = _OPENAI_COMPAT_PROVIDERS[provider]
+                embed_url = f"{config.get(url_key, default_url).rstrip('/')}/embeddings"
+            else:
+                url_key, suffix, api_key_env, default_url = _ollama_like_keys(provider)
+                embed_url = f"{config.get(url_key, default_url)}/v1/embeddings"
             model = config.get(f"tier.embedding.{suffix}", _DEFAULTS.get(f"tier.embedding.{suffix}",
                 _DEFAULTS["tier.embedding.ollama_model"]))
             try:
@@ -474,7 +568,7 @@ def get_embeddings_batch(texts: list[str], *, project_slug: str = "",
                 if api_key:
                     headers["Authorization"] = f"Bearer {api_key}"
                 payload = {"model": model, "input": batch}
-                resp = httpx.post(f"{base_url}/v1/embeddings", json=payload, timeout=120,
+                resp = httpx.post(embed_url, json=payload, timeout=120,
                                   headers=headers or None)
                 resp.raise_for_status()
                 data = resp.json()["data"]
@@ -486,7 +580,7 @@ def get_embeddings_batch(texts: list[str], *, project_slug: str = "",
             except Exception as e:
                 log.debug("%s batch embedding failed, falling back to sequential: %s", provider, e)
 
-        # Sequential fallback (Bedrock or Ollama batch failure)
+        # Sequential fallback (Bedrock or batch failure)
         for text in batch:
             vec = get_embedding(text, project_slug=project_slug)
             results.append(vec)
@@ -566,6 +660,49 @@ def _invoke_ollama_like(config: dict, tier: str, prompt: str, max_tokens: int, *
                                           api_key=api_key or "")
     _log_usage(project_slug, model_id=model, tier=tier, tok_in=tok_in, tok_out=tok_out,
                provider=provider)
+    return text
+
+
+# ── OpenAI-compatible cloud + Anthropic (config-aware private wrappers) ──────
+
+
+def _invoke_openai_compat_like(config: dict, tier: str, prompt: str, max_tokens: int, *,
+                               project_slug: str = "") -> str:
+    provider = config["provider"]
+    url_key, suffix, api_key_env, default_url, mt_field = _OPENAI_COMPAT_PROVIDERS[provider]
+    model = config.get(f"tier.{tier}.{suffix}", config[f"tier.standard.{suffix}"])
+    text, tok_in, tok_out = invoke_openai_compat(
+        model, prompt, max_tokens,
+        base_url=config.get(url_key, default_url),
+        api_key=os.getenv(api_key_env) or "",
+        max_tokens_field=mt_field)
+    _log_usage(project_slug, model_id=model, tier=tier, tok_in=tok_in, tok_out=tok_out,
+               provider=provider)
+    return text
+
+
+def _embed_openai_compat_like(config: dict, text: str, *, project_slug: str = "") -> list[float]:
+    provider = config["provider"]
+    url_key, suffix, api_key_env, default_url, _ = _OPENAI_COMPAT_PROVIDERS[provider]
+    model = config.get(f"tier.embedding.{suffix}", _DEFAULTS[f"tier.embedding.{suffix}"])
+    result = embed_openai_compat(
+        model, text,
+        base_url=config.get(url_key, default_url),
+        api_key=os.getenv(api_key_env) or "")
+    _log_usage(project_slug, model_id=model, tier="embedding", tok_in=len(text) // 4,
+               tok_out=0, provider=provider)
+    return result
+
+
+def _invoke_anthropic_direct(config: dict, tier: str, prompt: str, max_tokens: int, *,
+                             project_slug: str = "") -> str:
+    model = config.get(f"tier.{tier}.anthropic_model", config["tier.standard.anthropic_model"])
+    text, tok_in, tok_out = invoke_anthropic(
+        model, prompt, max_tokens,
+        api_key=os.getenv("ANTHROPIC_API_KEY") or "",
+        base_url=config.get("anthropic.url", ""))
+    _log_usage(project_slug, model_id=model, tier=tier, tok_in=tok_in, tok_out=tok_out,
+               provider="anthropic")
     return text
 
 

@@ -78,6 +78,41 @@ MODELS: dict[str, dict[str, str]] = {
         "expert":    "mlx-community/gemma-4-26b-a4b-it-4bit",
         "heavy":     "mlx-community/gemma-4-31b-it-4bit",
     },
+    # ── OpenAI (api.openai.com, OpenAI-compatible chat completions) ───────
+    # base_url includes the version prefix; invoke_openai_compat appends
+    # /chat/completions. Auth via OPENAI_API_KEY. Note: the gpt-5 family
+    # requires max_completion_tokens (not max_tokens) — handled by the
+    # router's per-provider max_tokens_field.
+    "openai": {
+        "url":       "https://api.openai.com/v1",
+        "embedding": "text-embedding-3-small",
+        "fast":      "gpt-5-nano",
+        "standard":  "gpt-5-mini",
+        "expert":    "gpt-5.1",
+        "heavy":     "gpt-5.1",
+    },
+    # ── Google Gemini (OpenAI-compatible endpoint) ────────────────────────
+    # https://ai.google.dev/gemini-api/docs/openai — same chat-completions
+    # shape as OpenAI, different base path. Auth via GEMINI_API_KEY.
+    "gemini": {
+        "url":       "https://generativelanguage.googleapis.com/v1beta/openai",
+        "embedding": "gemini-embedding-001",
+        "fast":      "gemini-2.5-flash-lite",
+        "standard":  "gemini-3.5-flash",
+        "expert":    "gemini-2.5-pro",
+        "heavy":     "gemini-2.5-pro",
+    },
+    # ── Anthropic direct (api.anthropic.com via the anthropic SDK) ────────
+    # Bare model aliases per Anthropic guidance — no date suffixes. Auth via
+    # ANTHROPIC_API_KEY (resolved by the SDK). Anthropic has no embeddings
+    # API, so no "embedding" key — pick a different rag.embedding_provider.
+    "anthropic": {
+        "url":      "https://api.anthropic.com",
+        "fast":     "claude-haiku-4-5",
+        "standard": "claude-sonnet-4-6",
+        "expert":   "claude-opus-4-8",
+        "heavy":    "claude-opus-4-8",
+    },
     # ── ai-mlx-server (Qwen3.5 variant) ──────────────────────────────────
     # Same server (:11435), different tier → model map. Selectable as a
     # sibling of mlx-gemma for benchmarking vs. gemma4 or when Qwen's

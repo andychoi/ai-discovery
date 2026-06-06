@@ -25,6 +25,9 @@ _B = MODELS["bedrock"]
 _O = MODELS["ollama"]
 _MG = MODELS.get("mlx-gemma", {})
 _MQ = MODELS.get("mlx-qwen", {})
+_OAI = MODELS.get("openai", {})
+_GEM = MODELS.get("gemini", {})
+_ANT = MODELS.get("anthropic", {})
 
 # ── Provider configs ─────────────────────────────────────────────────────────
 
@@ -86,6 +89,46 @@ class OllamaConfig:
     # 4096 comfortably fits a 6000-char chunk + RAG context + 1024 output.
     # Set to 0 to use the model's default context window.
     tier1_num_ctx: int = 4096
+
+
+# ── Cloud API providers (OpenAI-compatible + Anthropic direct) ───────────────
+
+
+@dataclass
+class OpenAIConfig:
+    """OpenAI (api.openai.com). Auth via api_key or OPENAI_API_KEY env."""
+    base_url: str = _OAI.get("url", "https://api.openai.com/v1")
+    api_key: str = ""
+    tier1: str = _OAI.get("fast", "gpt-5-nano")
+    tier2: str = _OAI.get("standard", "gpt-5-mini")
+    tier3d: str = _OAI.get("standard", "gpt-5-mini")
+    tier3p: str = _OAI.get("expert", "gpt-5.1")
+
+
+@dataclass
+class GeminiConfig:
+    """Google Gemini via its OpenAI-compatible endpoint.
+    Auth via api_key or GEMINI_API_KEY env."""
+    base_url: str = _GEM.get(
+        "url", "https://generativelanguage.googleapis.com/v1beta/openai")
+    api_key: str = ""
+    tier1: str = _GEM.get("fast", "gemini-2.5-flash-lite")
+    tier2: str = _GEM.get("standard", "gemini-3.5-flash")
+    tier3d: str = _GEM.get("standard", "gemini-3.5-flash")
+    tier3p: str = _GEM.get("expert", "gemini-2.5-pro")
+
+
+@dataclass
+class AnthropicConfig:
+    """Anthropic direct (api.anthropic.com via the anthropic SDK).
+    Auth via api_key or ANTHROPIC_API_KEY env (SDK-resolved).
+    No embedding models — Anthropic has no embeddings API."""
+    base_url: str = _ANT.get("url", "https://api.anthropic.com")
+    api_key: str = ""
+    tier1: str = _ANT.get("fast", "claude-haiku-4-5")
+    tier2: str = _ANT.get("standard", "claude-sonnet-4-6")
+    tier3d: str = _ANT.get("standard", "claude-sonnet-4-6")
+    tier3p: str = _ANT.get("expert", "claude-opus-4-8")
 
 
 # ── RAG config ───────────────────────────────────────────────────────────────
@@ -155,6 +198,9 @@ class DiscoveryConfig:
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
     mlx_gemma: MLXGemmaConfig = field(default_factory=MLXGemmaConfig)
     mlx_qwen: MLXQwenConfig = field(default_factory=MLXQwenConfig)
+    openai: OpenAIConfig = field(default_factory=OpenAIConfig)
+    gemini: GeminiConfig = field(default_factory=GeminiConfig)
+    anthropic: AnthropicConfig = field(default_factory=AnthropicConfig)
     rag: RagConfig = field(default_factory=RagConfig)
     process_mining: ProcessMiningConfig = field(default_factory=ProcessMiningConfig)
     advisor: AdvisorConfig = field(default_factory=AdvisorConfig)
@@ -177,17 +223,29 @@ class DiscoveryConfig:
             return getattr(self.mlx_gemma, key)
         if self.provider == "mlx-qwen":
             return getattr(self.mlx_qwen, key)
+        if self.provider == "openai":
+            return getattr(self.openai, key)
+        if self.provider == "gemini":
+            return getattr(self.gemini, key)
+        if self.provider == "anthropic":
+            return getattr(self.anthropic, key)
         return getattr(self.ollama, key)
 
     def get_endpoint(self) -> tuple[str, str]:
-        """Return (base_url, api_key) for the active ollama-compatible provider.
-        Raises for bedrock."""
+        """Return (base_url, api_key) for the active HTTP-endpoint provider.
+        Raises for bedrock (SDK/region-based, no base URL)."""
         if self.provider == "bedrock":
-            raise ValueError("get_endpoint() is only valid for ollama-compatible providers")
+            raise ValueError("get_endpoint() is only valid for URL-based providers")
         if self.provider == "mlx-gemma":
             return self.mlx_gemma.base_url, self.mlx_gemma.api_key
         if self.provider == "mlx-qwen":
             return self.mlx_qwen.base_url, self.mlx_qwen.api_key
+        if self.provider == "openai":
+            return self.openai.base_url, self.openai.api_key
+        if self.provider == "gemini":
+            return self.gemini.base_url, self.gemini.api_key
+        if self.provider == "anthropic":
+            return self.anthropic.base_url, self.anthropic.api_key
         return self.ollama.base_url, ""
 
     # ── factory ───────────────────────────────────────────────────────────
@@ -234,6 +292,12 @@ class DiscoveryConfig:
                 cfg.mlx_gemma = MLXGemmaConfig(**_only_known(MLXGemmaConfig, raw["mlx_gemma"]))
             if "mlx_qwen" in raw and isinstance(raw["mlx_qwen"], dict):
                 cfg.mlx_qwen = MLXQwenConfig(**_only_known(MLXQwenConfig, raw["mlx_qwen"]))
+            if "openai" in raw and isinstance(raw["openai"], dict):
+                cfg.openai = OpenAIConfig(**_only_known(OpenAIConfig, raw["openai"]))
+            if "gemini" in raw and isinstance(raw["gemini"], dict):
+                cfg.gemini = GeminiConfig(**_only_known(GeminiConfig, raw["gemini"]))
+            if "anthropic" in raw and isinstance(raw["anthropic"], dict):
+                cfg.anthropic = AnthropicConfig(**_only_known(AnthropicConfig, raw["anthropic"]))
             if "rag" in raw and isinstance(raw["rag"], dict):
                 cfg.rag = RagConfig(**_only_known(RagConfig, raw["rag"]))
             if "process_mining" in raw and isinstance(raw["process_mining"], dict):
@@ -264,6 +328,25 @@ class DiscoveryConfig:
         if env_mlx_key:
             cfg.mlx_gemma.api_key = env_mlx_key
             cfg.mlx_qwen.api_key = env_mlx_key
+
+        # Cloud API provider overrides — keys belong in env, not YAML.
+        # The anthropic SDK resolves ANTHROPIC_API_KEY itself, but we also
+        # surface it on the config for symmetry with openai/gemini.
+        env_openai_key = os.environ.get("OPENAI_API_KEY")
+        if env_openai_key:
+            cfg.openai.api_key = env_openai_key
+        env_openai_url = os.environ.get("OPENAI_BASE_URL")
+        if env_openai_url:
+            cfg.openai.base_url = env_openai_url
+        env_gemini_key = os.environ.get("GEMINI_API_KEY")
+        if env_gemini_key:
+            cfg.gemini.api_key = env_gemini_key
+        env_gemini_url = os.environ.get("GEMINI_BASE_URL")
+        if env_gemini_url:
+            cfg.gemini.base_url = env_gemini_url
+        env_anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+        if env_anthropic_key:
+            cfg.anthropic.api_key = env_anthropic_key
 
         env_region = os.environ.get("AWS_REGION_NAME") or os.environ.get("AWS_DEFAULT_REGION")
         if env_region:

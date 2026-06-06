@@ -328,6 +328,141 @@ def embed_ollama_batch(
         raise RuntimeError(f"Ollama batch embedding failed (model={model}, n={len(texts)}): {e}") from e
 
 
+# ── OpenAI-compatible cloud providers (OpenAI, Gemini, …) ──────────────────
+# Same wire shape as invoke_ollama's default path, but base_url carries the
+# full API prefix (e.g. https://api.openai.com/v1 or
+# https://generativelanguage.googleapis.com/v1beta/openai) and we append
+# /chat/completions | /embeddings. Bearer auth is required.
+
+
+def invoke_openai_compat(
+    model: str, prompt: str, max_tokens: int = 4096,
+    base_url: str = "https://api.openai.com/v1",
+    api_key: str = "",
+    max_tokens_field: str = "max_completion_tokens",
+) -> tuple[str, int, int]:
+    """Invoke an OpenAI-compatible chat-completions endpoint.
+
+    Returns (text, tokens_in, tokens_out).
+
+    ``max_tokens_field`` names the output-cap parameter: OpenAI's gpt-5
+    family rejects ``max_tokens`` in favor of ``max_completion_tokens``;
+    Gemini's compatibility layer uses ``max_tokens``.
+
+    Per-request timeout defaults to 600s; override with env var
+    OPENAI_COMPAT_INVOKE_TIMEOUT (seconds). Transient errors (429/5xx,
+    timeouts) retry with exponential backoff like invoke_bedrock.
+    """
+    import os
+    timeout = float(os.environ.get("OPENAI_COMPAT_INVOKE_TIMEOUT", "600"))
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+        max_tokens_field: max_tokens,
+    }
+    last_err: Exception | None = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            resp = httpx.post(url, json=payload, timeout=timeout, headers=headers)
+            if resp.status_code in (429, 500, 502, 503, 529) and attempt < _MAX_RETRIES:
+                raise RuntimeError(f"TooManyRequestsException: HTTP {resp.status_code}")
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["choices"][0]["message"]["content"] or ""
+            tok_in = data.get("usage", {}).get("prompt_tokens", len(prompt) // 4)
+            tok_out = data.get("usage", {}).get("completion_tokens", len(text) // 4)
+            return text.strip(), tok_in, tok_out
+        except Exception as e:
+            last_err = e
+            if attempt < _MAX_RETRIES and _is_transient(e):
+                delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.3)
+                _log.warning("OpenAI-compat invoke attempt %d/%d failed: %s, retrying in %.1fs",
+                             attempt + 1, _MAX_RETRIES, e, delay)
+                time.sleep(delay)
+                continue
+            _log_llm_error("openai-compat", model, str(e))
+            raise RuntimeError(
+                f"OpenAI-compatible invocation failed (model={model} at {base_url}): {e}"
+            ) from e
+    _log_llm_error("openai-compat", model, str(last_err))
+    raise RuntimeError(
+        f"OpenAI-compatible invocation failed after {_MAX_RETRIES} retries "
+        f"(model={model} at {base_url}): {last_err}"
+    ) from last_err
+
+
+def embed_openai_compat(
+    model: str, text: str,
+    base_url: str = "https://api.openai.com/v1",
+    api_key: str = "",
+) -> list[float]:
+    """Get an embedding vector via an OpenAI-compatible /embeddings endpoint.
+
+    Timeout defaults to 120s; override with env var
+    OPENAI_COMPAT_EMBED_TIMEOUT (seconds).
+    """
+    try:
+        import os
+        timeout = float(os.environ.get("OPENAI_COMPAT_EMBED_TIMEOUT", "120"))
+        url = f"{base_url.rstrip('/')}/embeddings"
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        resp = httpx.post(url, json={"model": model, "input": text},
+                          timeout=timeout, headers=headers)
+        resp.raise_for_status()
+        return resp.json()["data"][0]["embedding"]
+    except Exception as e:
+        raise RuntimeError(
+            f"OpenAI-compatible embedding failed (model={model} at {base_url}): {e}"
+        ) from e
+
+
+# ── Anthropic direct (api.anthropic.com via the anthropic SDK) ─────────────
+
+
+def invoke_anthropic(
+    model: str, prompt: str, max_tokens: int = 4096,
+    api_key: str = "", base_url: str = "",
+) -> tuple[str, int, int]:
+    """Invoke the Anthropic Messages API directly. Returns (text, tokens_in, tokens_out).
+
+    Uses the official ``anthropic`` SDK (optional dependency — same lazy-import
+    pattern as the native advisor in ai/llm_client.py). With no ``api_key``
+    argument the SDK resolves ANTHROPIC_API_KEY from the environment. The SDK
+    auto-retries 429/5xx with exponential backoff.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        raise RuntimeError(
+            "Anthropic provider requires the 'anthropic' package: pip install anthropic"
+        )
+    kwargs: dict = {}
+    if api_key:
+        kwargs["api_key"] = api_key
+    if base_url and base_url != "https://api.anthropic.com":
+        kwargs["base_url"] = base_url
+    try:
+        client = anthropic.Anthropic(**kwargs)
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(
+            block.text for block in response.content
+            if getattr(block, "type", None) == "text"
+        )
+        tok_in = getattr(response.usage, "input_tokens", 0) or 0
+        tok_out = getattr(response.usage, "output_tokens", 0) or 0
+        return text.strip(), int(tok_in), int(tok_out)
+    except Exception as e:
+        _log_llm_error("anthropic", model, str(e))
+        raise RuntimeError(f"Anthropic invocation failed (model={model}): {e}") from e
+
+
 # ── Ollama keep-alive helpers ──────────────────────────────────────────────
 # The OpenAI-compat endpoints (/v1/chat/completions, /v1/embeddings) silently
 # ignore Ollama's `keep_alive` parameter. To pin or evict a model we have to
