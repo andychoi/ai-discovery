@@ -1,0 +1,60 @@
+{
+  "_README": "Human-labeled from spring-petclinic source at pinned SHA 753d35c2 (corpus Phase 3). Endpoints: every @GetMapping/@PostMapping across the 6 controllers, with PetController's class-level @RequestMapping(\"/owners/{ownerId}\") composed in. Entities: every @Entity class by @Table name with its DECLARED fields (inherited @MappedSuperclass fields excluded, matching the harness convention). Relationships labeled by FK column direction. Floors record honest real-repo accuracy — set from the first measured run, regression-locked thereafter.",
+  "project": "spring-petclinic",
+  "language": "java",
+  "framework": "spring",
+  "_floors": {"endpoints": 0.95, "di_resolution": 1.0},
+  "endpoints": [
+    {"handler": "WelcomeController.welcome", "method": "GET", "path": "/"},
+    {"handler": "CrashController.triggerException", "method": "GET", "path": "/oups"},
+    {"handler": "VetController.showVetList", "method": "GET", "path": "/vets.html"},
+    {"handler": "VetController.showResourcesVetList", "method": "GET", "path": "/vets"},
+    {"handler": "OwnerController.initCreationForm", "method": "GET", "path": "/owners/new"},
+    {"handler": "OwnerController.processCreationForm", "method": "POST", "path": "/owners/new"},
+    {"handler": "OwnerController.initFindForm", "method": "GET", "path": "/owners/find"},
+    {"handler": "OwnerController.processFindForm", "method": "GET", "path": "/owners"},
+    {"handler": "OwnerController.initUpdateOwnerForm", "method": "GET", "path": "/owners/{ownerId}/edit"},
+    {"handler": "OwnerController.processUpdateOwnerForm", "method": "POST", "path": "/owners/{ownerId}/edit"},
+    {"handler": "OwnerController.showOwner", "method": "GET", "path": "/owners/{ownerId}"},
+    {"handler": "PetController.initCreationForm", "method": "GET", "path": "/owners/{ownerId}/pets/new"},
+    {"handler": "PetController.processCreationForm", "method": "POST", "path": "/owners/{ownerId}/pets/new"},
+    {"handler": "PetController.initUpdateForm", "method": "GET", "path": "/owners/{ownerId}/pets/{petId}/edit"},
+    {"handler": "PetController.processUpdateForm", "method": "POST", "path": "/owners/{ownerId}/pets/{petId}/edit"},
+    {"handler": "VisitController.initNewVisitForm", "method": "GET", "path": "/owners/{ownerId}/pets/{petId}/visits/new"},
+    {"handler": "VisitController.processNewVisitForm", "method": "POST", "path": "/owners/{ownerId}/pets/{petId}/visits/new"}
+  ],
+  "entities": [
+    {"table": "owners", "fields": ["address", "city", "telephone", "pets"]},
+    {"table": "pets", "fields": ["birthDate", "type", "visits"]},
+    {"table": "visits", "fields": ["date", "description"]},
+    {"table": "vets", "fields": ["specialties"]},
+    {"table": "specialties", "fields": []},
+    {"table": "types", "fields": []}
+  ],
+  "relationships": [
+    {"from_entity": "pets", "to_entity": "owners", "cardinality": "N:1"},
+    {"from_entity": "pets", "to_entity": "types", "cardinality": "N:1"},
+    {"from_entity": "visits", "to_entity": "pets", "cardinality": "N:1"},
+    {"from_entity": "vets", "to_entity": "specialties", "cardinality": "N:M"}
+  ],
+  "key_call_edges": [
+    {
+      "caller_suffix": "OwnerController.processFindForm",
+      "callee_suffix": "OwnerController.findPaginatedForOwnersLastName",
+      "min_confidence": 0.9
+    },
+    {
+      "caller_suffix": "OwnerController.findPaginatedForOwnersLastName",
+      "callee_suffix": "OwnerRepository.findByLastNameStartingWith",
+      "min_confidence": 0.8
+    },
+    {
+      "caller_suffix": "OwnerController.showOwner",
+      "callee_suffix": "OwnerRepository.findById",
+      "min_confidence": 0.8
+    }
+  ],
+  "_call_edges_note": "KNOWN GAP measured here: `owners.findByLastNameStartingWith()` / `owners.findById()` resolve at 0.5 unresolved on this real repo even though the receiver field `owners` is constructor-injected as OwnerRepository and both methods are DECLARED on the interface — the receiver-type stage that scores 1.0 on the authored java-di-collision fixture does not fire here. Spring Data repository resolution on real code is the next resolution-work target; gauge stays red (call_edges 1/3) until it lands.",
+  "forbidden_call_edges": [],
+  "external_systems": []
+}

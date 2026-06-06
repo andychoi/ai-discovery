@@ -1,0 +1,80 @@
+{
+  "_README": "Human-labeled from miguelgrinberg/microblog source at pinned SHA a975ef64 (corpus Phase 3). Endpoints: every @bp.route in main/auth/api blueprints with the blueprint url_prefix composed in (auth='/auth', api='/api', main=''), one row per HTTP method (default GET). Entities: SQLAlchemy 2.0 typed models with Flask-SQLAlchemy default table names (lowercase class). Note the composed-prefix labels are SOURCE truth — an extractor that misses blueprint prefixes scores honestly lower here; that gap is part of what Phase 3 measures.",
+  "project": "microblog",
+  "language": "python",
+  "framework": "flask",
+  "_floors": {"di_resolution": 1.0, "external_systems": 0.9},
+  "endpoints": [
+    {"handler": "index", "method": "GET", "path": "/"},
+    {"handler": "index", "method": "POST", "path": "/"},
+    {"handler": "index", "method": "GET", "path": "/index"},
+    {"handler": "index", "method": "POST", "path": "/index"},
+    {"handler": "explore", "method": "GET", "path": "/explore"},
+    {"handler": "user", "method": "GET", "path": "/user/<username>"},
+    {"handler": "user_popup", "method": "GET", "path": "/user/<username>/popup"},
+    {"handler": "edit_profile", "method": "GET", "path": "/edit_profile"},
+    {"handler": "edit_profile", "method": "POST", "path": "/edit_profile"},
+    {"handler": "follow", "method": "POST", "path": "/follow/<username>"},
+    {"handler": "unfollow", "method": "POST", "path": "/unfollow/<username>"},
+    {"handler": "translate_text", "method": "POST", "path": "/translate"},
+    {"handler": "search", "method": "GET", "path": "/search"},
+    {"handler": "send_message", "method": "GET", "path": "/send_message/<recipient>"},
+    {"handler": "send_message", "method": "POST", "path": "/send_message/<recipient>"},
+    {"handler": "messages", "method": "GET", "path": "/messages"},
+    {"handler": "export_posts", "method": "GET", "path": "/export_posts"},
+    {"handler": "notifications", "method": "GET", "path": "/notifications"},
+    {"handler": "login", "method": "GET", "path": "/auth/login"},
+    {"handler": "login", "method": "POST", "path": "/auth/login"},
+    {"handler": "logout", "method": "GET", "path": "/auth/logout"},
+    {"handler": "register", "method": "GET", "path": "/auth/register"},
+    {"handler": "register", "method": "POST", "path": "/auth/register"},
+    {"handler": "reset_password_request", "method": "GET", "path": "/auth/reset_password_request"},
+    {"handler": "reset_password_request", "method": "POST", "path": "/auth/reset_password_request"},
+    {"handler": "reset_password", "method": "GET", "path": "/auth/reset_password/<token>"},
+    {"handler": "reset_password", "method": "POST", "path": "/auth/reset_password/<token>"},
+    {"handler": "get_token", "method": "POST", "path": "/api/tokens"},
+    {"handler": "revoke_token", "method": "DELETE", "path": "/api/tokens"},
+    {"handler": "get_user", "method": "GET", "path": "/api/users/<int:id>"},
+    {"handler": "get_users", "method": "GET", "path": "/api/users"},
+    {"handler": "get_followers", "method": "GET", "path": "/api/users/<int:id>/followers"},
+    {"handler": "get_following", "method": "GET", "path": "/api/users/<int:id>/following"},
+    {"handler": "create_user", "method": "POST", "path": "/api/users"},
+    {"handler": "update_user", "method": "PUT", "path": "/api/users/<int:id>"}
+  ],
+  "entities": [
+    {"table": "user", "fields": ["id", "username", "email", "password_hash", "about_me", "last_seen", "last_message_read_time", "token", "token_expiration", "posts", "following", "followers", "messages_sent", "messages_received", "notifications", "tasks"]},
+    {"table": "post", "fields": ["id", "body", "timestamp", "user_id", "language", "author"]},
+    {"table": "message", "fields": ["id", "sender_id", "recipient_id", "body", "timestamp", "author", "recipient"]},
+    {"table": "notification", "fields": ["id", "name", "user_id", "timestamp", "payload_json", "user"]},
+    {"table": "task", "fields": ["id", "name", "description", "user_id", "complete", "user"]}
+  ],
+  "relationships": [
+    {"from_entity": "post", "to_entity": "user", "cardinality": "N:1"},
+    {"from_entity": "message", "to_entity": "user", "cardinality": "N:1"},
+    {"from_entity": "notification", "to_entity": "user", "cardinality": "N:1"},
+    {"from_entity": "task", "to_entity": "user", "cardinality": "N:1"}
+  ],
+  "key_call_edges": [
+    {
+      "caller_suffix": "reset_password_request",
+      "callee_suffix": "email.send_password_reset_email",
+      "min_confidence": 0.7
+    },
+    {
+      "caller_suffix": "translate_text",
+      "callee_suffix": "translate.translate",
+      "min_confidence": 0.7
+    },
+    {
+      "caller_suffix": "tasks.export_posts",
+      "callee_suffix": "email.send_email",
+      "min_confidence": 0.7
+    }
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [
+    {"name": "HTTP API", "kind": "http_api"},
+    {"name": "Redis", "kind": "cache"}
+  ],
+  "_external_systems_note": "Source truth verified: app/translate.py calls the MS Translator REST API via requests (-> HTTP API/http_api); app/__init__.py constructs Redis(...) for rq task queueing (-> Redis/cache). Microblog ALSO uses Elasticsearch (app/__init__.py, app/search.py) and SMTP (flask-mail) — both currently undetected by the external-system extractor and unlabeled here because their extraction naming convention doesn't exist yet; when ES/SMTP detection lands, add them and let recall gate it."
+}

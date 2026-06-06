@@ -65,3 +65,6 @@ Thumbs.db
 .docker-data/
 .dockerignore
 **/cdk.out/
+
+# External corpus repo cache (pinned via tests/corpus/external/manifest.json)
+tests/corpus/external/.cache/

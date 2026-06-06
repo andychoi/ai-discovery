@@ -1,0 +1,53 @@
+{
+  "_README": "Human-labeled from gothinkster/node-express-realworld-example-app source at pinned SHA 30b68e1e (the TypeScript + Prisma + Nx rewrite — NOT the legacy plain-Express app). Endpoints: every router registration across the four controllers, composed with the '/api' mount from routes.ts. Entities: Prisma models from src/prisma/schema.prisma with all scalar + relation field names. Express handlers here are anonymous arrow functions, so key call edges use named module functions (mappers/services) instead.",
+  "project": "node-express-realworld-example-app",
+  "language": "javascript",
+  "framework": "express",
+  "_floors": {"call_edges": 0.95, "di_resolution": 1.0},
+  "endpoints": [
+    {"handler": "auth.controller", "method": "POST", "path": "/api/users"},
+    {"handler": "auth.controller", "method": "POST", "path": "/api/users/login"},
+    {"handler": "auth.controller", "method": "GET", "path": "/api/user"},
+    {"handler": "auth.controller", "method": "PUT", "path": "/api/user"},
+    {"handler": "article.controller", "method": "GET", "path": "/api/articles"},
+    {"handler": "article.controller", "method": "GET", "path": "/api/articles/feed"},
+    {"handler": "article.controller", "method": "POST", "path": "/api/articles"},
+    {"handler": "article.controller", "method": "GET", "path": "/api/articles/:slug"},
+    {"handler": "article.controller", "method": "PUT", "path": "/api/articles/:slug"},
+    {"handler": "article.controller", "method": "DELETE", "path": "/api/articles/:slug"},
+    {"handler": "article.controller", "method": "GET", "path": "/api/articles/:slug/comments"},
+    {"handler": "article.controller", "method": "POST", "path": "/api/articles/:slug/comments"},
+    {"handler": "article.controller", "method": "DELETE", "path": "/api/articles/:slug/comments/:id"},
+    {"handler": "article.controller", "method": "POST", "path": "/api/articles/:slug/favorite"},
+    {"handler": "article.controller", "method": "DELETE", "path": "/api/articles/:slug/favorite"},
+    {"handler": "profile.controller", "method": "GET", "path": "/api/profiles/:username"},
+    {"handler": "profile.controller", "method": "POST", "path": "/api/profiles/:username/follow"},
+    {"handler": "profile.controller", "method": "DELETE", "path": "/api/profiles/:username/follow"},
+    {"handler": "tag.controller", "method": "GET", "path": "/api/tags"}
+  ],
+  "entities": [
+    {"table": "Article", "fields": ["id", "slug", "title", "description", "body", "createdAt", "updatedAt", "authorId", "tagList", "author", "favoritedBy", "comments"]},
+    {"table": "Comment", "fields": ["id", "createdAt", "updatedAt", "body", "articleId", "authorId", "article", "author"]},
+    {"table": "Tag", "fields": ["id", "name", "articles"]},
+    {"table": "User", "fields": ["id", "email", "username", "password", "image", "bio", "demo", "articles", "favorites", "followedBy", "following", "comments"]}
+  ],
+  "relationships": [
+    {"from_entity": "Article", "to_entity": "User", "cardinality": "N:1"},
+    {"from_entity": "Comment", "to_entity": "Article", "cardinality": "N:1"},
+    {"from_entity": "Comment", "to_entity": "User", "cardinality": "N:1"}
+  ],
+  "key_call_edges": [
+    {
+      "caller_suffix": "articleMapper",
+      "callee_suffix": "authorMapper",
+      "min_confidence": 0.7
+    },
+    {
+      "caller_suffix": "favoriteArticle",
+      "callee_suffix": "profileMapper",
+      "min_confidence": 0.7
+    }
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": []
+}

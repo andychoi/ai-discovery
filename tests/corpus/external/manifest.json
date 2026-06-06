@@ -1,0 +1,23 @@
+{
+  "_README": "Corpus Phase 3 (HIGH-10 / assessment 07 row 12): real external repos pinned at fixed SHAs. Sources are fetched into .cache/ (gitignored) by fetch.py; ground truth is human-labeled from the source AT THE PINNED SHA and committed under ground_truth/. Tests skip when a repo isn't fetched, so CI without network stays green; run `python tests/corpus/external/fetch.py` to enable them.",
+  "repos": [
+    {
+      "name": "spring-petclinic",
+      "url": "https://github.com/spring-projects/spring-petclinic.git",
+      "sha": "753d35c2f84432d88c0f3b61c9302a16069b78dd",
+      "language": "java"
+    },
+    {
+      "name": "node-express-realworld-example-app",
+      "url": "https://github.com/gothinkster/node-express-realworld-example-app.git",
+      "sha": "30b68e1e881462b2f4164ea09ab4c4f5699c7b0b",
+      "language": "javascript"
+    },
+    {
+      "name": "microblog",
+      "url": "https://github.com/miguelgrinberg/microblog.git",
+      "sha": "a975ef64864354867c88e0ed3a17ba7d17dca752",
+      "language": "python"
+    }
+  ]
+}

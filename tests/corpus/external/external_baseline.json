@@ -1,0 +1,98 @@
+{
+ "spring-petclinic": {
+  "endpoints": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0
+  },
+  "entities": {
+   "precision": 0.667,
+   "recall": 0.667,
+   "f1": 0.667
+  },
+  "relationships": {
+   "precision": 0.5,
+   "recall": 0.5,
+   "f1": 0.5
+  },
+  "call_edges": {
+   "precision": 0.333,
+   "recall": 0.333,
+   "f1": 0.333
+  },
+  "di_resolution": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0
+  },
+  "external_systems": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0
+  }
+ },
+ "node-express-realworld-example-app": {
+  "endpoints": {
+   "precision": 0.0,
+   "recall": 0.0,
+   "f1": 0.0
+  },
+  "entities": {
+   "precision": 0.0,
+   "recall": 0.0,
+   "f1": 0.0
+  },
+  "relationships": {
+   "precision": 0.0,
+   "recall": 0.0,
+   "f1": 0.0
+  },
+  "call_edges": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0
+  },
+  "di_resolution": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0
+  },
+  "external_systems": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0
+  }
+ },
+ "microblog": {
+  "endpoints": {
+   "precision": 0.385,
+   "recall": 0.286,
+   "f1": 0.328
+  },
+  "entities": {
+   "precision": 0.0,
+   "recall": 0.0,
+   "f1": 0.0
+  },
+  "relationships": {
+   "precision": 0.0,
+   "recall": 0.0,
+   "f1": 0.0
+  },
+  "call_edges": {
+   "precision": 0.667,
+   "recall": 0.667,
+   "f1": 0.667
+  },
+  "di_resolution": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0
+  },
+  "external_systems": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0
+  }
+ }
+}
