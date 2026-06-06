@@ -14,6 +14,12 @@ from .models import CallEdge, CodeNode, ExecutionEdge, ExecutionNode, Scenario, 
 # hundreds of classes). Instead the call collapses to one unresolved edge.
 _MAX_FANOUT = 8
 
+# A-3: minimum confidence for an edge to bind two files into the same
+# call-graph community. Only stage 0-3 resolutions qualify (index/exact/
+# import-scope/receiver-type) — the noisy short-name stage must never feed
+# the community map that narrows it (no self-reinforcement).
+_COMMUNITY_MIN_CONFIDENCE = 0.93
+
 
 def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]:
     """Build call graph from CodeNode.calls / CodeNode.call_sites references.
@@ -26,8 +32,14 @@ def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]
       2. Import-scoped — receiver matches a caller import → confidence 0.95
       3. Receiver-type (DI) — receiver is a field/param    → confidence 0.93
          of a known type; pin the call to that type's method
-      4. Short-name contextual (same class/file/module)   → confidence 0.95 … 0.6
+      4. Short-name contextual (same class/file/module,   → confidence 0.95 … 0.6
+         then call-graph community narrowing built from
+         the stage 0-3 edges — A-3)
       5. Unresolved — no match                            → confidence 0.5
+
+    Two passes: stages 0-3 resolve first; their high-confidence edges are
+    collapsed into file communities (union-find); stage 4 then prefers
+    candidates inside the caller's community before fanning out globally.
 
     `symbol_index` (optional SymbolIndex) is the LSP/compiler tier — present only
     when an authoritative index was supplied; absence leaves resolution fully
@@ -58,6 +70,9 @@ def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]
                 impls_by_base[base.rsplit(".", 1)[-1]].append(node)
 
     edges: list[CallEdge] = []
+    # A-3: stage-4/5 call sites deferred to pass 2, where the community map
+    # (built from pass-1 high-confidence edges) is available for narrowing.
+    pending: list[tuple[CodeNode, str]] = []
 
     for node in nodes:
         # Prefer structured call_sites (Python parser emits these). For other
@@ -152,33 +167,41 @@ def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]
                     )
                     continue
 
-            # Stage 4: short-name contextual
-            resolved = _resolve_contextual_targets(node, call_name, short_name_index)
-            if resolved:
-                for target, confidence in resolved:
-                    if target.qualified_name == node.qualified_name:
-                        continue
-                    edges.append(
-                        CallEdge(
-                            caller=node.qualified_name,
-                            callee=target.qualified_name,
-                            edge_type="direct_call",
-                            confidence=confidence,
-                            metadata={"resolved_by": "short_name"},
-                        )
-                    )
-                continue
+            # Stages 4-5 are deferred: short-name resolution benefits from the
+            # community map, which needs all pass-1 edges first.
+            pending.append((node, call_name))
 
-            # Stage 4: unresolved
-            edges.append(
-                CallEdge(
-                    caller=node.qualified_name,
-                    callee=call_name,
-                    edge_type="direct_call",
-                    confidence=0.5,
-                    metadata={"resolved_by": "unresolved"},
+    # Pass 2 — stage 4 (short-name contextual, community-narrowed) + stage 5.
+    file_community = _file_communities(edges, qualified_index)
+    for node, call_name in pending:
+        resolved = _resolve_contextual_targets(
+            node, call_name, short_name_index, file_community
+        )
+        if resolved:
+            for target, confidence, reason in resolved:
+                if target.qualified_name == node.qualified_name:
+                    continue
+                edges.append(
+                    CallEdge(
+                        caller=node.qualified_name,
+                        callee=target.qualified_name,
+                        edge_type="direct_call",
+                        confidence=confidence,
+                        metadata={"resolved_by": reason},
+                    )
                 )
+            continue
+
+        # Stage 5: unresolved
+        edges.append(
+            CallEdge(
+                caller=node.qualified_name,
+                callee=call_name,
+                edge_type="direct_call",
+                confidence=0.5,
+                metadata={"resolved_by": "unresolved"},
             )
+        )
 
     # Dedup (MED-3): the same (caller, callee, edge_type) triple can be emitted
     # by multiple call sites — a method called twice, or short-name fan-out
@@ -350,49 +373,106 @@ def _module_matches_file(module: str, file_path: str) -> bool:
     return False
 
 
+def _file_communities(
+    edges: list[CallEdge], qualified_index: dict[str, CodeNode]
+) -> dict[str, str]:
+    """Union-find file communities from high-confidence (stage 0-3) edges.
+
+    A-3: two files belong to one community when a ≥ _COMMUNITY_MIN_CONFIDENCE
+    edge connects nodes in them. The map lets short-name resolution prefer
+    candidates the caller's file is already provably wired to, instead of
+    fanning out across every same-named method in the repo. Files with no
+    qualifying edges are absent from the map (no community — no narrowing).
+    """
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]  # path halving
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        parent.setdefault(a, a)
+        parent.setdefault(b, b)
+        root_a, root_b = find(a), find(b)
+        if root_a != root_b:
+            parent[root_b] = root_a
+
+    for edge in edges:
+        if edge.confidence < _COMMUNITY_MIN_CONFIDENCE:
+            continue
+        caller_node = qualified_index.get(edge.caller)
+        callee_node = qualified_index.get(edge.callee)
+        if caller_node is None or callee_node is None:
+            continue
+        union(caller_node.file_path, callee_node.file_path)
+
+    return {f: find(f) for f in parent}
+
+
 def _resolve_contextual_targets(
     caller: CodeNode,
     call_ref: str,
     short_name_index: dict[str, list[CodeNode]],
-) -> list[tuple[CodeNode, float]]:
+    file_community: dict[str, str] | None = None,
+) -> list[tuple[CodeNode, float, str]]:
     candidates = list(short_name_index.get(call_ref, []))
     if not candidates:
         if "." in call_ref:
             suffix_matches = _suffix_matches(call_ref, short_name_index)
             if len(suffix_matches) == 1:
-                return [(suffix_matches[0], 0.85)]
+                return [(suffix_matches[0], 0.85, "short_name")]
             if 1 < len(suffix_matches) <= _MAX_FANOUT:
-                return [(target, 0.7) for target in suffix_matches if target.qualified_name != caller.qualified_name]
+                return [(target, 0.7, "short_name") for target in suffix_matches if target.qualified_name != caller.qualified_name]
             # > _MAX_FANOUT suffix matches: too ambiguous — collapse (see below).
         return []
 
     same_class = _same_class_matches(caller, call_ref, candidates)
     if same_class:
-        return [(target, 0.95) for target in same_class]
+        return [(target, 0.95, "short_name") for target in same_class]
 
     same_file = [target for target in candidates if target.file_path == caller.file_path]
     if len(same_file) == 1:
-        return [(same_file[0], 0.9)]
+        return [(same_file[0], 0.9, "short_name")]
     if len(same_file) > 1:
-        return [(target, 0.75) for target in same_file if target.qualified_name != caller.qualified_name]
+        return [(target, 0.75, "short_name") for target in same_file if target.qualified_name != caller.qualified_name]
 
     same_module = _same_module_matches(caller, call_ref, candidates)
     if len(same_module) == 1:
-        return [(same_module[0], 0.85)]
+        return [(same_module[0], 0.85, "short_name")]
     if len(same_module) > 1:
-        return [(target, 0.7) for target in same_module if target.qualified_name != caller.qualified_name]
+        return [(target, 0.7, "short_name") for target in same_module if target.qualified_name != caller.qualified_name]
+
+    # A-3: call-graph community narrowing. Applies only as a STRICT narrowing —
+    # when the caller's community contains some but not all candidates. With no
+    # community signal (or all/none of the candidates in it), resolution falls
+    # through to the existing heuristics unchanged.
+    if file_community:
+        caller_comm = file_community.get(caller.file_path)
+        if caller_comm is not None:
+            others_all = [t for t in candidates if t.qualified_name != caller.qualified_name]
+            in_comm = [
+                t for t in others_all
+                if file_community.get(t.file_path) == caller_comm
+            ]
+            if in_comm and len(in_comm) < len(others_all):
+                if len(in_comm) == 1:
+                    return [(in_comm[0], 0.8, "short_name_community")]
+                if len(in_comm) <= _MAX_FANOUT:
+                    return [(t, 0.7, "short_name_community") for t in in_comm]
 
     if len(candidates) == 1:
-        return [(candidates[0], 0.8)]
+        return [(candidates[0], 0.8, "short_name")]
 
     ranked = _rank_by_prefix_overlap(caller, candidates)
     if ranked and ranked[0][1] > 0:
         best_score = ranked[0][1]
         best = [target for target, score in ranked if score == best_score and target.qualified_name != caller.qualified_name]
         if len(best) == 1:
-            return [(best[0], 0.75)]
+            return [(best[0], 0.75, "short_name")]
         if 0 < len(best) <= _MAX_FANOUT:
-            return [(target, 0.65) for target in best]
+            return [(target, 0.65, "short_name") for target in best]
 
     others = [target for target in candidates if target.qualified_name != caller.qualified_name]
     # P0-3: collapse rather than fan out when the ambiguous set is large. An empty
@@ -401,7 +481,7 @@ def _resolve_contextual_targets(
     # quadratic edge blow-up.
     if len(others) > _MAX_FANOUT:
         return []
-    return [(target, 0.6) for target in others]
+    return [(target, 0.6, "short_name") for target in others]
 
 
 def _same_class_matches(caller: CodeNode, call_ref: str, candidates: list[CodeNode]) -> list[CodeNode]:

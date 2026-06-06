@@ -62,6 +62,10 @@ HARD_TARGETS = {
     ("python-di-collision", "call_edges"),
     ("js-di-collision", "di_resolution"),
     ("js-di-collision", "call_edges"),
+    # A-3: call-graph community narrowing resolves untyped-receiver collisions
+    # the receiver-type stage cannot — no false cross-community edges.
+    ("python-community-collision", "di_resolution"),
+    ("python-community-collision", "call_edges"),
     # LSP/SCIP tier resolves interface dispatch heuristics cannot.
     ("lsp-interface-dispatch", "di_resolution"),
     ("lsp-interface-dispatch", "call_edges"),

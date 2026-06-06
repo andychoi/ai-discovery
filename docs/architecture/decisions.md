@@ -24,7 +24,7 @@ first-match-wins cascade of four resolution stages. Edges are deduped per
 | 1 | Exact qualified-name match | 1.0 | `exact` |
 | 2 | Import-scoped (receiver matches a caller import) | 0.95 | `import_scope` |
 | 3 | **Receiver-type (DI)** — receiver is a field/ctor-param of a known type `T` and `T` defines the method; pin to `T.method` | 0.93 | `receiver_type` |
-| 4 | Short-name contextual — same class (0.95), same file unique (0.90), same module unique (0.85), unique suffix (0.85), best prefix overlap (0.65–0.75), short-name fan-out (0.6) | 0.95 … 0.6 | `short_name` |
+| 4 | Short-name contextual — same class (0.95), same file unique (0.90), same module unique (0.85), unique suffix (0.85), **community narrowing** (unique-in-community 0.80, multiple 0.70), best prefix overlap (0.65–0.75), short-name fan-out (0.6) | 0.95 … 0.6 | `short_name` / `short_name_community` |
 | 5 | Unresolved — no candidate | 0.5 | `unresolved` |
 
 **Stage 3 (receiver-type, HIGH-3, added 2026-05-31)** consumes the field/
@@ -40,6 +40,22 @@ typed-`__init__` DI, and JS constructor `this.x = new Y()`). Measured by the
 `di_resolution` dimension of the corpus harness across per-language collision
 fixtures (`tests/corpus/`). JS module-level functional DI (require + call outside
 a class) is the one uncovered pattern — there is no enclosing class to key on.
+
+**Stage-4 community narrowing (A-3, added 2026-06-06)** ports Understand-
+Anything's cross-batch-context idea into the resolver. `build_call_graph` now
+runs two passes: stages 0–3 resolve first, then their high-confidence edges
+(≥ 0.93 — index/exact/import-scope/receiver-type only, so the noisy stage
+never feeds its own input) are collapsed into **file communities** via
+union-find. When short-name resolution then faces a cross-module collision —
+typically an *untyped* receiver that Stage 3 cannot pin (`self.strategy.
+calculate()`) — candidates inside the caller's community are preferred:
+unique-in-community resolves at 0.80 (`resolved_by: short_name_community`),
+multiple community candidates fan out at 0.70 within the community only.
+The filter applies **only as a strict narrowing** (some-but-not-all candidates
+in the community); with no community signal, or all candidates in one
+community, behavior is byte-identical to the pre-A-3 cascade. Gauged by the
+`python-community-collision` corpus fixture (di_resolution 0.0 → 1.0,
+hard-targeted).
 
 **Stage 0 (symbol index, LSP tier, added 2026-05-31)** is the assessment's
 headline architectural recommendation, consumer side: when a repo ships an

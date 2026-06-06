@@ -1,0 +1,34 @@
+{
+  "_README": "Human-labeled from SOURCE (never from parser output). Stage-4 community-narrowing gauge (assessment 07 A-3): CheckoutView.total calls self.strategy.calculate() on an UNTYPED receiver — receiver-type resolution (Stage 3, the *-di-collision fixtures' case) cannot pin it. Two modules define calculate(): billing.pricing.PriceCalc and shipping.rates.RateCalc. The caller's file is already bound into the billing community by high-confidence edges (Invoice.build at 0.95 import_scope, which itself calls PriceCalc.base_rate at 0.95), while shipping has no inbound/outbound edges at all. Call-graph community narrowing must therefore resolve calculate() to PriceCalc only.",
+  "project": "python-community-collision",
+  "language": "python",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {
+      "caller_suffix": "CheckoutView.total",
+      "callee_suffix": "invoice.Invoice.build",
+      "min_confidence": 0.9
+    },
+    {
+      "caller_suffix": "Invoice.build",
+      "callee_suffix": "pricing.PriceCalc.base_rate",
+      "min_confidence": 0.9
+    },
+    {
+      "caller_suffix": "CheckoutView.total",
+      "callee_suffix": "pricing.PriceCalc.calculate",
+      "min_confidence": 0.7
+    }
+  ],
+  "forbidden_call_edges": [
+    {
+      "caller_suffix": "CheckoutView.total",
+      "callee_suffix": "rates.RateCalc.calculate"
+    }
+  ],
+  "external_systems": [],
+  "_di_resolution_note": "KNOWN GAP this fixture measures: with no receiver type available, short-name resolution fans calculate() out to BOTH PriceCalc.calculate and RateCalc.calculate at 0.6 — the forbidden shipping edge is a false positive and the pricing edge sits below the 0.7 confidence bar. di_resolution scores 1.0 (and the pricing key edge passes) only when Stage-4 narrows candidates to the caller's call-graph community before fanning out (A-3)."
+}

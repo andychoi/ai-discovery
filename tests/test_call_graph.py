@@ -433,3 +433,91 @@ def test_short_name_small_collision_still_resolves():
     # Two candidates -> still resolved (not collapsed), not "unresolved".
     assert len(save_edges) == 2
     assert all(e.metadata.get("resolved_by") == "short_name" for e in save_edges)
+
+
+# ---------------------------------------------------------------------------
+# Stage-4 community narrowing (assessment 07 A-3)
+# ---------------------------------------------------------------------------
+
+def _community_fixture_nodes(with_binder: bool = True):
+    """Mirror of tests/fixtures/projects/python-community-collision:
+    web caller bound into billing by high-confidence edges; shipping isolated;
+    `calculate` collides across billing and shipping."""
+    caller = CodeNode(
+        file_path="app/web/handler.py", language="python", node_type="method",
+        name="total", qualified_name="handler.CheckoutView.total",
+        source_code="", line_start=10, line_end=15,
+        call_sites=(
+            [{"name": "build", "receiver": "Invoice"}] if with_binder else []
+        ) + [{"name": "calculate", "receiver": "self.strategy"}],
+        imports=[{"module": "app.billing.invoice", "name": "Invoice", "alias": None}]
+        if with_binder else [],
+    )
+    invoice_build = CodeNode(
+        file_path="app/billing/invoice.py", language="python", node_type="method",
+        name="build", qualified_name="invoice.Invoice.build",
+        source_code="", line_start=5, line_end=8,
+        call_sites=[{"name": "base_rate", "receiver": "PriceCalc"}],
+        imports=[{"module": "app.billing.pricing", "name": "PriceCalc", "alias": None}],
+    )
+    price_base = CodeNode(
+        file_path="app/billing/pricing.py", language="python", node_type="method",
+        name="base_rate", qualified_name="pricing.PriceCalc.base_rate",
+        source_code="", line_start=4, line_end=6,
+    )
+    price_calc = CodeNode(
+        file_path="app/billing/pricing.py", language="python", node_type="method",
+        name="calculate", qualified_name="pricing.PriceCalc.calculate",
+        source_code="", line_start=8, line_end=10,
+    )
+    rate_calc = CodeNode(
+        file_path="app/shipping/rates.py", language="python", node_type="method",
+        name="calculate", qualified_name="rates.RateCalc.calculate",
+        source_code="", line_start=4, line_end=6,
+    )
+    return [caller, invoice_build, price_base, price_calc, rate_calc]
+
+
+def test_community_narrows_cross_module_collision():
+    """An untyped-receiver collision must resolve within the caller's
+    call-graph community (built from stage 0-3 edges), not fan out to an
+    unconnected module."""
+    edges = build_call_graph(_community_fixture_nodes())
+    by_callee = {e.callee: e for e in edges if e.caller == "handler.CheckoutView.total"}
+    assert "pricing.PriceCalc.calculate" in by_callee
+    winner = by_callee["pricing.PriceCalc.calculate"]
+    assert winner.confidence == 0.8
+    assert winner.metadata["resolved_by"] == "short_name_community"
+    # the forbidden cross-community edge must not exist
+    assert "rates.RateCalc.calculate" not in by_callee
+
+
+def test_community_with_multiple_candidates_fans_out_within_community_only():
+    nodes = _community_fixture_nodes()
+    # second billing candidate, bound into the community via pricing.py
+    tax_calc = CodeNode(
+        file_path="app/billing/pricing.py", language="python", node_type="method",
+        name="calculate", qualified_name="pricing.TaxCalc.calculate",
+        source_code="", line_start=20, line_end=22,
+    )
+    nodes.append(tax_calc)
+    edges = build_call_graph(nodes)
+    collision = [e for e in edges
+                 if e.caller == "handler.CheckoutView.total" and e.callee.endswith(".calculate")]
+    callees = {e.callee for e in collision}
+    assert callees == {"pricing.PriceCalc.calculate", "pricing.TaxCalc.calculate"}
+    assert all(e.confidence == 0.7 for e in collision)
+    assert all(e.metadata["resolved_by"] == "short_name_community" for e in collision)
+
+
+def test_no_community_signal_preserves_existing_fanout():
+    """Without any high-confidence binder edges there is no community to
+    narrow by — behavior must be byte-identical to today (both candidates,
+    0.6, short_name)."""
+    edges = build_call_graph(_community_fixture_nodes(with_binder=False))
+    collision = [e for e in edges
+                 if e.caller == "handler.CheckoutView.total" and e.callee.endswith(".calculate")]
+    callees = {e.callee for e in collision}
+    assert callees == {"pricing.PriceCalc.calculate", "rates.RateCalc.calculate"}
+    assert all(e.confidence == 0.6 for e in collision)
+    assert all(e.metadata["resolved_by"] == "short_name" for e in collision)

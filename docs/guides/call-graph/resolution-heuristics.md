@@ -165,6 +165,41 @@ Candidates in codebase:
 
 ---
 
+### Level 6a: Call-Graph Community Narrowing (A-3, 2026-06-06)
+
+Before falling back to prefix overlap / global fan-out, the resolver consults
+**file communities** built from the high-confidence stage 0–3 edges
+(union-find over edges with confidence ≥ 0.93 — the noisy short-name stage
+never feeds its own input).
+
+```python
+# File: app/web/handler.py (caller)
+class CheckoutView:
+    def __init__(self, strategy):     # untyped — receiver-type stage can't pin
+        self.strategy = strategy
+
+    def total(self):
+        Invoice.build()               # 0.95 import-scope edge → billing community
+        return self.strategy.calculate()   # ← collision: billing vs shipping
+```
+
+Candidates: `pricing.PriceCalc.calculate` (billing) and
+`rates.RateCalc.calculate` (shipping). The caller's file is already wired into
+the **billing** community by the `Invoice.build()` edge; shipping has no edges
+at all.
+
+**Resolution**: candidates are filtered to the caller's community.
+- Unique in community → **0.80**, `resolved_by: short_name_community`
+- Multiple in community → 0.70 each, fan-out *within the community only*
+- No community signal, or all/none of the candidates in it → fall through
+  unchanged (strict-narrowing-only: never changes behavior when it has
+  nothing to add)
+
+Gauged by the `python-community-collision` corpus fixture (di_resolution
+hard-targeted at 1.0).
+
+---
+
 ### Level 7: Unresolved / External
 
 ```python
