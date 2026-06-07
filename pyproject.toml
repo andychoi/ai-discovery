@@ -40,7 +40,6 @@ dependencies = [
     "pysqlite3",
     "sqlite-vec>=0.1",
     "scikit-learn>=1.4",
-    "pm4py>=2.7.0",
     "networkx>=3.0",
 ]
 

@@ -624,11 +624,11 @@ class BPMNGenerator:
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
-    # Pseudo Event Log (for PM4Py / process mining)
+    # Pseudo Event Log (Phase 16 flow-statistics input)
     # ------------------------------------------------------------------
 
     def generate_pseudo_event_log(self, flow: ScenarioFlow) -> dict:
-        """Generate a pseudo event log for process mining tools (PM4Py).
+        """Generate a pseudo event log for Phase 16 flow statistics.
 
         Returns:
             { "case_id": scenario_id, "events": [{event_name, order}, ...] }

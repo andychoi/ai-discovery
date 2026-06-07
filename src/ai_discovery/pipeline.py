@@ -1432,27 +1432,27 @@ def run_pipeline(
                 console.print(f"  Onboarding guides: [green]{len(onboard_docs)}[/] domains")
 
     # ------------------------------------------------------------------
-    # 16 OPTIONAL: Process Mining & Conformance
+    # 16 OPTIONAL: Flow statistics (per-scenario edge frequencies)
     # ------------------------------------------------------------------
     mining_results: dict = {}
     mining_cfg = getattr(config, 'process_mining', None)
     mining_on = bool(mining_cfg and getattr(mining_cfg, 'enabled', False))
     if mining_on:
         with _with_checkpoint(db_path, scan_id, 16, "process_mining"):
-            console.print("[bold cyan]Phase 16: Process mining & conformance analysis...[/]")
-            with _timed("process mining"), console.status("[bold cyan]Mining scenarios..."):
+            console.print("[bold cyan]Phase 16: Flow statistics...[/]")
+            with _timed("flow statistics"), console.status("[bold cyan]Computing flow statistics..."):
                 try:
                     mining_results = _mine_processes(scenario_flows, output_dir)
                     console.print(
-                        f"  Process mining: [green]{len(mining_results)}[/] scenarios analysed"
+                        f"  Flow statistics: [green]{len(mining_results)}[/] scenarios analysed"
                     )
                 except Exception as e:
-                    logger.error(f"Process mining failed (continuing): {e}")
-                    console.print(f"  [yellow]Process mining skipped:[/] {e}")
+                    logger.error(f"Flow statistics failed (continuing): {e}")
+                    console.print(f"  [yellow]Flow statistics skipped:[/] {e}")
     else:
         # No checkpoint written — disabled runs shouldn't leave a "16 complete"
         # marker that misleads resume logic.
-        console.print("[dim]Phase 16: Process mining disabled (set process_mining.enabled=true to enable)[/]")
+        console.print("[dim]Phase 16: Flow statistics disabled (set process_mining.enabled=true to enable)[/]")
 
     # Free tier3 (~20 GB) so self-review (tier1) has headroom.
     if config.provider == "ollama":
@@ -1964,7 +1964,7 @@ def _mine_processes(
     scenario_flows: list,
     output_dir: Path,
 ) -> dict:
-    """Stage 10.5: Process mining and conformance analysis (optional).
+    """Phase 16: Per-scenario flow statistics (optional).
 
     Args:
         scenario_flows: List of ScenarioFlow objects with pseudo_event_log
@@ -1973,7 +1973,7 @@ def _mine_processes(
     Returns:
         dict[scenario_id] → MiningResult
     """
-    logger.info("Stage 10.5: Process mining and conformance analysis")
+    logger.info("Phase 16: Flow statistics")
 
     # Extract pseudo event logs from scenario flows
     pseudo_logs = []
@@ -1984,7 +1984,7 @@ def _mine_processes(
             scenario_id_map[flow.pseudo_event_log['case_id']] = flow.scenario_id
 
     if not pseudo_logs:
-        logger.warning("No pseudo event logs available for mining")
+        logger.warning("No pseudo event logs available for flow statistics")
         return {}
 
     # Mine all scenarios
@@ -2000,7 +2000,7 @@ def _mine_processes(
         except Exception as e:
             logger.error(f"Failed to save mining reports for {scenario_id}: {e}")
 
-    logger.info(f"Stage 10.5 complete: {len(mining_results)} scenarios mined")
+    logger.info(f"Phase 16 complete: {len(mining_results)} scenarios analysed")
     return mining_results
 
 

@@ -275,7 +275,28 @@ Explicitly coded state transitions (literal assignments such as
 
 ## Pseudo Event Log Generation for Process Mining
 
-### Decision
+> **Reversed 2026-06-06 — pm4py removed.** An objective code review found the
+> pm4py integration carried no information in its implemented form:
+> - The only real pm4py call (`inductive_miner.apply`) ran on a **single
+>   linear trace per scenario** — discovery of a single sequential trace
+>   returns the input unchanged (zero information gain). Its output
+>   (`result.net`) was never consumed by any report, doc, or DB write.
+> - `token_replay` was imported but never called; **fitness was hardcoded to
+>   1.0**, so the quality gate (≥ 0.90) always passed.
+> - Bottleneck/cycle-time metrics were computed over **synthetic 1-second
+>   timestamps**, producing fabricated numbers (every duration exactly
+>   1000 ms) that were injected into PF spec docs.
+>
+> Phase 16 now computes pure-Python edge-frequency flow statistics only
+> (`ai/process_miner.py`). The pseudo event log **format below is retained**
+> as the Phase 16 input.
+>
+> **Reintroduction condition**: pm4py becomes meaningful only with *real*
+> runtime event logs (app logs / APM traces) — conformance-checking the
+> code-derived model against actual execution. If that ingestion is built,
+> reintroduce pm4py as an optional extra with lazy imports.
+
+### Decision (superseded — see reversal above)
 Convert execution scenarios to JSON event logs compatible with PM4Py and other process mining tools.
 
 ### Why
@@ -353,7 +374,7 @@ rank = max(0, 5 - depth) + state_transition*4 + boundary*3 + external*2 + depend
 | LLM Routing | Tier 1/2/3 (Haiku→Sonnet→Opus) | Cost vs quality | `docs/guides/pipeline/cost-tracking.md` |
 | Domain Classification | Namespace heuristics | Scalability vs precision | Phase 4 in pipeline docs |
 | State Machines | Pattern extraction | Automation vs coverage | `docs/guides/pipeline/phase-breakdown.md` |
-| Pseudo Event Logs | Synthetic JSON format | Simplicity vs realism | `docs/guides/pipeline/profiling.md` |
+| Pseudo Event Logs | Synthetic JSON format (pm4py removed 2026-06-06) | Simplicity vs realism | `docs/guides/pipeline/profiling.md` |
 | Confidence Scoring | Multi-signal sum | Explainability vs accuracy | `docs/guides/call-graph/test-strategy.md` |
 
 ---

@@ -155,12 +155,13 @@ class RagConfig:
 
 @dataclass
 class ProcessMiningConfig:
-    """Configuration for optional Stage 10.5 process mining and conformance analysis."""
+    """Configuration for optional Phase 16 flow statistics.
+
+    Formerly configured pm4py-based mining (miner_variant, fitness/precision/
+    generalization thresholds); those fields were removed 2026-06-06 along with
+    pm4py — old discovery.yaml keys are silently ignored via _only_known().
+    """
     enabled: bool = False  # Default: disabled (opt-in via config or CLI flag)
-    miner_variant: str = "inductive"  # inductive, dfg, alpha, heuristics
-    fitness_threshold: float = 0.90  # Quality gate: min acceptable fitness
-    precision_threshold: float = 0.85  # Quality gate: min acceptable precision
-    generalization_threshold: float = 0.80  # Quality gate: min acceptable generalization
     max_traces: int = 10000  # Max traces to process per scenario
     output_reports: bool = True  # Save markdown and JSON reports
 

@@ -161,12 +161,9 @@ def init(
     mining = ProcessMiningConfig()
     template.extend([
         ("", None),
-        ("# Process Mining Configuration (Stage 10.5) — OPTIONAL", None),
-        ("# Set enabled: true to enable process mining and conformance analysis", None),
-        ("process_mining", {"enabled": mining.enabled, "miner_variant": mining.miner_variant,
-                            "fitness_threshold": mining.fitness_threshold,
-                            "precision_threshold": mining.precision_threshold,
-                            "generalization_threshold": mining.generalization_threshold,
+        ("# Flow Statistics Configuration (Phase 16) — OPTIONAL", None),
+        ("# Set enabled: true to enable per-scenario flow statistics reports", None),
+        ("process_mining", {"enabled": mining.enabled,
                             "max_traces": mining.max_traces, "output_reports": mining.output_reports}),
     ])
 

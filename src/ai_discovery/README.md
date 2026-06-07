@@ -85,7 +85,7 @@ Canonical phase numbers (5–19) match `_PHASE_SPECS` in `pipeline.py` and the r
 13. scenario_flow_inference  — per-scenario LLM reconstruction
 14. tier3_doc_rollup     — Sonnet/Opus final docs
 15. visual_artifacts     — BPMN + DMN + EARS + Mermaid generation
-16. process_mining       — pm4py inductive miner (optional)
+16. process_mining       — flow statistics, edge frequencies (optional)
 17. self_review          — RAG-verified claim checking
 18. render_markdown      — Jinja2 render with ai-docs frontmatter
 19. finalise             — write artifacts; optional DocHub/Gitea push

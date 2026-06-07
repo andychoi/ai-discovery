@@ -112,7 +112,7 @@ Code → Parse (Tree-sitter) → Build call graph → Classify domains
 | 13    | `scenario_flow_inference`   | Scenario + cross-entity transitions                        |
 | 14    | `tier3_doc_rollup`          | Sonnet/Opus: final docs                                    |
 | 15    | `visual_artifacts`          | BPMN + DMN + EARS + entity-backbone Mermaid generation     |
-| 16    | `process_mining` *(opt.)*   | Inductive miner + conformance (via `pm4py`)                |
+| 16    | `process_mining` *(opt.)*   | Per-scenario flow statistics (edge frequencies)            |
 | 17    | `self_review`               | Verify claims against source via RAG                       |
 | 18    | `render_markdown`           | Render with ai-docs frontmatter                            |
 | 19    | `finalise`                  | Write artifacts; optional push to DocHub/Gitea             |
@@ -348,20 +348,18 @@ Phase progress:
   ⊘ Phase 18 (render_markdown)
 ```
 
-### Process Mining (Optional — Phase 16)
+### Flow Statistics (Optional — Phase 16)
 
-Process mining runs an inductive miner + token-replay conformance over inferred scenarios, via [`pm4py`](https://pm4py.fit.fraunhofer.de/). Disabled by default; enable in `discovery.yaml`:
+Phase 16 computes per-scenario edge-frequency statistics (pure Python) over the inferred scenario flows and writes markdown/JSON reports under `mining_reports/`. Disabled by default; enable in `discovery.yaml`:
 
 ```yaml
 process_mining:
   enabled: true           # Set to true to enable
-  miner_variant: inductive
-  fitness_threshold: 0.90
 ```
 
-Then run normally — Phase 16 runs after Tier 3 doc rollup. Skip without uninstalling via `--skip-phases=16`.
+Then run normally — Phase 16 runs after Tier 3 doc rollup. Skip via `--skip-phases=16`.
 
-> **Install note:** `pm4py` is a required dependency (it pulls in `pandas`, `numpy`, `graphviz` bindings) — `pip install -e .` will download it even if you never enable Phase 16. If install size is a concern, the miner's imports are module-level today; consider pinning pm4py out of your image until the team extracts it to an optional extra.
+> **History:** this phase formerly ran pm4py (inductive miner + conformance). pm4py was removed 2026-06-06 — the single-trace, statically inferred inputs gave the miner no information, and the fitness/bottleneck metrics it reported were fabricated (hardcoded fitness, synthetic timestamps). See `docs/architecture/decisions.md` for the reversal record and reintroduction conditions (real runtime event-log ingestion).
 
 ### `discover ingest` — Push Scan Results
 

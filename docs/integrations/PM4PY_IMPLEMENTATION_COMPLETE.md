@@ -1,3 +1,12 @@
+> **⚠️ SUPERSEDED (2026-06-06):** pm4py was removed from ai-discovery. The
+> integration described below ran the inductive miner on single-trace,
+> statically inferred pseudo logs (no information gain), never consumed the
+> discovered model, hardcoded fitness to 1.0, and reported bottleneck metrics
+> derived from synthetic timestamps. Phase 16 now computes pure-Python
+> edge-frequency flow statistics. See `docs/architecture/decisions.md`
+> ("Pseudo Event Log Generation") for the reversal record and reintroduction
+> conditions. This document is retained for history only.
+
 # PM4Py Process Mining Implementation: COMPLETE
 
 Date: 2026-04-16  
