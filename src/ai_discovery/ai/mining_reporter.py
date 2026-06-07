@@ -11,7 +11,7 @@ import json
 import logging
 from pathlib import Path
 
-from .process_miner import MiningResult, EdgeFrequency
+from .process_miner import MiningResult
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +120,8 @@ def _section_edges(result: MiningResult) -> str:
         "These are code-derived sequences, not observed runtime behavior."
     )
     lines.append("")
-    lines.append("| From Activity | To Activity | Count | Frequency |")
-    lines.append("|---------------|------------|-------|-----------|")
+    lines.append("| From Activity | To Activity | Count | Share of transitions |")
+    lines.append("|---------------|------------|-------|----------------------|")
 
     for edge in result.edge_frequencies[:20]:
         lines.append(
@@ -130,8 +130,14 @@ def _section_edges(result: MiningResult) -> str:
 
     lines.append("")
     lines.append("**Interpretation:**")
-    lines.append("- Repeated edges (count > 1) indicate loops or shared sub-flows in the scenario")
-    lines.append("- Verify rare or conditional transitions against BPMN gateways")
+    lines.append("- **Count** is the signal: edges with count > 1 indicate loops or shared sub-flows.")
+    lines.append(
+        "- **Share of transitions** is each edge's portion of all transitions in this single "
+        "inferred trace — *not* a branch probability or occurrence rate. For a linear flow every "
+        "distinct edge is mandatory and shares the same value (1/(events-1)); it only varies when "
+        "edges repeat."
+    )
+    lines.append("- Verify rare or conditional transitions against BPMN gateways.")
 
     return "\n".join(lines)
 
