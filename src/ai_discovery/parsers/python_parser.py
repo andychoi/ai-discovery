@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import tree_sitter_python as tspython
-from tree_sitter import Language, Parser, Query, QueryCursor
+from tree_sitter import Language, Parser, Query
 
 from ..graph.models import CodeNode
 from .base import LanguageParser, find_enclosing_guard
+from ._ts import matches as _matches, captures as _captures, extract_call_sites, inside_class
 
 PY_LANGUAGE = Language(tspython.language())
 
@@ -105,16 +106,6 @@ _SELF_FIELD_QUERY = Query(
         )
     )""",
 )
-
-
-def _matches(query: Query, node) -> list[dict[str, list]]:
-    """Execute a query and return a list of match dicts (paired captures)."""
-    return [caps for _pat_idx, caps in QueryCursor(query).matches(node)]
-
-
-def _captures(query: Query, node) -> dict[str, list]:
-    """Execute a query and return captures as {name: [node, ...]}."""
-    return QueryCursor(query).captures(node)
 
 
 class PythonParser(LanguageParser):
@@ -394,12 +385,7 @@ class PythonParser(LanguageParser):
 
     @staticmethod
     def _inside_class(node, class_ranges: set[tuple[int, int]]) -> bool:
-        """Return True if *node* sits within any recorded class range."""
-        row = node.start_point.row
-        for start, end in class_ranges:
-            if start <= row <= end:
-                return True
-        return False
+        return inside_class(node, class_ranges)
 
     @staticmethod
     def _extract_params(func_node, *, skip_self: bool) -> list[str]:
@@ -423,26 +409,7 @@ class PythonParser(LanguageParser):
 
     @staticmethod
     def _extract_call_sites(node) -> list[dict]:
-        """One record per call site, retaining per-site receiver text.
-
-        `_extract_calls` deduplicates by short name and loses which object the
-        call was made on. The resolver needs the receiver to decide between
-        same-named methods (e.g. `order_service.save` vs `customer_service.save`),
-        so we emit the raw receiver source text for later interpretation.
-
-        Unqualified calls (`save(x)`) record `receiver=None`.
-        """
-        sites: list[dict] = []
-        for match in _matches(_CALL_SITE_QUERY, node):
-            name_nodes = match.get("site.name", [])
-            if not name_nodes:
-                continue
-            receiver_nodes = match.get("site.receiver", [])
-            sites.append({
-                "name": name_nodes[0].text.decode(),
-                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
-            })
-        return sites
+        return extract_call_sites(_CALL_SITE_QUERY, node)
 
     @staticmethod
     def _extract_bases(cls_node) -> list[str]:

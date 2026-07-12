@@ -4,10 +4,11 @@ import re
 from pathlib import Path
 
 import tree_sitter_c_sharp as tscsharp
-from tree_sitter import Language, Parser, Query, QueryCursor
+from tree_sitter import Language, Parser, Query
 
 from ..graph.models import CodeNode
 from .base import LanguageParser, find_enclosing_guard
+from ._ts import matches as _matches, extract_call_sites
 
 CS_LANGUAGE = Language(tscsharp.language())
 
@@ -119,10 +120,6 @@ _EXTERNAL_CLIENTS = frozenset({"httpClient", "restClient", "kafkaProducer", "bus
 
 _HTTP_ATTR_PATTERN = re.compile(r"^Http(Get|Post|Put|Delete|Patch|Head|Options)$")
 
-
-def _matches(query: Query, node) -> list[dict[str, list]]:
-    """Execute a query and return a list of match dicts (paired captures)."""
-    return [caps for _pat_idx, caps in QueryCursor(query).matches(node)]
 
 
 class CSharpParser(LanguageParser):
@@ -286,24 +283,10 @@ class CSharpParser(LanguageParser):
 
     @staticmethod
     def _extract_call_sites(node) -> list[dict]:
-        """One record per call site with receiver text.
-
-        C# `invocation_expression` splits into `member_access_expression`
-        (with receiver) and bare `identifier` (implicit `this`/local).
-        """
-        sites: list[dict] = []
-        if _CALL_SITE_QUERY is None:
-            return sites
-        for match in _matches(_CALL_SITE_QUERY, node):
-            name_nodes = match.get("site.name", [])
-            if not name_nodes:
-                continue
-            receiver_nodes = match.get("site.receiver", [])
-            sites.append({
-                "name": name_nodes[0].text.decode(),
-                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
-            })
-        return sites
+        # C# invocation_expression splits into member_access_expression (with
+        # receiver) and bare identifier (implicit this/local). The query may be
+        # None on older grammars — extract_call_sites handles that.
+        return extract_call_sites(_CALL_SITE_QUERY, node)
 
     @staticmethod
     def _extract_imports(root) -> list[dict]:

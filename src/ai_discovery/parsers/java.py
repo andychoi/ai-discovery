@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import tree_sitter_java as tsjava
-from tree_sitter import Language, Parser, Query, QueryCursor
+from tree_sitter import Language, Parser, Query
 
 from ..graph.models import CodeNode
 from .base import LanguageParser, find_enclosing_guard
+from ._ts import matches as _matches, captures as _captures, extract_call_sites
 
 JAVA_LANGUAGE = Language(tsjava.language())
 
@@ -99,14 +100,6 @@ _IMPORT_QUERY = Query(
     JAVA_LANGUAGE,
     "(import_declaration) @import.decl",
 )
-
-
-def _matches(query: Query, node) -> list[dict[str, list]]:
-    return [caps for _pat_idx, caps in QueryCursor(query).matches(node)]
-
-
-def _captures(query: Query, node) -> dict[str, list]:
-    return QueryCursor(query).captures(node)
 
 
 class JavaParser(LanguageParser):
@@ -376,22 +369,9 @@ class JavaParser(LanguageParser):
 
     @staticmethod
     def _extract_call_sites(node) -> list[dict]:
-        """One record per call site, retaining per-site receiver text.
-
-        Java `method_invocation` has an optional `object` field — absent for
-        implicit-`this` calls, present for `foo.bar()` / `Class.static()`.
-        """
-        sites: list[dict] = []
-        for match in _matches(_CALL_SITE_QUERY, node):
-            name_nodes = match.get("site.name", [])
-            if not name_nodes:
-                continue
-            receiver_nodes = match.get("site.receiver", [])
-            sites.append({
-                "name": name_nodes[0].text.decode(),
-                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
-            })
-        return sites
+        # Java method_invocation has an optional `object` field — absent for
+        # implicit-`this` calls, present for foo.bar() / Class.static().
+        return extract_call_sites(_CALL_SITE_QUERY, node)
 
     @staticmethod
     def _extract_imports(root) -> list[dict]:

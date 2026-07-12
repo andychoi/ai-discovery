@@ -5,10 +5,11 @@ from pathlib import Path
 
 import tree_sitter_javascript as tsjs
 import tree_sitter_typescript as tsts
-from tree_sitter import Language, Parser, Query, QueryCursor
+from tree_sitter import Language, Parser, Query
 
 from ..graph.models import CodeNode
 from .base import LanguageParser, find_enclosing_guard
+from ._ts import matches as _matches, extract_call_sites, inside_class
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +109,6 @@ _DB_OPERATIONS = frozenset({"save", "insert", "update", "delete", "remove", "exe
 _EXTERNAL_CLIENTS = frozenset({"axios", "fetch", "got", "request", "superagent", "prisma", "sequelize", "typeorm", "mongoose", "knex", "pg", "kafka", "amqp"})
 
 
-def _matches(query: Query, node) -> list[dict[str, list]]:
-    return [caps for _pat_idx, caps in QueryCursor(query).matches(node)]
 
 
 class JavaScriptParser(LanguageParser):
@@ -765,11 +764,7 @@ class JavaScriptParser(LanguageParser):
 
     @staticmethod
     def _inside_class(node, class_ranges: set[tuple[int, int]]) -> bool:
-        row = node.start_point.row
-        for start, end in class_ranges:
-            if start <= row <= end:
-                return True
-        return False
+        return inside_class(node, class_ranges)
 
     def _extract_calls(self, node) -> list[str]:
         """Walk tree and collect function call names."""
@@ -792,26 +787,10 @@ class JavaScriptParser(LanguageParser):
 
     @staticmethod
     def _extract_call_sites(node) -> list[dict]:
-        """One record per call site with receiver text.
-
-        JS `call_expression` splits into `member_expression` (with `object:`
-        receiver) and bare `identifier` (free-standing call). Receiver captures
-        the raw text of the object expression — so `this.svc.save()` yields
-        receiver=`this.svc`.
-        """
-        sites: list[dict] = []
-        if _CALL_SITE_QUERY_JS is None:
-            return sites
-        for match in _matches(_CALL_SITE_QUERY_JS, node):
-            name_nodes = match.get("site.name", [])
-            if not name_nodes:
-                continue
-            receiver_nodes = match.get("site.receiver", [])
-            sites.append({
-                "name": name_nodes[0].text.decode(),
-                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
-            })
-        return sites
+        # JS call_expression splits into member_expression (with `object:`
+        # receiver) and bare identifier. Receiver is the raw object text —
+        # `this.svc.save()` yields receiver=`this.svc`.
+        return extract_call_sites(_CALL_SITE_QUERY_JS, node)
 
     @staticmethod
     def _extract_imports(root) -> list[dict]:
