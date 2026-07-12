@@ -25,6 +25,7 @@ from ..graph.models import (
     EntityStateMachine,
     StateTransition,
 )
+from .fsm_rules import index_conditions_by_target, sorted_transitions as _sorted_transitions
 
 
 def generate_entity_decisions_markdown(
@@ -32,9 +33,7 @@ def generate_entity_decisions_markdown(
     conditions: list[EntityConditionCorrelation],
 ) -> str:
     """Render one Markdown section per (entity, field) with a decision table."""
-    conditions_by_target: dict[tuple[str, str, str | None], list[EntityConditionCorrelation]] = defaultdict(list)
-    for c in conditions:
-        conditions_by_target[(c.target_entity_id, c.target_field, c.target_to_state)].append(c)
+    conditions_by_target = index_conditions_by_target(conditions)
 
     sections: list[str] = []
     for fsm in sorted(fsms, key=lambda f: f.entity_id or f.entity):
@@ -96,12 +95,6 @@ def _format_context(conds: list[EntityConditionCorrelation]) -> str:
         for c in conds
     })
     return " ∧ ".join(clauses)
-
-
-def _sorted_transitions(transitions: list[StateTransition]) -> list[StateTransition]:
-    def key(t: StateTransition) -> tuple:
-        return (t.from_state or "", t.to_state or "", t.trigger_function or "")
-    return sorted(transitions, key=key)
 
 
 def _short_trigger(name: str | None) -> str | None:
