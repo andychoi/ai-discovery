@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from pathlib import PurePosixPath
 
 from .models import CallEdge, CodeNode, ExecutionEdge, ExecutionNode, Scenario, StateTransition
+from .util import UnionFind, bfs_layers
 
 # P0-3: above this many equally-plausible candidates for a single call, the
 # resolver stops fanning out an edge to every candidate (which is both noise —
@@ -389,21 +390,7 @@ def _file_communities(
     fanning out across every same-named method in the repo. Files with no
     qualifying edges are absent from the map (no community — no narrowing).
     """
-    parent: dict[str, str] = {}
-
-    def find(x: str) -> str:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]  # path halving
-            x = parent[x]
-        return x
-
-    def union(a: str, b: str) -> None:
-        parent.setdefault(a, a)
-        parent.setdefault(b, b)
-        root_a, root_b = find(a), find(b)
-        if root_a != root_b:
-            parent[root_b] = root_a
-
+    uf: UnionFind = UnionFind()
     for edge in edges:
         if edge.confidence < _COMMUNITY_MIN_CONFIDENCE:
             continue
@@ -411,9 +398,9 @@ def _file_communities(
         callee_node = qualified_index.get(edge.callee)
         if caller_node is None or callee_node is None:
             continue
-        union(caller_node.file_path, callee_node.file_path)
+        uf.union(caller_node.file_path, callee_node.file_path)
 
-    return {f: find(f) for f in parent}
+    return uf.root_map()
 
 
 def _resolve_contextual_targets(
@@ -611,19 +598,25 @@ class ExecutionSliceBuilder:
             domain=entry.domain,
         )
 
-        visited: set[str] = set()
+        # BFS with a deque and enqueue-time visited marking. The former
+        # list + queue.pop(0) was O(n) per pop, and marking visited only on pop
+        # let the same node be enqueued once per incoming edge — so the frontier
+        # could grow super-linearly on dense graphs (docs/reviews 04 P2-2).
+        # Marking at enqueue keeps each node enqueued at most once; BFS still
+        # reaches it first via its shallowest path, so the processed instance
+        # (and its prev_exec) is unchanged.
+        visited: set[str] = {entry.qualified_name}
         # BFS queue: (node_name, depth, prev_exec_node)
-        queue: list[tuple[str, int, ExecutionNode | None]] = [
+        queue: deque[tuple[str, int, ExecutionNode | None]] = deque([
             (entry.qualified_name, 0, None)
-        ]
+        ])
         # Track state writes for read-after-write scoring: field -> value
         state_writes: dict[str, str] = {}
 
         while queue:
-            node_name, depth, prev_exec = queue.pop(0)
-            if node_name in visited or depth > max_depth:
+            node_name, depth, prev_exec = queue.popleft()
+            if depth > max_depth:
                 continue
-            visited.add(node_name)
 
             node = self.nodes.get(node_name)
             exec_node = self._create_execution_node(node_name, node)
@@ -647,13 +640,19 @@ class ExecutionSliceBuilder:
             for edge in callees:
                 # Determine edge type: CALL (default), ASYNC, or CONDITIONAL
                 edge_type = self._infer_edge_type(node, edge, callees)
+                # Every call edge is recorded (structure), even to a node already
+                # visited or beyond max_depth.
                 scenario.edges.append(ExecutionEdge(
                     from_node=node_name,
                     to_node=edge.callee,
                     edge_type=edge_type,
                     confidence=edge.confidence,
                 ))
-                queue.append((edge.callee, depth + 1, exec_node))
+                # Only enqueue unvisited nodes within the depth bound — marking
+                # visited here (not on pop) is what bounds the frontier.
+                if edge.callee not in visited and depth + 1 <= max_depth:
+                    visited.add(edge.callee)
+                    queue.append((edge.callee, depth + 1, exec_node))
 
             # Detect conditional branches (multiple callees = gateway)
             if len(callees) > 1:
@@ -853,20 +852,21 @@ class ExecutionSliceBuilder:
 
         # Record alternate paths
         for condition, path_start in conditions:
-            # Build BFS path from this branch start
-            branch_visited: set[str] = set()
-            branch_queue: list[str] = [path_start]
+            # Build BFS path from this branch start. deque + enqueue-time
+            # visited marking (same rationale as build_scenario) avoids the
+            # O(n) pop(0) and an unbounded frontier on dense graphs.
+            branch_visited: set[str] = {path_start}
+            branch_queue: deque[str] = deque([path_start])
             branch_path: list[str] = []
 
             while branch_queue and len(branch_path) < 10:  # Limit depth
-                node_name = branch_queue.pop(0)
-                if node_name in branch_visited:
-                    continue
-                branch_visited.add(node_name)
+                node_name = branch_queue.popleft()
                 branch_path.append(node_name)
 
                 for edge in self.edges_by_caller.get(node_name, []):
-                    branch_queue.append(edge.callee)
+                    if edge.callee not in branch_visited:
+                        branch_visited.add(edge.callee)
+                        branch_queue.append(edge.callee)
 
             if branch_path:
                 scenario.alternate_paths.append({

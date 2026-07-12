@@ -36,6 +36,9 @@ from collections import defaultdict
 from difflib import SequenceMatcher
 
 from .models import CodeNode, EntityStateMachine, StateTransition
+# Shared graph primitives (see graph/util.py). `_jaccard` is kept as a
+# module-local alias for backward compatibility with existing imports/tests.
+from .util import UnionFind, jaccard as _jaccard
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +167,7 @@ def consolidate_entities(
     # ------------------------------------------------------------------
     # Pair scan in stem buckets.
     # ------------------------------------------------------------------
-    uf = _UnionFind(len(filtered))
+    uf = UnionFind(range(len(filtered)))
     merge_rules: dict[int, str] = {}
     projection_links: list[dict] = []
 
@@ -709,18 +712,9 @@ def _module_hint(entity_id: str, source_files: set[str]) -> str:
 # ---------------------------------------------------------------------------
 # Similarity primitives
 # ---------------------------------------------------------------------------
-
-# Standard Jaccard with the textbook empty-set convention J(∅,∅) = 1.0
-# (two empty sets are identical). This matches federation._jaccard so the two
-# can be unified into one shared primitive without a behavior change. Note the
-# only caller (_score_pair) already skips the both-empty case before reaching
-# here, so this branch is defensive; the one-empty case correctly yields 0.0.
-def _jaccard(a: set[str], b: set[str]) -> float:
-    if not a and not b:
-        return 1.0
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
+# `_jaccard` is imported from graph.util (aliased at the top of this module).
+# `UnionFind` likewise comes from graph.util — the former module-local int-only
+# copy was removed in favor of the shared, tested implementation.
 
 
 def _stem_similarity(a: str, b: str) -> float:
@@ -730,36 +724,3 @@ def _stem_similarity(a: str, b: str) -> float:
     if a == b:
         return 1.0
     return SequenceMatcher(None, a, b).ratio()
-
-
-# ---------------------------------------------------------------------------
-# Union-find
-# ---------------------------------------------------------------------------
-
-class _UnionFind:
-    __slots__ = ("_parent", "_rank")
-
-    def __init__(self, n: int) -> None:
-        self._parent = list(range(n))
-        self._rank = [0] * n
-
-    def find(self, x: int) -> int:
-        root = x
-        while self._parent[root] != root:
-            root = self._parent[root]
-        # Path compression.
-        while self._parent[x] != root:
-            self._parent[x], x = root, self._parent[x]
-        return root
-
-    def union(self, x: int, y: int) -> None:
-        rx, ry = self.find(x), self.find(y)
-        if rx == ry:
-            return
-        if self._rank[rx] < self._rank[ry]:
-            self._parent[rx] = ry
-        elif self._rank[rx] > self._rank[ry]:
-            self._parent[ry] = rx
-        else:
-            self._parent[ry] = rx
-            self._rank[rx] += 1

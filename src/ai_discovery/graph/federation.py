@@ -36,6 +36,9 @@ from .models import (
     EntityStateMachine,
     StateTransition,
 )
+# Shared graph primitives (see graph/util.py). `_jaccard` kept as a local alias
+# for backward compatibility with existing imports/tests.
+from .util import UnionFind, jaccard as _jaccard
 
 
 # Cross-repo merge threshold. Higher than intra-repo's 0.93 because we have
@@ -188,27 +191,25 @@ def _merge_fsms_across_repos(
             slug, f = pairs[0]
             merged.append(_tag_source_repo(f, slug, is_solo=True))
             continue
-        # Build merge groups: iterate pairs, join any whose fields overlap
-        # above threshold with an existing group's aggregate field set.
-        groups: list[list[tuple[str, EntityStateMachine]]] = []
-        for slug, f in pairs:
-            placed = False
-            for g in groups:
-                agg_fields: set[str] = set()
-                for _, gf in g:
-                    agg_fields |= gf.fields
-                if _jaccard(f.fields, agg_fields) >= jaccard_threshold:
-                    g.append((slug, f))
-                    placed = True
-                    break
-            if not placed:
-                groups.append([(slug, f)])
-        for g in groups:
-            if len(g) == 1:
-                slug, f = g[0]
+        # Union-find over pairwise field-Jaccard. The former greedy first-fit
+        # grouping (compare each FSM against a running group aggregate) was
+        # non-transitive and order-dependent: A~B and B~C could still split C
+        # onto its own group if C didn't overlap the A∪B aggregate (docs/reviews
+        # 04 P0-7). Proper union-find makes the grouping an equivalence relation
+        # — if any two members are similar, they land together regardless of
+        # scan order.
+        uf: UnionFind = UnionFind(range(len(pairs)))
+        for i in range(len(pairs)):
+            for j in range(i + 1, len(pairs)):
+                if _jaccard(pairs[i][1].fields, pairs[j][1].fields) >= jaccard_threshold:
+                    uf.union(i, j)
+        for _, member_idxs in sorted(uf.groups().items()):
+            group = [pairs[k] for k in member_idxs]
+            if len(group) == 1:
+                slug, f = group[0]
                 merged.append(_tag_source_repo(f, slug, is_solo=True))
             else:
-                merged.append(_merge_group(g))
+                merged.append(_merge_group(group))
 
     merged.sort(key=lambda f: f.entity_id or f.entity)
     return merged
@@ -361,14 +362,6 @@ def _normalize_stem(name: str) -> str:
     if s.endswith("s") and not s.endswith("ss") and len(s) > 1:
         s = s[:-1]
     return s
-
-
-def _jaccard(a: set[str], b: set[str]) -> float:
-    if not a and not b:
-        return 1.0
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
 
 
 def _prefixed(slug: str, path: str) -> str:

@@ -141,6 +141,32 @@ def test_plural_variant_merges(tmp_path: Path):
     assert len(out["fsms"]) == 1
 
 
+def test_three_repos_merge_into_one_and_order_independent(tmp_path: Path):
+    """3+ repos sharing an entity all merge into one FSM, regardless of the
+    order the repos are supplied. The former greedy first-fit grouping was
+    order-dependent and could split a 3rd repo onto its own group (P0-7); the
+    union-find grouping makes the result an order-independent equivalence."""
+    fields = {"id", "status", "total", "customer_id"}
+    r1 = _write_repo(tmp_path / "r1", fsms=[
+        _fsm("Order", entity_id="r1.Order", fields=fields, states={"draft"})])
+    r2 = _write_repo(tmp_path / "r2", fsms=[
+        _fsm("Order", entity_id="r2.Order", fields=fields, states={"submitted"})])
+    r3 = _write_repo(tmp_path / "r3", fsms=[
+        _fsm("Order", entity_id="r3.Order", fields=fields, states={"shipped"})])
+
+    out_a = federate_workspace([r1, r2, r3], repo_slugs=["r1", "r2", "r3"])
+    out_b = federate_workspace([r3, r1, r2], repo_slugs=["r3", "r1", "r2"])
+
+    # Exactly one federated FSM in both orderings, with all three repos in
+    # provenance and all states unioned.
+    assert len(out_a["fsms"]) == 1
+    assert len(out_b["fsms"]) == 1
+    assert set(out_a["fsms"][0].metadata["source_repos"].keys()) == {"r1", "r2", "r3"}
+    assert set(out_b["fsms"][0].metadata["source_repos"].keys()) == {"r1", "r2", "r3"}
+    assert out_a["fsms"][0].states == {"draft", "submitted", "shipped"}
+    assert out_a["fsms"][0].states == out_b["fsms"][0].states
+
+
 def test_canonical_picked_by_transition_count(tmp_path: Path):
     """Tie-break on merge: richer FSM (more transitions) sets the canonical name."""
     billing = _write_repo(tmp_path / "billing", fsms=[
