@@ -42,6 +42,24 @@ from .ai.mining_reporter import MiningReporter
 logger = logging.getLogger(__name__)
 console = Console()
 
+class ScanIncompleteError(RuntimeError):
+    """Raised when a scan terminates without producing a full documentation set.
+
+    Covers the two "silent exit 0" failure modes the pipeline previously hid:
+    a parse that yielded zero code nodes, and a budget limit tripped before
+    the doc-generation phases ran. The scan_run row is finalised with a
+    non-``completed`` status *before* this is raised; the CLI catches it and
+    exits non-zero so CI and callers can tell a truncated run from success.
+
+    ``exit_code`` and ``status`` let the CLI report precisely what happened.
+    """
+
+    def __init__(self, message: str, *, exit_code: int, status: str):
+        super().__init__(message)
+        self.exit_code = exit_code
+        self.status = status
+
+
 # Phase spec mapping (supports both number and name).
 # Phase 2: screen-centric LLM spec generation (NEW, parallel to domain phases)
 # Phases 5-19: domain-centric analysis (existing)
@@ -705,9 +723,17 @@ def run_pipeline(
         console.print(f"  Loaded [green]{len(all_nodes)}[/] code nodes from DB")
 
     if not all_nodes:
-        console.print("[yellow]No code nodes found -- nothing to analyse.[/]")
-        _finalise_scan(scan_id, db_path, "completed")
-        return
+        console.print("[red]No code nodes found -- nothing to analyse.[/]")
+        # A parse that produced nothing is a failure, not a completed scan:
+        # recording it as "completed" (and exiting 0) let a repo that failed to
+        # parse pass CI as a successful scan. Mark it "failed" so the resume
+        # fast-paths (which key on "completed") don't treat it as cached, and
+        # signal a non-zero exit.
+        _finalise_scan(scan_id, db_path, "failed")
+        raise ScanIncompleteError(
+            "no code nodes were parsed from the repository",
+            exit_code=2, status="failed",
+        )
 
     # ------------------------------------------------------------------
     # 7. Classify domains, then persist nodes, then build graphs
@@ -1187,7 +1213,10 @@ def run_pipeline(
         console.print(f"  Loaded [green]{len(summaries_dict)}[/] summaries from DB")
     elif not _budget_ok(llm_client, config, "Tier 1 summarization"):
         _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        return
+        raise ScanIncompleteError(
+            "budget limit reached before Tier 1 summarization",
+            exit_code=3, status="budget_exceeded",
+        )
     else:
         with _with_checkpoint(db_path, scan_id, 11, "tier1_summarize"):
             console.print("[bold cyan]Tier 1: Summarizing code chunks...[/]")
@@ -1238,7 +1267,10 @@ def run_pipeline(
         console.print(f"  Loaded [green]{sum(len(v) for v in flows_by_domain.values())}[/] flows from DB")
     elif not _budget_ok(llm_client, config, "Tier 2 flow analysis"):
         _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        return
+        raise ScanIncompleteError(
+            "budget limit reached before Tier 2 flow analysis",
+            exit_code=3, status="budget_exceeded",
+        )
     else:
         with _with_checkpoint(db_path, scan_id, 12, "tier2_flow_analysis"):
             if config.provider == "ollama":
@@ -1312,8 +1344,14 @@ def run_pipeline(
             try:
                 flow = flow_inference.infer_flow(scenario, summaries_dict)
                 scenario_flows.append(flow)
-            except Exception:
-                pass
+            except Exception as e:
+                # Match the run-path (phase 13) posture: log, don't swallow.
+                # This rebuild feeds downstream generators, so a silent drop
+                # here previously hid missing scenarios on every resume.
+                logger.warning(
+                    "Failed to rebuild flow for %s on resume: %s",
+                    scenario.scenario_id, e,
+                )
 
     # Free tier2 (~17 GB) before loading tier3 (~20 GB).
     tier2_model = config.get_model("tier2")
@@ -1326,7 +1364,10 @@ def run_pipeline(
     # ------------------------------------------------------------------
     if not _budget_ok(llm_client, config, "Tier 3 doc rollup"):
         _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        return
+        raise ScanIncompleteError(
+            "budget limit reached before Tier 3 doc rollup",
+            exit_code=3, status="budget_exceeded",
+        )
 
     from .ai.rollup import generate_all_docs, persist_rollups, DOC_TYPES
 

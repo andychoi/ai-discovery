@@ -151,8 +151,13 @@ _LOCAL_PROVIDERS = frozenset({"ollama", "mlx-gemma", "mlx-qwen"})
 
 MODEL_RATES: tuple[tuple[str, float, float], ...] = (
     # Anthropic Claude — matches direct aliases AND Bedrock-prefixed IDs
-    # (us.anthropic.claude-…). Opus 4.x $5/$25, Sonnet 4.6 $3/$15,
-    # Haiku 4.5 $1/$5.
+    # (us.anthropic.claude-…). Fable/Mythos 5 $10/$50 (must precede the
+    # generic families since they share no substring but are the priciest
+    # tier — a missing entry would fall to _DEFAULT_CLOUD_RATE and under-price
+    # a Fable scan by ~70%, defeating the budget guard). Opus 4.x $5/$25,
+    # Sonnet 4.6/5 $3/$15, Haiku 4.5 $1/$5.
+    ("fable",  10.0, 50.0),
+    ("mythos", 10.0, 50.0),
     ("opus",   5.0, 25.0),
     ("sonnet", 3.0, 15.0),
     ("haiku",  1.0, 5.0),
@@ -191,4 +196,14 @@ def rates_for_model(model: str, provider: str | None = None) -> tuple[float, flo
     for fragment, in_rate, out_rate in MODEL_RATES:
         if fragment in needle:
             return in_rate, out_rate
+    # Unknown cloud model — fall back to a conservative Sonnet-class rate so the
+    # budget guard errs high rather than under-counting. Warn so a genuinely
+    # new (possibly pricier) model gets an explicit MODEL_RATES entry instead of
+    # silently accruing at the default.
+    import logging
+    logging.getLogger(__name__).warning(
+        "No MODEL_RATES entry for %r (provider=%s); using conservative default "
+        "$%.2f/$%.2f per 1M tokens. Add an explicit entry if this model is priced "
+        "differently.", model, provider, *_DEFAULT_CLOUD_RATE,
+    )
     return _DEFAULT_CLOUD_RATE

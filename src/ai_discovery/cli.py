@@ -18,6 +18,9 @@ console = Console()
 app = typer.Typer(name="discover", help="Brownfield codebase discovery & doc generation.")
 
 _VALID_INGEST_TARGETS = {"dochub", "gitea"}
+# Push sinks accepted by `ingest-docs --push` and dispatched in
+# ingest.runner.run_ingest (api → DocHub API batches, gitea → Gitea repo).
+_VALID_PUSH_MODES = {"api", "gitea"}
 
 
 def _project_output_dir(output: Path, slug: str) -> Path:
@@ -248,7 +251,7 @@ def scan(
     Writes markdown to {docs_root}/{project_slug}/{PREFIX}/{doc_id}.md — no push.
     Run `discover ingest` afterwards to batch-upsert to DocHub or Gitea.
     """
-    from ai_discovery.pipeline import run_pipeline
+    from ai_discovery.pipeline import run_pipeline, ScanIncompleteError
 
     # Load config (file → defaults), then apply CLI overrides
     cfg = DiscoveryConfig.load(str(config) if config else None)
@@ -268,18 +271,26 @@ def scan(
         base_url, _ = cfg.get_endpoint()
         console.print(f"  endpoint={base_url}  tier1={cfg.get_model('tier1')}")
 
-    run_pipeline(
-        repo=repo,
-        branch=branch,
-        project_slug=project_slug,
-        output_dir=output,
-        docs_root=docs_root,
-        config=cfg,
-        resume=resume,
-        resume_from=resume_from,
-        skip_phases=[p.strip() for p in skip_phases.split(",")] if skip_phases else [],
-        rescan=rescan,
-    )
+    try:
+        run_pipeline(
+            repo=repo,
+            branch=branch,
+            project_slug=project_slug,
+            output_dir=output,
+            docs_root=docs_root,
+            config=cfg,
+            resume=resume,
+            resume_from=resume_from,
+            skip_phases=[p.strip() for p in skip_phases.split(",")] if skip_phases else [],
+            rescan=rescan,
+        )
+    except ScanIncompleteError as e:
+        # Terminal-but-unsuccessful run (no nodes parsed, or budget tripped
+        # before docs were generated). The scan_run row is already finalised
+        # with status=e.status; exit non-zero so CI and callers don't mistake
+        # a truncated scan for success.
+        console.print(f"[red]Scan did not complete:[/] {e} (status={e.status})")
+        raise typer.Exit(code=e.exit_code) from None
 
 
 @app.command()

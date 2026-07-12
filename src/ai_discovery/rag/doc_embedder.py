@@ -108,7 +108,12 @@ def embed_docs(docs_dir: Path, db_path: Path, llm_client) -> dict:
     doc_records: list[dict] = []
     for f in md_files:
         doc_type = f.parent.name
-        doc_id = f.stem
+        # Qualify the doc_id with its doc-type folder. ASIS/orders.md,
+        # ASD/orders.md and ASSC/orders.md all share the stem "orders", so a
+        # bare stem collides across doc types — which collapsed the resume
+        # guard's COUNT(DISTINCT doc_id) below the true file count (so it never
+        # resumed) and made chat citations ambiguous. The folder makes it unique.
+        doc_id = f"{doc_type}/{f.stem}"
         # Infer domain from doc_id: strip project prefix + doc_type suffix
         # e.g. "myproj-auth-as-is" → domain hint is middle segment(s)
         text = f.read_text(encoding="utf-8")

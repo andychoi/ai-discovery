@@ -39,6 +39,49 @@ def _is_transient(error: Exception) -> bool:
     return any(p in err_str for p in _TRANSIENT_PATTERNS)
 
 
+class LLMRefusalError(RuntimeError):
+    """Raised when a model declines a request (``stop_reason == "refusal"``).
+
+    Anthropic safety classifiers return HTTP 200 with an empty or partial
+    ``content`` and ``stop_reason: "refusal"`` (notably on Fable 5 for
+    cyber/bio-adjacent input — plausible on false positives when scanning
+    security-heavy source). Without this, that empty content flowed silently
+    into a generated document. Raising it makes the refusal a real, catchable
+    failure so callers can fall back or surface it instead of shipping a blank
+    section.
+    """
+
+
+def _check_stop_reason(provider: str, model_id: str, stop_reason: str | None,
+                       max_tokens: int) -> None:
+    """Inspect a response's stop_reason. Raise on refusal; warn on truncation.
+
+    Called by the Anthropic and Bedrock text/structured transports so the
+    truncation signal is read from the response instead of guessed from the
+    output-token count, and a refusal never masquerades as a (short) answer.
+    """
+    if stop_reason == "refusal":
+        _log_llm_error(provider, model_id, "stop_reason=refusal")
+        raise LLMRefusalError(
+            f"{provider} model {model_id} refused the request "
+            f"(stop_reason=refusal)"
+        )
+    # Bedrock Converse uses guardrail_intervened / content_filtered for the
+    # same class of decline; treat them the same way.
+    if stop_reason in ("guardrail_intervened", "content_filtered"):
+        _log_llm_error(provider, model_id, f"stop_reason={stop_reason}")
+        raise LLMRefusalError(
+            f"{provider} model {model_id} declined the request "
+            f"(stop_reason={stop_reason})"
+        )
+    if stop_reason in ("max_tokens", "max_token"):
+        _log.warning(
+            "%s model %s hit max_tokens (%d) — output is truncated; "
+            "consider raising max_tokens or streaming.",
+            provider, model_id, max_tokens,
+        )
+
+
 def _log_llm_error(provider: str, model_id: str, error: str) -> None:
     """Best-effort: log LLM failure to activity_log for health tracking."""
     try:
@@ -75,10 +118,13 @@ def invoke_bedrock(
         try:
             response = client.invoke_model(modelId=model_id, body=body)
             result = json.loads(response["body"].read())
+            _check_stop_reason("bedrock", model_id, result.get("stop_reason"), max_tokens)
             text = result["content"][0]["text"]
             tok_in = result.get("usage", {}).get("input_tokens", 0)
             tok_out = result.get("usage", {}).get("output_tokens", 0)
             return text, tok_in, tok_out
+        except LLMRefusalError:
+            raise  # not transient, not wrappable — surface as-is
         except Exception as e:
             last_err = e
             if attempt < _MAX_RETRIES and _is_transient(e):
@@ -150,15 +196,19 @@ def converse_bedrock(
     for attempt in range(_MAX_RETRIES + 1):
         try:
             response = client.converse(**kwargs)
+            stop_reason = response.get("stopReason", "end_turn")
+            _check_stop_reason("bedrock", model_id, stop_reason, max_tokens)
             output = response.get("output", {}).get("message", {})
             return {
                 "content": output.get("content", []),
-                "stop_reason": response.get("stopReason", "end_turn"),
+                "stop_reason": stop_reason,
                 "usage": {
                     "input_tokens": response.get("usage", {}).get("inputTokens", 0),
                     "output_tokens": response.get("usage", {}).get("outputTokens", 0),
                 },
             }
+        except LLMRefusalError:
+            raise  # not transient, not wrappable — surface as-is
         except Exception as e:
             last_err = e
             if attempt < _MAX_RETRIES and _is_transient(e):
@@ -513,12 +563,16 @@ def invoke_anthropic(
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
+        _check_stop_reason("anthropic", model,
+                           getattr(response, "stop_reason", None), max_tokens)
         text = "".join(
             block.text for block in response.content
             if getattr(block, "type", None) == "text"
         )
         tok_in, tok_out = _anthropic_usage(response)
         return text.strip(), tok_in, tok_out
+    except LLMRefusalError:
+        raise  # already logged; surface the refusal, don't wrap it
     except Exception as e:
         _log_llm_error("anthropic", model, str(e))
         raise RuntimeError(f"Anthropic invocation failed (model={model}): {e}") from e
@@ -550,6 +604,8 @@ def invoke_anthropic_structured(
             tool_choice={"type": "tool", "name": tool_name},
             messages=[{"role": "user", "content": prompt}],
         )
+        _check_stop_reason("anthropic", model,
+                           getattr(response, "stop_reason", None), max_tokens)
         data: dict | None = None
         texts: list[str] = []
         for block in response.content:
@@ -562,6 +618,8 @@ def invoke_anthropic_structured(
                 texts.append(block.text)
         tok_in, tok_out = _anthropic_usage(response)
         return data, "".join(texts).strip(), tok_in, tok_out
+    except LLMRefusalError:
+        raise  # already logged; surface the refusal, don't wrap it
     except Exception as e:
         _log_llm_error("anthropic", model, str(e))
         raise RuntimeError(

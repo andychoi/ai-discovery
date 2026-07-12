@@ -203,6 +203,54 @@ def test_invoke_anthropic_missing_package(monkeypatch):
         llm_invoke.invoke_anthropic("claude-opus-4-8", "Hi")
 
 
+def _install_fake_anthropic_with_stop(monkeypatch, stop_reason):
+    """Fake anthropic whose response carries a given stop_reason."""
+
+    class _Block:
+        type = "text"
+        text = "partial"
+
+    class _Usage:
+        input_tokens = 5
+        output_tokens = 5
+
+    class _Response:
+        content = [_Block()]
+        usage = _Usage()
+
+    _Response.stop_reason = stop_reason
+
+    class _Messages:
+        def create(self, **kwargs):
+            return _Response()
+
+    class _Anthropic:
+        def __init__(self, **kwargs):
+            self.messages = _Messages()
+
+    fake = types.ModuleType("anthropic")
+    fake.Anthropic = _Anthropic
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+
+
+def test_invoke_anthropic_refusal_raises(monkeypatch):
+    """P0-5: a refusal must raise LLMRefusalError, not return empty/partial
+    text that would flow silently into a generated document."""
+    _install_fake_anthropic_with_stop(monkeypatch, "refusal")
+    with pytest.raises(llm_invoke.LLMRefusalError, match="refused"):
+        llm_invoke.invoke_anthropic("claude-fable-5", "scan this", max_tokens=64)
+
+
+def test_invoke_anthropic_max_tokens_warns_not_raises(monkeypatch, caplog):
+    """Truncation is read from stop_reason and logged, not fatal."""
+    import logging
+    _install_fake_anthropic_with_stop(monkeypatch, "max_tokens")
+    with caplog.at_level(logging.WARNING):
+        text, _, _ = llm_invoke.invoke_anthropic("claude-opus-4-8", "Hi", max_tokens=64)
+    assert text == "partial"
+    assert any("truncated" in r.message for r in caplog.records)
+
+
 # ── llm_invoke.invoke_anthropic_structured ──────────────────────────────────
 
 
@@ -347,6 +395,8 @@ from ai_discovery.shared.model_defaults import rates_for_model  # noqa: E402
 
 @pytest.mark.parametrize("model,expected", [
     # Claude — current pricing, both direct aliases and Bedrock-prefixed IDs
+    ("claude-fable-5", (10.0, 50.0)),
+    ("claude-mythos-5", (10.0, 50.0)),
     ("claude-opus-4-8", (5.0, 25.0)),
     ("us.anthropic.claude-sonnet-4-6", (3.0, 15.0)),
     ("us.anthropic.claude-haiku-4-5-20251001-v1:0", (1.0, 5.0)),
@@ -379,6 +429,22 @@ def test_rates_for_model_local_claude_distill_still_free():
 
 def test_rates_for_model_unknown_cloud_uses_conservative_default():
     assert rates_for_model("some-future-model", provider="openai") == (3.0, 15.0)
+
+
+def test_rates_for_model_fable_not_swept_into_default(caplog):
+    """Regression for P0-6: a Fable-class model must price at $10/$50, not fall
+    to the $3/$15 default that would defeat the budget guard, and the default
+    branch must warn so genuinely new models get an explicit entry."""
+    import logging
+    # Fable is priced explicitly — no warning, correct rate.
+    with caplog.at_level(logging.WARNING):
+        assert rates_for_model("claude-fable-5", provider="anthropic") == (10.0, 50.0)
+    assert not [r for r in caplog.records if "MODEL_RATES" in r.message]
+    # An unknown model logs the default-rate warning.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        rates_for_model("brand-new-model-x", provider="openai")
+    assert any("No MODEL_RATES entry" in r.message for r in caplog.records)
 
 
 # ── llm_router: resolution + dispatch ────────────────────────────────────────

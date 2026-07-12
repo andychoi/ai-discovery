@@ -449,3 +449,30 @@ def test_merged_transitions_adopt_canonical_entity_id():
     # Every transition under the merged FSM reports the canonical identity.
     assert all(t.entity == merged.entity for t in merged.transitions)
     assert all(t.entity_id == merged.entity_id for t in merged.transitions)
+
+
+# ── _jaccard empty-set convention (W0-7) ─────────────────────────────────────
+# fsm_identity._jaccard and federation._jaccard previously disagreed on the
+# empty∩empty case (0.0 vs 1.0), a latent trap for any future unification.
+# Both now use the textbook convention J(∅,∅) = 1.0, J(∅,X) = 0.0.
+
+
+def test_jaccard_empty_set_convention_matches_federation():
+    import pytest
+    from ai_discovery.graph.fsm_identity import _jaccard as ji
+    from ai_discovery.graph.federation import _jaccard as jf
+
+    cases = [
+        (set(), set()),
+        (set(), {"a"}),
+        ({"a"}, set()),
+        ({"a", "b"}, {"a", "b"}),
+        ({"a", "b"}, {"b", "c"}),
+        ({"a"}, {"x", "y", "z"}),
+    ]
+    for a, b in cases:
+        assert ji(a, b) == jf(a, b), (a, b)
+    # Explicit convention checks.
+    assert ji(set(), set()) == 1.0
+    assert ji(set(), {"a"}) == 0.0
+    assert ji({"a", "b"}, {"b", "c"}) == pytest.approx(1 / 3)  # |∩|=1 / |∪|=3

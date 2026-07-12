@@ -710,13 +710,17 @@ def _module_hint(entity_id: str, source_files: set[str]) -> str:
 # Similarity primitives
 # ---------------------------------------------------------------------------
 
+# Standard Jaccard with the textbook empty-set convention J(∅,∅) = 1.0
+# (two empty sets are identical). This matches federation._jaccard so the two
+# can be unified into one shared primitive without a behavior change. Note the
+# only caller (_score_pair) already skips the both-empty case before reaching
+# here, so this branch is defensive; the one-empty case correctly yields 0.0.
 def _jaccard(a: set[str], b: set[str]) -> float:
     if not a and not b:
+        return 1.0
+    if not a or not b:
         return 0.0
-    union = a | b
-    if not union:
-        return 0.0
-    return len(a & b) / len(union)
+    return len(a & b) / len(a | b)
 
 
 def _stem_similarity(a: str, b: str) -> float:
