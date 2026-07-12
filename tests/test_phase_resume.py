@@ -290,3 +290,60 @@ def test_phase_tier3_budget_exceeded_raises(monkeypatch, tmp_path):
             [], {}, {}, [], DiscoveryConfig(), object(), tmp_path / "x.db", 1, "proj",
         )
     assert ei.value.status == "budget_exceeded" and ei.value.exit_code == 3
+
+
+# ── _phase_scenario_flows (W2-1) ─────────────────────────────────────────────
+
+
+def test_phase_scenario_flows_resume_rebuilds(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    import ai_discovery.ai.flow_analyzer as fa
+    from ai_discovery.config import DiscoveryConfig
+
+    class _Scn:
+        def __init__(self, sid):
+            self.scenario_id = sid
+
+    class _FakeInference:
+        def __init__(self, client):
+            pass
+
+        def infer_flow(self, scenario, summaries):
+            return f"flow:{scenario.scenario_id}"
+
+    monkeypatch.setattr(fa, "ScenarioFlowInference", _FakeInference)
+
+    # start_phase=14 → phase 13 already complete → resume rebuild path (serial).
+    flows = pipe._phase_scenario_flows(
+        [_Scn("s1"), _Scn("s2")], {}, DiscoveryConfig(), object(),
+        tmp_path / "x.db", 1, 14, [],
+    )
+    assert flows == ["flow:s1", "flow:s2"]
+
+
+def test_phase_scenario_flows_resume_logs_and_skips_failures(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    import ai_discovery.ai.flow_analyzer as fa
+    from ai_discovery.config import DiscoveryConfig
+
+    class _Scn:
+        def __init__(self, sid):
+            self.scenario_id = sid
+
+    class _FakeInference:
+        def __init__(self, client):
+            pass
+
+        def infer_flow(self, scenario, summaries):
+            if scenario.scenario_id == "bad":
+                raise RuntimeError("boom")
+            return f"flow:{scenario.scenario_id}"
+
+    monkeypatch.setattr(fa, "ScenarioFlowInference", _FakeInference)
+
+    flows = pipe._phase_scenario_flows(
+        [_Scn("ok"), _Scn("bad")], {}, DiscoveryConfig(), object(),
+        tmp_path / "x.db", 1, 14, [],
+    )
+    # The failing scenario is skipped, not fatal.
+    assert flows == ["flow:ok"]

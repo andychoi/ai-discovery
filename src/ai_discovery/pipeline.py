@@ -594,6 +594,103 @@ def _phase_tier2_flow_analysis(
         return flows_by_domain
 
 
+def _phase_scenario_flows(
+    scenarios: list,
+    summaries_dict: dict,
+    config: DiscoveryConfig,
+    llm_client,
+    db_path: Path,
+    scan_id: int,
+    start_phase: int | None,
+    skip_phases: list[str],
+) -> list:
+    """Phase 13: per-scenario flow inference. Returns the list of ScenarioFlows.
+
+    The run path infers (and, under ``--prod``, verifies) each scenario
+    concurrently with a per-scenario watchdog; the resume path rebuilds
+    in-memory (cheap) since flows aren't separately persisted for reload.
+    """
+    from .ai.flow_analyzer import ScenarioFlowInference
+
+    scenario_flows: list = []
+    flow_inference = ScenarioFlowInference(llm_client)
+
+    if _phase_should_run(13, start_phase, skip_phases):
+        with _with_checkpoint(db_path, scan_id, 13, "scenario_flow_inference"):
+            console.print("[bold cyan]Phase 13: Reconstructing scenario flows...[/]")
+            from concurrent.futures import (
+                ThreadPoolExecutor, as_completed as _as_completed,
+                TimeoutError as _FuturesTimeout,
+            )
+            # CRIT-2: prod scans verify each flow's narrative against RAG source
+            # so PF confidence is earned, not capped. It's a per-scenario LLM
+            # review pass, so gate it once at phase level (prod + budget) rather
+            # than re-checking the budget from worker threads.
+            do_verify = config.prod and _budget_ok(llm_client, config, "PF verification")
+            # Per-scenario watchdog so one stuck inference can't hang the phase
+            # (mirrors self-review in phase 17).
+            _PF_TIMEOUT = 300
+
+            def _infer_one(scenario):
+                flow = flow_inference.infer_flow(scenario, summaries_dict)
+                if do_verify:
+                    # verify_flow is DB-read-only (RAG) and mutates only its own
+                    # flow, so it is safe to run concurrently.
+                    flow_inference.verify_flow(flow, db_path)
+                return flow
+
+            with _timed("scenario inference"), Progress(
+                SpinnerColumn(),
+                TextColumn("[bold]Scenario flow inference"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Inferring", total=len(scenarios))
+                if scenarios:
+                    workers = max(1, min(config.max_concurrent or 1, len(scenarios)))
+                    executor = ThreadPoolExecutor(max_workers=workers)
+                    futures = {executor.submit(_infer_one, s): s for s in scenarios}
+                    try:
+                        for future in _as_completed(futures):
+                            scenario = futures[future]
+                            try:
+                                scenario_flows.append(future.result(timeout=_PF_TIMEOUT))
+                            except _FuturesTimeout:
+                                logger.warning(
+                                    "Scenario flow inference timed out for %s after %ds",
+                                    scenario.scenario_id, _PF_TIMEOUT,
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    "Failed to infer flow for %s: %s",
+                                    scenario.scenario_id, e,
+                                )
+                            progress.advance(task)
+                    finally:
+                        executor.shutdown(wait=True, cancel_futures=True)
+            verified_n = sum(1 for f in scenario_flows if getattr(f, "verified", False))
+            console.print(
+                f"  Scenario flows: [green]{len(scenario_flows)}[/] reconstructed"
+                + (f" ([green]{verified_n}[/] source-verified)" if verified_n else "")
+            )
+        return scenario_flows
+
+    console.print("[dim]Phase 13 (scenario_flow_inference): rebuilding (cheap)...[/]")
+    for scenario in scenarios:
+        try:
+            scenario_flows.append(flow_inference.infer_flow(scenario, summaries_dict))
+        except Exception as e:
+            # Match the run-path (phase 13) posture: log, don't swallow. This
+            # rebuild feeds downstream generators, so a silent drop here
+            # previously hid missing scenarios on every resume.
+            logger.warning(
+                "Failed to rebuild flow for %s on resume: %s",
+                scenario.scenario_id, e,
+            )
+    return scenario_flows
+
+
 def _phase_tier3_rollup(
     domains: list,
     summaries_dict: dict,
@@ -1513,84 +1610,10 @@ def run_pipeline(
     )
 
     # 13: Scenario Flow Inference
-    from .ai.flow_analyzer import ScenarioFlowInference
-    if _phase_should_run(13, start_phase, skip_phases):
-        with _with_checkpoint(db_path, scan_id, 13, "scenario_flow_inference"):
-            console.print("[bold cyan]Phase 13: Reconstructing scenario flows...[/]")
-            from concurrent.futures import (
-                ThreadPoolExecutor, as_completed as _as_completed,
-                TimeoutError as _FuturesTimeout,
-            )
-            scenario_flows = []
-            flow_inference = ScenarioFlowInference(llm_client)
-            # CRIT-2: prod scans verify each flow's narrative against RAG source
-            # so PF confidence is earned, not capped. It's a per-scenario LLM
-            # review pass, so gate it once at phase level (prod + budget) rather
-            # than re-checking the budget from worker threads.
-            do_verify = config.prod and _budget_ok(llm_client, config, "PF verification")
-            # Per-scenario watchdog so one stuck inference can't hang the phase
-            # (mirrors self-review in phase 17).
-            _PF_TIMEOUT = 300
-
-            def _infer_one(scenario):
-                flow = flow_inference.infer_flow(scenario, summaries_dict)
-                if do_verify:
-                    # verify_flow is DB-read-only (RAG) and mutates only its own
-                    # flow, so it is safe to run concurrently.
-                    flow_inference.verify_flow(flow, db_path)
-                return flow
-
-            with _timed("scenario inference"), Progress(
-                SpinnerColumn(),
-                TextColumn("[bold]Scenario flow inference"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Inferring", total=len(scenarios))
-                if scenarios:
-                    workers = max(1, min(config.max_concurrent or 1, len(scenarios)))
-                    executor = ThreadPoolExecutor(max_workers=workers)
-                    futures = {executor.submit(_infer_one, s): s for s in scenarios}
-                    try:
-                        for future in _as_completed(futures):
-                            scenario = futures[future]
-                            try:
-                                scenario_flows.append(future.result(timeout=_PF_TIMEOUT))
-                            except _FuturesTimeout:
-                                logger.warning(
-                                    "Scenario flow inference timed out for %s after %ds",
-                                    scenario.scenario_id, _PF_TIMEOUT,
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    "Failed to infer flow for %s: %s",
-                                    scenario.scenario_id, e,
-                                )
-                            progress.advance(task)
-                    finally:
-                        executor.shutdown(wait=True, cancel_futures=True)
-            verified_n = sum(1 for f in scenario_flows if getattr(f, "verified", False))
-            console.print(
-                f"  Scenario flows: [green]{len(scenario_flows)}[/] reconstructed"
-                + (f" ([green]{verified_n}[/] source-verified)" if verified_n else "")
-            )
-    else:
-        console.print("[dim]Phase 13 (scenario_flow_inference): rebuilding (cheap)...[/]")
-        scenario_flows = []
-        flow_inference = ScenarioFlowInference(llm_client)
-        for scenario in scenarios:
-            try:
-                flow = flow_inference.infer_flow(scenario, summaries_dict)
-                scenario_flows.append(flow)
-            except Exception as e:
-                # Match the run-path (phase 13) posture: log, don't swallow.
-                # This rebuild feeds downstream generators, so a silent drop
-                # here previously hid missing scenarios on every resume.
-                logger.warning(
-                    "Failed to rebuild flow for %s on resume: %s",
-                    scenario.scenario_id, e,
-                )
+    scenario_flows = _phase_scenario_flows(
+        scenarios, summaries_dict, config, llm_client, db_path, scan_id,
+        start_phase, skip_phases,
+    )
 
     # Free tier2 (~17 GB) before loading tier3 (~20 GB).
     tier2_model = config.get_model("tier2")
