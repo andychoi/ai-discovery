@@ -462,6 +462,138 @@ def _phase_rag_embed(
                 console.print(f"  [yellow]RAG embedding skipped:[/] {exc}")
 
 
+def _phase_tier1_summarize(
+    chunks: list,
+    edges: list,
+    config: DiscoveryConfig,
+    llm_client,
+    db_path: Path,
+    scan_id: int,
+    start_phase: int | None,
+    skip_phases: list[str],
+) -> dict:
+    """Phase 11: Tier-1 chunk summarization. Returns {qualified_name: summary}.
+
+    Raises ScanIncompleteError if the budget is exhausted before the phase runs
+    (the scan is finalised ``budget_exceeded`` first, and the CLI maps it to a
+    non-zero exit). On resume, summaries are loaded from the DB.
+    """
+    from .ai.summarizer import summarize_chunks, persist_summaries, reuse_prior_summaries
+
+    if not _phase_should_run(11, start_phase, skip_phases):
+        console.print("[dim]Phase 11 (tier1_summarize): loading from DB...[/]")
+        summaries_dict = _load_summaries_from_db(db_path, scan_id)
+        console.print(f"  Loaded [green]{len(summaries_dict)}[/] summaries from DB")
+        return summaries_dict
+
+    if not _budget_ok(llm_client, config, "Tier 1 summarization"):
+        _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
+        raise ScanIncompleteError(
+            "budget limit reached before Tier 1 summarization",
+            exit_code=3, status="budget_exceeded",
+        )
+
+    with _with_checkpoint(db_path, scan_id, 11, "tier1_summarize"):
+        console.print("[bold cyan]Tier 1: Summarizing code chunks...[/]")
+        # A-2 incremental re-scan: copy summaries from the latest prior
+        # scan for unchanged files; the resume guard below then skips them.
+        n_reused = reuse_prior_summaries(db_path, scan_id)
+        if n_reused:
+            console.print(
+                f"  Reused [green]{n_reused}[/] summaries from prior scan (unchanged files)"
+            )
+        with _timed("Tier 1 summarize"), Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]Tier 1 summaries"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+            ptask = progress.add_task("Summarizing", total=len(chunks))
+
+            def _on_summary_progress(done: int, total: int):
+                progress.update(ptask, completed=done, total=total)
+
+            summaries = summarize_chunks(
+                chunks, llm_client, db_path, config.max_concurrent,
+                on_progress=_on_summary_progress,
+                scan_id=scan_id,
+                skip_rag=True,
+                skip_tests=True,
+                budget_exhausted=_budget_exhausted_fn(llm_client, config),
+                # A-1 Louvain semantic batching: Phase-7 call edges group
+                # chunks into community batches (one structured call each).
+                call_edges=edges,
+                semantic_batching=config.semantic_batching,
+            )
+
+        persist_summaries(summaries, scan_id, db_path)
+        summaries_dict = {s["qualified_name"]: s for s in summaries}
+        console.print(f"  Summaries: [green]{len(summaries)}[/] (cost so far: ${llm_client.total_cost_usd():.4f})")
+        return summaries_dict
+
+
+def _phase_tier2_flow_analysis(
+    domains: list,
+    summaries_dict: dict,
+    config: DiscoveryConfig,
+    llm_client,
+    db_path: Path,
+    scan_id: int,
+    start_phase: int | None,
+    skip_phases: list[str],
+) -> dict:
+    """Phase 12: Tier-2 per-domain business-flow analysis. Returns flows_by_domain.
+
+    Same budget/resume posture as phase 11.
+    """
+    from .ai.flow_analyzer import analyze_all_domains, persist_flows
+
+    if not _phase_should_run(12, start_phase, skip_phases):
+        console.print("[dim]Phase 12 (tier2_flow_analysis): loading from DB...[/]")
+        flows_by_domain = _load_flows_from_db(db_path, scan_id)
+        console.print(f"  Loaded [green]{sum(len(v) for v in flows_by_domain.values())}[/] flows from DB")
+        return flows_by_domain
+
+    if not _budget_ok(llm_client, config, "Tier 2 flow analysis"):
+        _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
+        raise ScanIncompleteError(
+            "budget limit reached before Tier 2 flow analysis",
+            exit_code=3, status="budget_exceeded",
+        )
+
+    with _with_checkpoint(db_path, scan_id, 12, "tier2_flow_analysis"):
+        if config.provider == "ollama":
+            tier2_model = config.get_model("tier2")
+            console.print(f"[dim]Warming tier2 ({tier2_model})...[/]")
+            llm_client.warm("tier2", "1h")
+
+        console.print("[bold cyan]Tier 2: Analyzing business flows...[/]")
+        with _timed("Tier 2 flow analysis"), Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]Tier 2 flows"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+            ptask = progress.add_task("Analyzing", total=len(domains))
+
+            def _on_flow_progress(done: int, total: int):
+                progress.update(ptask, completed=done, total=total)
+
+            flows_by_domain = analyze_all_domains(
+                domains, summaries_dict, llm_client, on_progress=_on_flow_progress,
+                db_path=db_path, scan_id=scan_id,
+                budget_exhausted=_budget_exhausted_fn(llm_client, config),
+            )
+
+        total_flows = sum(len(v) for v in flows_by_domain.values())
+        tier2_model = config.get_model("tier2")
+        persist_flows(flows_by_domain, scan_id, db_path, model_used=tier2_model)
+        console.print(f"  Flows: [green]{total_flows}[/] across {len(flows_by_domain)} domains")
+        return flows_by_domain
+
+
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -1285,103 +1417,17 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 11. Tier 1: Summarize
     # ------------------------------------------------------------------
-    from .ai.summarizer import summarize_chunks, persist_summaries, reuse_prior_summaries
-
-    if not _phase_should_run(11, start_phase, skip_phases):
-        console.print("[dim]Phase 11 (tier1_summarize): loading from DB...[/]")
-        summaries_dict = _load_summaries_from_db(db_path, scan_id)
-        console.print(f"  Loaded [green]{len(summaries_dict)}[/] summaries from DB")
-    elif not _budget_ok(llm_client, config, "Tier 1 summarization"):
-        _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        raise ScanIncompleteError(
-            "budget limit reached before Tier 1 summarization",
-            exit_code=3, status="budget_exceeded",
-        )
-    else:
-        with _with_checkpoint(db_path, scan_id, 11, "tier1_summarize"):
-            console.print("[bold cyan]Tier 1: Summarizing code chunks...[/]")
-            # A-2 incremental re-scan: copy summaries from the latest prior
-            # scan for unchanged files; the resume guard below then skips them.
-            n_reused = reuse_prior_summaries(db_path, scan_id)
-            if n_reused:
-                console.print(
-                    f"  Reused [green]{n_reused}[/] summaries from prior scan (unchanged files)"
-                )
-            with _timed("Tier 1 summarize"), Progress(
-                SpinnerColumn(),
-                TextColumn("[bold]Tier 1 summaries"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-            ) as progress:
-                ptask = progress.add_task("Summarizing", total=len(chunks))
-
-                def _on_summary_progress(done: int, total: int):
-                    progress.update(ptask, completed=done, total=total)
-
-                summaries = summarize_chunks(
-                    chunks, llm_client, db_path, config.max_concurrent,
-                    on_progress=_on_summary_progress,
-                    scan_id=scan_id,
-                    skip_rag=True,
-                    skip_tests=True,
-                    budget_exhausted=_budget_exhausted_fn(llm_client, config),
-                    # A-1 Louvain semantic batching: Phase-7 call edges group
-                    # chunks into community batches (one structured call each).
-                    call_edges=edges,
-                    semantic_batching=config.semantic_batching,
-                )
-
-            persist_summaries(summaries, scan_id, db_path)
-            summaries_dict = {s["qualified_name"]: s for s in summaries}
-            console.print(f"  Summaries: [green]{len(summaries)}[/] (cost so far: ${llm_client.total_cost_usd():.4f})")
+    summaries_dict = _phase_tier1_summarize(
+        chunks, edges, config, llm_client, db_path, scan_id, start_phase, skip_phases,
+    )
 
     # ------------------------------------------------------------------
     # 12. Tier 2: Flow analysis
     # ------------------------------------------------------------------
-    from .ai.flow_analyzer import analyze_all_domains, persist_flows
-
-    if not _phase_should_run(12, start_phase, skip_phases):
-        console.print("[dim]Phase 12 (tier2_flow_analysis): loading from DB...[/]")
-        flows_by_domain = _load_flows_from_db(db_path, scan_id)
-        console.print(f"  Loaded [green]{sum(len(v) for v in flows_by_domain.values())}[/] flows from DB")
-    elif not _budget_ok(llm_client, config, "Tier 2 flow analysis"):
-        _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        raise ScanIncompleteError(
-            "budget limit reached before Tier 2 flow analysis",
-            exit_code=3, status="budget_exceeded",
-        )
-    else:
-        with _with_checkpoint(db_path, scan_id, 12, "tier2_flow_analysis"):
-            if config.provider == "ollama":
-                tier2_model = config.get_model("tier2")
-                console.print(f"[dim]Warming tier2 ({tier2_model})...[/]")
-                llm_client.warm("tier2", "1h")
-
-            console.print("[bold cyan]Tier 2: Analyzing business flows...[/]")
-            with _timed("Tier 2 flow analysis"), Progress(
-                SpinnerColumn(),
-                TextColumn("[bold]Tier 2 flows"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-            ) as progress:
-                ptask = progress.add_task("Analyzing", total=len(domains))
-
-                def _on_flow_progress(done: int, total: int):
-                    progress.update(ptask, completed=done, total=total)
-
-                flows_by_domain = analyze_all_domains(
-                    domains, summaries_dict, llm_client, on_progress=_on_flow_progress,
-                    db_path=db_path, scan_id=scan_id,
-                    budget_exhausted=_budget_exhausted_fn(llm_client, config),
-                )
-
-            total_flows = sum(len(v) for v in flows_by_domain.values())
-            # Determine model used for Tier 2
-            tier2_model = config.get_model("tier2")
-            persist_flows(flows_by_domain, scan_id, db_path, model_used=tier2_model)
-            console.print(f"  Flows: [green]{total_flows}[/] across {len(flows_by_domain)} domains")
+    flows_by_domain = _phase_tier2_flow_analysis(
+        domains, summaries_dict, config, llm_client, db_path, scan_id,
+        start_phase, skip_phases,
+    )
 
     # 13: Scenario Flow Inference
     from .ai.flow_analyzer import ScenarioFlowInference

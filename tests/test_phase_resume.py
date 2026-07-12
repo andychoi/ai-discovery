@@ -220,3 +220,57 @@ def test_phase_rag_embed_runs_and_swallows_failure(monkeypatch, tmp_path):
     monkeypatch.setattr("ai_discovery.rag.embedder.embed_chunks", _boom)
     # Must not raise — RAG embedding failure is non-fatal.
     pipe._phase_rag_embed(["r"], cfg, object(), tmp_path / "x.db", 1, None, [])
+
+
+# ── _phase_tier1_summarize / _phase_tier2_flow_analysis (W2-1) ───────────────
+
+
+def test_phase_tier1_budget_exceeded_raises(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    monkeypatch.setattr(pipe, "_budget_ok", lambda *a, **k: False)
+    monkeypatch.setattr(pipe, "_finalise_scan", lambda *a, **k: None)
+    with pytest.raises(pipe.ScanIncompleteError) as ei:
+        pipe._phase_tier1_summarize(
+            ["c"], [], DiscoveryConfig(), object(), tmp_path / "x.db", 1, None, [],
+        )
+    assert ei.value.status == "budget_exceeded" and ei.value.exit_code == 3
+
+
+def test_phase_tier1_resume_loads_from_db(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    monkeypatch.setattr(pipe, "_load_summaries_from_db",
+                        lambda db, sid: {"m.A": {"purpose": "x"}})
+    # start_phase=14 → phase 11 already complete → load path (no budget check).
+    out = pipe._phase_tier1_summarize(
+        ["c"], [], DiscoveryConfig(), object(), tmp_path / "x.db", 1, 14, [],
+    )
+    assert out == {"m.A": {"purpose": "x"}}
+
+
+def test_phase_tier2_budget_exceeded_raises(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    monkeypatch.setattr(pipe, "_budget_ok", lambda *a, **k: False)
+    monkeypatch.setattr(pipe, "_finalise_scan", lambda *a, **k: None)
+    with pytest.raises(pipe.ScanIncompleteError) as ei:
+        pipe._phase_tier2_flow_analysis(
+            [], {}, DiscoveryConfig(), object(), tmp_path / "x.db", 1, None, [],
+        )
+    assert ei.value.status == "budget_exceeded"
+
+
+def test_phase_tier2_resume_loads_from_db(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    monkeypatch.setattr(pipe, "_load_flows_from_db",
+                        lambda db, sid: {"orders": ["f1", "f2"]})
+    out = pipe._phase_tier2_flow_analysis(
+        [], {}, DiscoveryConfig(), object(), tmp_path / "x.db", 1, 14, [],
+    )
+    assert out == {"orders": ["f1", "f2"]}
