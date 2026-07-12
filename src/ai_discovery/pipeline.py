@@ -594,6 +594,89 @@ def _phase_tier2_flow_analysis(
         return flows_by_domain
 
 
+def _phase_tier3_rollup(
+    domains: list,
+    summaries_dict: dict,
+    flows_by_domain: dict,
+    all_nodes: list,
+    config: DiscoveryConfig,
+    llm_client,
+    db_path: Path,
+    scan_id: int,
+    project_slug: str,
+) -> list:
+    """Phase 14: Tier-3 per-domain SDLC document generation. Returns rollups.
+
+    Note: unlike the other phases this has no ``_phase_should_run`` resume gate
+    — it always regenerates (a separate cached-rollup fast-path earlier in
+    run_pipeline handles pure re-render). Budget-exhausted before it runs
+    raises ScanIncompleteError. Includes the P0-4 deterministic prose-validation
+    annotation pass (non-critical: failures warn, docs are kept).
+    """
+    if not _budget_ok(llm_client, config, "Tier 3 doc rollup"):
+        _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
+        raise ScanIncompleteError(
+            "budget limit reached before Tier 3 doc rollup",
+            exit_code=3, status="budget_exceeded",
+        )
+
+    from .ai.rollup import generate_all_docs, persist_rollups, DOC_TYPES
+
+    with _with_checkpoint(db_path, scan_id, 14, "tier3_doc_rollup"):
+        if config.provider == "ollama":
+            tier3_model = config.get_model("tier3")
+            console.print(f"[dim]Warming tier3 ({tier3_model})...[/]")
+            llm_client.warm("tier3", "1h")
+
+        console.print("[bold cyan]Tier 3: Generating SDLC documents...[/]")
+        with _timed("Tier 3 doc rollup"), Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]Tier 3 docs"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+            total_docs = len(domains) * len(DOC_TYPES)
+            ptask = progress.add_task("Generating", total=total_docs)
+
+            def _on_rollup_progress(done: int, total: int):
+                progress.update(ptask, completed=done, total=total)
+
+            rollups = generate_all_docs(
+                domains, summaries_dict, flows_by_domain, llm_client,
+                on_progress=_on_rollup_progress,
+                max_workers=config.max_concurrent,
+                db_path=db_path,
+                scan_id=scan_id,
+                budget_exhausted=_budget_exhausted_fn(llm_client, config),
+            )
+
+        # P0-4: deterministic structural check (no LLM). Flag file:line citations
+        # and qualified symbols in the generated prose that are absent from the
+        # parsed graph — likely fabrications — and annotate the doc so readers see
+        # the warning before relying on it.
+        try:
+            from .ai.prose_validator import build_known_graph, validate_prose, annotate
+            known_graph = build_known_graph(all_nodes)
+            flagged_total = 0
+            for r in rollups:
+                v = validate_prose(r.content_md, known_graph)
+                if not v.is_clean:
+                    r.content_md = annotate(r.content_md, v)
+                    flagged_total += v.count
+            if flagged_total:
+                console.print(
+                    f"  [yellow]Unverified code references flagged:[/] {flagged_total} "
+                    "(annotated in docs)"
+                )
+        except Exception as exc:  # annotation is non-critical: warn, don't lose docs
+            console.print(f"  [yellow]Prose validation skipped:[/] {exc}")
+
+        persist_rollups(rollups, scan_id, db_path, project_slug)
+        console.print(f"  Documents: [green]{len(rollups)}[/] generated")
+        return rollups
+
+
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -1518,67 +1601,10 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 14. Tier 3: Doc rollup
     # ------------------------------------------------------------------
-    if not _budget_ok(llm_client, config, "Tier 3 doc rollup"):
-        _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        raise ScanIncompleteError(
-            "budget limit reached before Tier 3 doc rollup",
-            exit_code=3, status="budget_exceeded",
-        )
-
-    from .ai.rollup import generate_all_docs, persist_rollups, DOC_TYPES
-
-    with _with_checkpoint(db_path, scan_id, 14, "tier3_doc_rollup"):
-        if config.provider == "ollama":
-            tier3_model = config.get_model("tier3")
-            console.print(f"[dim]Warming tier3 ({tier3_model})...[/]")
-            llm_client.warm("tier3", "1h")
-
-        console.print("[bold cyan]Tier 3: Generating SDLC documents...[/]")
-        with _timed("Tier 3 doc rollup"), Progress(
-            SpinnerColumn(),
-            TextColumn("[bold]Tier 3 docs"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-        ) as progress:
-            total_docs = len(domains) * len(DOC_TYPES)
-            ptask = progress.add_task("Generating", total=total_docs)
-
-            def _on_rollup_progress(done: int, total: int):
-                progress.update(ptask, completed=done, total=total)
-
-            rollups = generate_all_docs(
-                domains, summaries_dict, flows_by_domain, llm_client,
-                on_progress=_on_rollup_progress,
-                max_workers=config.max_concurrent,
-                db_path=db_path,
-                scan_id=scan_id,
-                budget_exhausted=_budget_exhausted_fn(llm_client, config),
-            )
-
-        # P0-4: deterministic structural check (no LLM). Flag file:line citations
-        # and qualified symbols in the generated prose that are absent from the
-        # parsed graph — likely fabrications — and annotate the doc so readers see
-        # the warning before relying on it.
-        try:
-            from .ai.prose_validator import build_known_graph, validate_prose, annotate
-            known_graph = build_known_graph(all_nodes)
-            flagged_total = 0
-            for r in rollups:
-                v = validate_prose(r.content_md, known_graph)
-                if not v.is_clean:
-                    r.content_md = annotate(r.content_md, v)
-                    flagged_total += v.count
-            if flagged_total:
-                console.print(
-                    f"  [yellow]Unverified code references flagged:[/] {flagged_total} "
-                    "(annotated in docs)"
-                )
-        except Exception as exc:  # annotation is non-critical: warn, don't lose docs
-            console.print(f"  [yellow]Prose validation skipped:[/] {exc}")
-
-        persist_rollups(rollups, scan_id, db_path, project_slug)
-        console.print(f"  Documents: [green]{len(rollups)}[/] generated")
+    rollups = _phase_tier3_rollup(
+        domains, summaries_dict, flows_by_domain, all_nodes, config, llm_client,
+        db_path, scan_id, project_slug,
+    )
 
     # 15: Generate Visual Artifacts (BPMN + Mermaid sequence/flowchart) and persist
     from .generators.bpmn_generator import BPMNGenerator

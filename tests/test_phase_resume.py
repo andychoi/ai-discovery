@@ -274,3 +274,19 @@ def test_phase_tier2_resume_loads_from_db(monkeypatch, tmp_path):
         [], {}, DiscoveryConfig(), object(), tmp_path / "x.db", 1, 14, [],
     )
     assert out == {"orders": ["f1", "f2"]}
+
+
+# ── _phase_tier3_rollup (W2-1) ───────────────────────────────────────────────
+
+
+def test_phase_tier3_budget_exceeded_raises(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    monkeypatch.setattr(pipe, "_budget_ok", lambda *a, **k: False)
+    monkeypatch.setattr(pipe, "_finalise_scan", lambda *a, **k: None)
+    with pytest.raises(pipe.ScanIncompleteError) as ei:
+        pipe._phase_tier3_rollup(
+            [], {}, {}, [], DiscoveryConfig(), object(), tmp_path / "x.db", 1, "proj",
+        )
+    assert ei.value.status == "budget_exceeded" and ei.value.exit_code == 3
