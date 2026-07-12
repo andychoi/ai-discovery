@@ -351,6 +351,40 @@ def _phase_lang_detect(
         return detect_languages(repo_path)
 
 
+def _phase_chunk(
+    all_nodes: list,
+    config: DiscoveryConfig,
+    db_path: Path,
+    scan_id: int,
+    start_phase: int | None,
+    skip_phases: list[str],
+) -> tuple[list, list]:
+    """Phase 9: AST-aware chunking + RAG chunk build. Returns (chunks, rag_chunks).
+
+    On resume the chunks are rebuilt from ``all_nodes`` (cheap, in-memory)
+    rather than persisted/reloaded.
+    """
+    from .ai.chunker import chunk_code_nodes
+
+    if _phase_should_run(9, start_phase, skip_phases):
+        with _with_checkpoint(db_path, scan_id, 9, "chunk"):
+            with _timed("chunk"), console.status("[bold cyan]Chunking code nodes..."):
+                chunks = chunk_code_nodes(all_nodes)
+                rag_chunks = _build_rag_chunks(chunks, config)
+            tier1_count = _count_tier1_targets(chunks)
+            console.print(
+                f"  Chunks: [green]{len(chunks)}[/] parsed "
+                f"([green]{tier1_count}[/] for Tier 1), "
+                f"[green]{len(rag_chunks)}[/] RAG chunks"
+            )
+            return chunks, rag_chunks
+
+    console.print("[dim]Phase 9 (chunk): rebuilding (cheap)...[/]")
+    chunks = chunk_code_nodes(all_nodes)
+    rag_chunks = _build_rag_chunks(chunks, config)
+    return chunks, rag_chunks
+
+
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -1152,23 +1186,9 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 9. Smart chunk
     # ------------------------------------------------------------------
-    from .ai.chunker import chunk_code_nodes, chunk_for_rag
-
-    if _phase_should_run(9, start_phase, skip_phases):
-        with _with_checkpoint(db_path, scan_id, 9, "chunk"):
-            with _timed("chunk"), console.status("[bold cyan]Chunking code nodes..."):
-                chunks = chunk_code_nodes(all_nodes)
-                rag_chunks = _build_rag_chunks(chunks, config)
-            tier1_count = _count_tier1_targets(chunks)
-            console.print(
-                f"  Chunks: [green]{len(chunks)}[/] parsed "
-                f"([green]{tier1_count}[/] for Tier 1), "
-                f"[green]{len(rag_chunks)}[/] RAG chunks"
-            )
-    else:
-        console.print("[dim]Phase 9 (chunk): rebuilding (cheap)...[/]")
-        chunks = chunk_code_nodes(all_nodes)
-        rag_chunks = _build_rag_chunks(chunks, config)
+    chunks, rag_chunks = _phase_chunk(
+        all_nodes, config, db_path, scan_id, start_phase, skip_phases,
+    )
 
     # P0-3 (memory): chunking is the last in-memory consumer of node.source_code.
     # Release it now (it stays in code_nodes) so phases 10–19 don't carry the

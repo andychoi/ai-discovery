@@ -134,3 +134,42 @@ def test_phase_lang_detect_resume_branch_recomputes(monkeypatch, tmp_path):
                                     start_phase=6, skip_phases=[])
     assert stats == {"go": 2}
     assert calls["n"] == 1
+
+
+# ── _phase_chunk (extracted phase body, W2-1) ────────────────────────────────
+
+
+def test_phase_chunk_run_branch(monkeypatch, tmp_path):
+    import contextlib
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    monkeypatch.setattr(pipe, "_with_checkpoint",
+                        lambda *a, **k: contextlib.nullcontext())
+    monkeypatch.setattr("ai_discovery.ai.chunker.chunk_code_nodes",
+                        lambda nodes: ["c1", "c2"])
+    monkeypatch.setattr(pipe, "_build_rag_chunks", lambda chunks, cfg: ["r1"])
+    monkeypatch.setattr(pipe, "_count_tier1_targets", lambda chunks: 2)
+
+    chunks, rag = pipe._phase_chunk(
+        ["n1"], DiscoveryConfig(), tmp_path / "x.db", 1,
+        start_phase=None, skip_phases=[],
+    )
+    assert chunks == ["c1", "c2"]
+    assert rag == ["r1"]
+
+
+def test_phase_chunk_resume_branch_rebuilds(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    monkeypatch.setattr("ai_discovery.ai.chunker.chunk_code_nodes",
+                        lambda nodes: ["c"])
+    monkeypatch.setattr(pipe, "_build_rag_chunks", lambda chunks, cfg: ["r"])
+
+    # start_phase=12 → phase 9 already complete → resume rebuild path.
+    chunks, rag = pipe._phase_chunk(
+        ["n1"], DiscoveryConfig(), tmp_path / "x.db", 1,
+        start_phase=12, skip_phases=[],
+    )
+    assert chunks == ["c"] and rag == ["r"]
