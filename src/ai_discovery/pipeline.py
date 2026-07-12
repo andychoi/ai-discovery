@@ -90,27 +90,35 @@ _PHASE_SPECS = {
 _PHASE_NAME_TO_NUM = {v: k for k, v in _PHASE_SPECS.items()}
 
 
-def _parse_phase_spec(spec: str) -> float:
-    """Parse a phase spec (number or name) to phase number.
+def _parse_phase_spec(spec: str) -> int:
+    """Parse a phase spec (number or name) to an integer phase number.
 
-    Examples: "14" -> 14.0, "self_review" -> 14.0
+    Phases are contiguous integers (2, 5-19) — the old decimal sub-phase
+    scheme is gone (migration in db.py), so numbers are plain ints. A legacy
+    "14.0"-style spec is accepted and coerced to 14.
+
+    Examples: "14" -> 14, "14.0" -> 14, "self_review" -> 14
     """
     spec = spec.strip().lower()
-    # Try as number first
+    # Try as a number first (accept "14" and legacy "14.0").
     try:
-        return float(spec)
+        return int(spec)
+    except ValueError:
+        pass
+    try:
+        return int(float(spec))
     except ValueError:
         pass
     # Try as name
     if spec in _PHASE_NAME_TO_NUM:
         return _PHASE_NAME_TO_NUM[spec]
     raise ValueError(
-        f"Invalid phase spec '{spec}'. Use phase number (5, 11, 14.0) or name "
+        f"Invalid phase spec '{spec}'. Use phase number (5, 11, 14) or name "
         f"({', '.join(sorted(_PHASE_NAME_TO_NUM.keys()))})"
     )
 
 
-def _next_phase(phase_num: float) -> float | None:
+def _next_phase(phase_num: int) -> int | None:
     """Return the next phase number after the given one, using the phase spec list."""
     sorted_phases = sorted(_PHASE_SPECS.keys())
     for p in sorted_phases:
@@ -119,7 +127,7 @@ def _next_phase(phase_num: float) -> float | None:
     return None
 
 
-def _get_start_phase(db_path: Path, scan_id: int, resume_from: str | None) -> float | None:
+def _get_start_phase(db_path: Path, scan_id: int, resume_from: str | None) -> int | None:
     """Determine which phase to start from.
 
     Returns:
@@ -127,14 +135,15 @@ def _get_start_phase(db_path: Path, scan_id: int, resume_from: str | None) -> fl
     """
     if resume_from:
         return _parse_phase_spec(resume_from)
-    # Find last complete phase and return the one after it
+    # Find last complete phase and return the one after it. The checkpoint
+    # column is REAL for historical reasons, so coerce to int at the boundary.
     last_complete = get_last_complete_phase(db_path, scan_id)
     if last_complete is not None:
-        return _next_phase(last_complete)
+        return _next_phase(int(last_complete))
     return None
 
 
-def _phase_should_run(phase_num: float, start_phase: float | None, skip_phases: list[str]) -> bool:
+def _phase_should_run(phase_num: int, start_phase: int | None, skip_phases: list[str]) -> bool:
     """Determine if a phase should run based on resume and skip settings.
 
     Returns False if:
@@ -148,14 +157,14 @@ def _phase_should_run(phase_num: float, start_phase: float | None, skip_phases: 
     return True
 
 
-def _should_skip_phase(phase_num: float, skip_phases: list[str]) -> bool:
+def _should_skip_phase(phase_num: int, skip_phases: list[str]) -> bool:
     """Check if a phase should be skipped."""
     if not skip_phases:
         return False
     for skip_spec in skip_phases:
         try:
             skip_num = _parse_phase_spec(skip_spec)
-            if abs(phase_num - skip_num) < 0.01:  # floating point comparison
+            if phase_num == skip_num:
                 return True
         except ValueError:
             logger.warning(f"Invalid phase spec to skip: {skip_spec}")
@@ -175,7 +184,7 @@ def _timed(label: str):
 def _with_checkpoint(
     db_path: Path,
     scan_id: int,
-    phase_num: float,
+    phase_num: int,
     phase_name: str,
     metadata: dict = None,
 ):
@@ -410,7 +419,7 @@ def run_pipeline(
         console.print()
 
     # Compute start_phase: which phase to begin executing from
-    start_phase: float | None = None
+    start_phase: int | None = None
     if scan_id is not None:
         start_phase = _get_start_phase(db_path, scan_id, resume_from)
         if start_phase:

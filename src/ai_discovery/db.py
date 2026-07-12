@@ -595,7 +595,7 @@ def get_relationships(db_path: Path, scan_id: int, *, from_entity: str | None = 
 # Phase checkpoint helpers
 # ---------------------------------------------------------------------------
 
-def record_phase_start(db_path: Path, scan_id: int, phase_num: float, phase_name: str) -> None:
+def record_phase_start(db_path: Path, scan_id: int, phase_num: int, phase_name: str) -> None:
     """Record the start of a phase checkpoint."""
     conn = get_conn(db_path)
     try:
@@ -613,7 +613,7 @@ def record_phase_start(db_path: Path, scan_id: int, phase_num: float, phase_name
 def record_phase_complete(
     db_path: Path,
     scan_id: int,
-    phase_num: float,
+    phase_num: int,
     phase_name: str,
     metadata: dict = None,
 ) -> None:
@@ -662,7 +662,7 @@ def record_phase_complete(
 def record_phase_error(
     db_path: Path,
     scan_id: int,
-    phase_num: float,
+    phase_num: int,
     phase_name: str,
     error_msg: str,
 ) -> None:
@@ -685,15 +685,19 @@ def record_phase_error(
         conn.close()
 
 
-def get_last_complete_phase(db_path: Path, scan_id: int) -> float | None:
-    """Return the highest phase_num that completed successfully, or None."""
+def get_last_complete_phase(db_path: Path, scan_id: int) -> int | None:
+    """Return the highest phase_num that completed successfully, or None.
+
+    Phases are integers; the column is REAL for historical reasons, so coerce
+    the stored value to int on the way out.
+    """
     conn = get_conn(db_path)
     try:
         row = conn.execute(
             "SELECT MAX(phase_num) as last_phase FROM phase_checkpoints WHERE scan_id = ? AND status = 'complete'",
             (scan_id,),
         ).fetchone()
-        return row['last_phase'] if row and row['last_phase'] is not None else None
+        return int(row['last_phase']) if row and row['last_phase'] is not None else None
     finally:
         conn.close()
 
