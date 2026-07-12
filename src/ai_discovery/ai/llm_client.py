@@ -120,6 +120,18 @@ class LLMClient:
 
     _OLLAMA_LIKE = frozenset({"ollama", "mlx-gemma", "mlx-qwen"})
 
+    def _effort_for(self, tier: str) -> str | None:
+        """Per-tier reasoning effort for effort-capable Claude models.
+
+        Only meaningful on the anthropic provider (the transport gates on model
+        capability regardless). Returns the config override if present, else the
+        model_defaults.EFFORT_BY_TIER default, else None.
+        """
+        if self._config.provider != "anthropic":
+            return None
+        from ai_discovery.shared.model_defaults import EFFORT_BY_TIER
+        return self._config.effort.get(tier) or EFFORT_BY_TIER.get(tier)
+
     def _tier1_num_ctx(self, tier: str) -> int | None:
         """Tier1 summarizes many small chunks — cap context window to avoid
         pre-allocating a 32K KV cache per call. Returns None for other tiers."""
@@ -150,6 +162,7 @@ class LLMClient:
             router_tier, prompt, max_tokens,
             enable_thinking=True,  # preserve the pre-router invoke_ollama default
             num_ctx=self._tier1_num_ctx(tier),
+            effort=self._effort_for(tier),
         )
         self._track_cost(tier, meta["model_id"], meta["input_tokens"], meta["output_tokens"])
         return LLMResponse(text=meta["text"], tokens_in=meta["input_tokens"],
@@ -231,6 +244,7 @@ class LLMClient:
                 max_tokens=max_tokens,
                 api_key=self._config.anthropic.api_key,
                 base_url=self._config.anthropic.base_url,
+                effort=self._effort_for(tier),
             )
             self._track_cost(tier, model, tok_in, tok_out)
             if data is not None:

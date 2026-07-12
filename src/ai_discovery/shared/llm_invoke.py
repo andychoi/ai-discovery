@@ -547,21 +547,60 @@ def _anthropic_usage(response) -> tuple[int, int]:
     return int(tok_in), int(tok_out)
 
 
+def _anthropic_reasoning_kwargs(model: str, effort: str | None) -> dict:
+    """Build the thinking/effort request fields for *model*, capability-gated.
+
+    Returns the extra kwargs to splat into ``messages.create``:
+      - unsupported model, or effort None → {} (no reasoning fields)
+      - Fable/Mythos → only ``output_config.effort`` (thinking is always on;
+        sending a ``thinking`` param 400s)
+      - other effort-capable Claude (Opus 4.6+/Sonnet 4.6+) → adaptive thinking
+        + ``output_config.effort``
+
+    Keeping this in one place means a new reasoning model is a one-line change
+    in ``model_defaults`` rather than scattered per-call-site conditionals.
+    """
+    from ai_discovery.shared.model_defaults import (
+        supports_effort, is_fable_family, _VALID_EFFORT_LEVELS,
+    )
+    if not effort or not supports_effort(model):
+        return {}
+    if effort not in _VALID_EFFORT_LEVELS:
+        _log.warning("Ignoring unknown effort level %r for %s", effort, model)
+        return {}
+    kwargs: dict = {"output_config": {"effort": effort}}
+    if not is_fable_family(model):
+        # Fable/Mythos: thinking is always on — omit the param. All other
+        # effort-capable models need it set explicitly to enable thinking.
+        kwargs["thinking"] = {"type": "adaptive"}
+    return kwargs
+
+
 def invoke_anthropic(
     model: str, prompt: str, max_tokens: int = 4096,
     api_key: str = "", base_url: str = "",
+    *, effort: str | None = None, system: str = "",
 ) -> tuple[str, int, int]:
     """Invoke the Anthropic Messages API directly. Returns (text, tokens_in, tokens_out).
 
     Uses the official ``anthropic`` SDK (optional dependency). The SDK
     auto-retries 429/5xx with exponential backoff.
+
+    ``effort`` (low|medium|high|xhigh|max) enables adaptive thinking on
+    effort-capable models (Opus 4.6+/Sonnet 4.6+/Fable/Mythos) and is ignored
+    on models that don't support it — see ``_anthropic_reasoning_kwargs``.
+    ``system`` sets a top-level system prompt (stable-prefix caching hook).
     """
     client = _anthropic_client(api_key, base_url)
+    extra = _anthropic_reasoning_kwargs(model, effort)
+    if system:
+        extra["system"] = system
     try:
         response = client.messages.create(
             model=model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
+            **extra,
         )
         _check_stop_reason("anthropic", model,
                            getattr(response, "stop_reason", None), max_tokens)
@@ -583,6 +622,7 @@ def invoke_anthropic_structured(
     tool_name: str = "emit", tool_description: str = "",
     max_tokens: int = 4096,
     api_key: str = "", base_url: str = "",
+    effort: str | None = None, system: str = "",
 ) -> tuple[dict | None, str, int, int]:
     """Schema-enforced invocation via Anthropic tool use with a forced
     ``tool_choice`` — the native counterpart of the Bedrock Converse path.
@@ -592,6 +632,9 @@ def invoke_anthropic_structured(
     otherwise, in which case ``text`` carries the prose for tolerant parsing.
     """
     client = _anthropic_client(api_key, base_url)
+    extra = _anthropic_reasoning_kwargs(model, effort)
+    if system:
+        extra["system"] = system
     try:
         response = client.messages.create(
             model=model,
@@ -603,6 +646,7 @@ def invoke_anthropic_structured(
             }],
             tool_choice={"type": "tool", "name": tool_name},
             messages=[{"role": "user", "content": prompt}],
+            **extra,
         )
         _check_stop_reason("anthropic", model,
                            getattr(response, "stop_reason", None), max_tokens)

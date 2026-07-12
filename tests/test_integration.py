@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ai_discovery.ai.llm_client import LLMResponse
+from ai_discovery.ai.llm_client import LLMResponse, StructuredResponse
 from ai_discovery.config import DiscoveryConfig
 
 
@@ -113,6 +113,25 @@ def _make_mock_llm():
     # mirror to legacy invoke so either surface works in tests.
     mock.invoke.side_effect = invoke_side_effect
     mock.invoke_with_advisor.side_effect = invoke_side_effect
+
+    def structured_side_effect(tier, prompt, schema, *, tool_name="emit",
+                               tool_description="", max_tokens=4096, **kwargs):
+        # extract_claims (self-review) uses invoke_structured post-W1-6; return
+        # a real claims object so that path stays exercised. Other structured
+        # callers (screen specs) get a benign object.
+        if "claim" in tool_name.lower():
+            data = {"claims": [
+                "The OrderService class handles order processing",
+                "The /orders endpoint accepts GET requests",
+            ]}
+        else:
+            data = {"purpose": "mock"}
+        return StructuredResponse(
+            data=data, tokens_in=100, tokens_out=50,
+            model=f"mock-{tier}", tier=tier, via_tool=True,
+        )
+
+    mock.invoke_structured.side_effect = structured_side_effect
     mock.get_embedding.return_value = [0.1] * 256
     mock.total_cost_usd.return_value = 0.0
     mock.persist_costs = MagicMock()

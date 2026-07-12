@@ -194,6 +194,13 @@ class DiscoveryConfig:
     budget_limit_usd: float = 50.0
     max_concurrent: int = 10
     prod: bool = False  # True → use tier3p for doc generation; False → tier3d
+    # Per-tier reasoning effort for effort-capable Claude models (Opus 4.6+/
+    # Sonnet 4.6+/Fable/Mythos). Keys: tier1|tier2|tier3|screen. Empty → the
+    # sensible defaults in model_defaults.EFFORT_BY_TIER (tier1 low, tier2/3
+    # high). Ignored on models/providers that don't support effort (Haiku,
+    # OpenAI, Gemini, local) — gated at the transport. Applied on the anthropic
+    # provider today; Bedrock effort is a fast-follow.
+    effort: dict = field(default_factory=dict)
     # A-1 Louvain semantic batching: group Tier-1 chunks by call-graph
     # community and fire one structured call per batch (cheaper, and the
     # summarizer sees the callers/callees it describes). Degrades to the
@@ -280,6 +287,8 @@ class DiscoveryConfig:
                 cfg.max_concurrent = int(raw["max_concurrent"])
             if "semantic_batching" in raw:
                 cfg.semantic_batching = bool(raw["semantic_batching"])
+            if "effort" in raw and isinstance(raw["effort"], dict):
+                cfg.effort = {str(k): str(v) for k, v in raw["effort"].items()}
 
             # Nested sections — filter to known fields so forward/backward
             # compatible YAMLs don't raise TypeError on unexpected keys.

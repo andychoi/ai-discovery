@@ -100,8 +100,9 @@ def test_invoke_structured_anthropic_uses_forced_tool(monkeypatch):
     captured = {}
 
     def fake_structured(model, prompt, schema, *, tool_name, tool_description,
-                        max_tokens, api_key, base_url):
-        captured.update(model=model, schema=schema, tool_name=tool_name)
+                        max_tokens, api_key, base_url, effort=None, system=""):
+        captured.update(model=model, schema=schema, tool_name=tool_name,
+                        effort=effort)
         return {"purpose": "x"}, "", 10, 20
 
     monkeypatch.setattr(llm_client_mod, "invoke_anthropic_structured", fake_structured)
@@ -115,6 +116,8 @@ def test_invoke_structured_anthropic_uses_forced_tool(monkeypatch):
     assert captured["model"] == cfg.get_model("screen")
     assert captured["schema"] == _SCHEMA
     assert captured["tool_name"] == "emit_screen_spec"
+    # screen tier maps to tier2 → default effort "high" on the anthropic provider
+    assert captured["effort"] == "high"
     assert client.get_costs()["screen"]["tokens_out"] == 20
 
 
@@ -123,7 +126,7 @@ def test_invoke_structured_anthropic_falls_back_when_model_emits_text(monkeypatc
     cfg.provider = "anthropic"
 
     def fake_structured(model, prompt, schema, *, tool_name, tool_description,
-                        max_tokens, api_key, base_url):
+                        max_tokens, api_key, base_url, effort=None, system=""):
         return None, '```json\n{"purpose": "y"}\n```', 5, 5
 
     monkeypatch.setattr(llm_client_mod, "invoke_anthropic_structured", fake_structured)

@@ -207,3 +207,58 @@ def rates_for_model(model: str, provider: str | None = None) -> tuple[float, flo
         "differently.", model, provider, *_DEFAULT_CLOUD_RATE,
     )
     return _DEFAULT_CLOUD_RATE
+
+
+# ── Reasoning-capability gating (adaptive thinking + effort) ──────────────────
+# Adaptive thinking (`thinking: {type: "adaptive"}`) and the `output_config.effort`
+# knob are supported on the current Claude reasoning tier — Fable/Mythos 5,
+# Opus 4.6/4.7/4.8, and Sonnet 4.6/5. They are NOT accepted on Haiku 4.5 (effort
+# 400s; thinking needs the legacy budget_tokens form) or on the pre-4.6 models,
+# and they don't exist on the OpenAI/Gemini/local backends. Sending them to an
+# unsupporting model is a 400, so callers must gate on this before adding the
+# request fields. Matched by substring against the (possibly Bedrock-prefixed)
+# model id.
+_EFFORT_CAPABLE_FRAGMENTS: tuple[str, ...] = (
+    "fable", "mythos",
+    "opus-4-6", "opus-4-7", "opus-4-8",
+    "sonnet-4-6", "sonnet-5",
+)
+
+# Effort levels accepted by the current tier. `xhigh`/`max` arrived with
+# Opus 4.7; keep the set permissive and let the API reject anything a specific
+# model doesn't take (we only ever emit values from EFFORT_BY_TIER below).
+_VALID_EFFORT_LEVELS: frozenset[str] = frozenset(
+    {"low", "medium", "high", "xhigh", "max"}
+)
+
+# Recommended default effort per Discovery tier. tier1 is bulk extraction
+# (cheap/fast — but its default model is Haiku, which is gated out anyway);
+# tier2 is flow analysis; tier3 is deep multi-doc synthesis, the one place the
+# extra reasoning most pays off. Callers may override via config.
+EFFORT_BY_TIER: dict[str, str] = {
+    "tier1": "low",
+    "tier2": "high",
+    "tier3": "high",
+    "screen": "high",
+}
+
+
+def supports_effort(model: str) -> bool:
+    """True if *model* accepts adaptive thinking + output_config.effort.
+
+    Gate every thinking/effort request field on this — an unsupporting model
+    (Haiku 4.5, pre-4.6 Claude, OpenAI/Gemini/local) returns a 400 otherwise.
+    """
+    needle = (model or "").lower()
+    return any(frag in needle for frag in _EFFORT_CAPABLE_FRAGMENTS)
+
+
+def is_fable_family(model: str) -> bool:
+    """True for Fable 5 / Mythos 5.
+
+    These require special handling: thinking is always on, so the `thinking`
+    parameter must be OMITTED entirely (sending `{type: "disabled"}` or
+    `budget_tokens` 400s), and `output_config.effort` is the only depth control.
+    """
+    needle = (model or "").lower()
+    return "fable" in needle or "mythos" in needle

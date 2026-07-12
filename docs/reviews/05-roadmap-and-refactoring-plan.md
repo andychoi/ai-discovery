@@ -30,6 +30,13 @@ Effort scale: **S** = hours–1 day · **M** = 2–5 days · **L** = 1–3 weeks
 | W0-6 | Doc-embedder `doc_id`: include doc-type folder in the id (`asis/orders`); fix resume-count guard | P0-2 | S |
 | W0-7 | Fix `_jaccard` empty-set divergence (pick one semantic, document it) | P0-8 | S |
 
+## Implementation status log
+
+Recorded as the roadmap is executed on branch `claude/architecture-review-roadmap-28vngf`.
+
+- **Wave 0 — DONE** (commit `fix(wave0)`): W0-1…W0-7 all landed with 23 new tests. `discover ingest-docs` no longer crashes; zero-node and budget-exceeded scans exit non-zero (`ScanIncompleteError`); Bedrock + Anthropic transports read `stop_reason` (refusal → `LLMRefusalError`, truncation → warning); Fable/Mythos priced at $10/$50; doc-embedder `doc_id` folder-qualified; `_jaccard` empty-set convention aligned; resume-path swallow logged.
+- **Wave 1 — PARTIAL** (this branch): W1-2 (adaptive thinking + per-tier `effort`, capability-gated so Haiku/OpenAI/Gemini/local are never sent effort; Fable omits `thinking`) and W1-6 (`extract_claims` → `invoke_structured`; `strip_thinking` scoped to local providers) are **done** with tests. The `system=` transport plumbing for W1-1 is **in place**. The remaining Wave 1 items — applying `cache_control` to tier prompts (W1-1), the Batches execution mode (W1-3), the unified cost ledger (W1-4), the retry-helper/config-freeze (W1-5), the live Fable A/B pilot (W1-7), and tier-3 streaming (W1-8) — are **deferred**: each needs a live Anthropic key to validate meaningfully (cache-hit metrics, batch submission, refusal-fallback behavior), which this environment lacks. They are specced below and ready to implement against a keyed environment.
+
 ## Wave 1 — LLM cost & quality (the biggest ROI in the codebase)
 
 *Independent of the pipeline refactor; can run in parallel with Wave 2.*

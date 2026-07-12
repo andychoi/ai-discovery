@@ -251,6 +251,64 @@ def test_invoke_anthropic_max_tokens_warns_not_raises(monkeypatch, caplog):
     assert any("truncated" in r.message for r in caplog.records)
 
 
+# ── thinking / effort request-shape gating (W1-2) ────────────────────────────
+
+
+def test_invoke_anthropic_effort_on_opus_sends_adaptive_thinking(monkeypatch):
+    captured = {}
+    _install_fake_anthropic(monkeypatch, captured)
+    llm_invoke.invoke_anthropic("claude-opus-4-8", "Hi", effort="high")
+    assert captured["thinking"] == {"type": "adaptive"}
+    assert captured["output_config"] == {"effort": "high"}
+
+
+def test_invoke_anthropic_effort_on_fable_omits_thinking(monkeypatch):
+    """Fable/Mythos: thinking is always on — the param must be omitted (it 400s),
+    only output_config.effort is sent."""
+    captured = {}
+    _install_fake_anthropic(monkeypatch, captured)
+    llm_invoke.invoke_anthropic("claude-fable-5", "Hi", effort="xhigh")
+    assert "thinking" not in captured
+    assert captured["output_config"] == {"effort": "xhigh"}
+
+
+def test_invoke_anthropic_effort_gated_off_for_haiku(monkeypatch):
+    """Haiku 4.5 does not accept effort — no reasoning fields must be sent."""
+    captured = {}
+    _install_fake_anthropic(monkeypatch, captured)
+    llm_invoke.invoke_anthropic("claude-haiku-4-5", "Hi", effort="low")
+    assert "thinking" not in captured
+    assert "output_config" not in captured
+
+
+def test_invoke_anthropic_no_effort_sends_nothing(monkeypatch):
+    captured = {}
+    _install_fake_anthropic(monkeypatch, captured)
+    llm_invoke.invoke_anthropic("claude-opus-4-8", "Hi")
+    assert "thinking" not in captured
+    assert "output_config" not in captured
+
+
+def test_invoke_anthropic_system_prompt_passthrough(monkeypatch):
+    captured = {}
+    _install_fake_anthropic(monkeypatch, captured)
+    llm_invoke.invoke_anthropic("claude-opus-4-8", "Hi", system="You are X.")
+    assert captured["system"] == "You are X."
+
+
+def test_supports_effort_and_fable_family():
+    from ai_discovery.shared.model_defaults import supports_effort, is_fable_family
+    assert supports_effort("claude-opus-4-8")
+    assert supports_effort("us.anthropic.claude-sonnet-4-6")
+    assert supports_effort("claude-fable-5")
+    assert not supports_effort("claude-haiku-4-5")
+    assert not supports_effort("gpt-5.1")
+    assert not supports_effort("gemma4:31b")
+    assert is_fable_family("claude-fable-5")
+    assert is_fable_family("claude-mythos-5")
+    assert not is_fable_family("claude-opus-4-8")
+
+
 # ── llm_invoke.invoke_anthropic_structured ──────────────────────────────────
 
 

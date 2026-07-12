@@ -35,6 +35,23 @@ class ReviewClaim:
     reason: str = ""  # supported | contradicted | ambiguous | not_retrieved | weak_evidence
 
 
+# Schema for claim extraction. Wrapping the array in an object lets the same
+# call work on both the enforced tool-use path (Bedrock/Anthropic forced
+# tool_choice, OpenAI/Gemini json_schema) and the tolerant-parse fallback
+# (extract_json_object returns a dict) — no bespoke array-repair needed.
+_CLAIMS_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "claims": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Specific, verifiable factual statements about the codebase.",
+        }
+    },
+    "required": ["claims"],
+}
+
+
 def extract_claims(content_md: str, llm_client: LLMClient) -> list[str]:
     """Use Tier 1 LLM to extract factual/technical claims from generated markdown.
 
@@ -43,73 +60,42 @@ def extract_claims(content_md: str, llm_client: LLMClient) -> list[str]:
     - "The /api/users endpoint accepts POST requests"
     - "The User entity has a foreign key to Organization"
 
-    Return list of claim strings.
+    Returns a list of claim strings. Uses schema-enforced structured output
+    (``invoke_structured``) so the previous hand-rolled fence-stripping and
+    truncated-array repair are no longer needed — on providers with tool use
+    the shape is guaranteed; on the rest it degrades to tolerant JSON parsing
+    of a single object. (Advisor escalation is intentionally not used here:
+    claim extraction is a structured-output task, not a reasoning-planning one.)
     """
     prompt = (
         "You are a technical reviewer. Extract all specific, verifiable factual claims "
         "from the following generated documentation. Each claim should be a concrete "
         "statement about the codebase that can be checked against source code.\n\n"
-        "Return ONLY a JSON array of claim strings. No other text.\n\n"
         "Examples of good claims:\n"
         '- "The OrderService class handles payment processing"\n'
         '- "The /api/users endpoint accepts POST requests"\n'
         '- "The User entity has a foreign key to Organization"\n\n'
         "Document:\n"
-        f"{content_md}\n\n"
-        "JSON array of claims:"
+        f"{content_md}\n"
     )
 
-    response = llm_client.invoke_with_advisor(
-        "tier1", prompt, max_tokens=2048,
-        context=AdvisorContext(
-            complexity="medium",
-            domain="claim_extraction",
-            max_advisor_cost_pct=0.1  # strict: keep advisor cost <10%
-        )
-    )
-    text = response.text.strip()
-
-    # Strip markdown code fences (```json ... ``` or ``` ... ```)
-    import re as _re
-    text = _re.sub(r"^```[a-z]*\n?", "", text, flags=_re.MULTILINE)
-    text = _re.sub(r"```$", "", text, flags=_re.MULTILINE)
-    text = text.strip()
-
-    # Try to parse JSON array directly
     try:
-        claims = json.loads(text)
-        if isinstance(claims, list):
-            return [str(c) for c in claims if c]
-    except (json.JSONDecodeError, TypeError):
-        pass
+        response = llm_client.invoke_structured(
+            "tier1", prompt, _CLAIMS_SCHEMA,
+            tool_name="emit_claims",
+            tool_description="Return the list of verifiable claims found in the document.",
+            max_tokens=2048,
+        )
+    except Exception as exc:  # transport/parse failure — degrade to no claims
+        logger.warning("Claim extraction failed: %s", exc)
+        return []
 
-    # Fallback: extract the [ ... ] block
-    start = text.find("[")
-    end = text.rfind("]")
-    if start != -1 and end != -1 and end > start:
-        try:
-            claims = json.loads(text[start : end + 1])
-            if isinstance(claims, list):
-                return [str(c) for c in claims if c]
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    # Last resort: truncated response — close the array and parse what we have.
-    # LLMs sometimes cut off mid-item; drop the incomplete last element.
-    if start != -1:
-        fragment = text[start:]
-        last_comma = fragment.rfind(",")
-        if last_comma != -1:
-            try:
-                claims = json.loads(fragment[: last_comma] + "]")
-                if isinstance(claims, list):
-                    logger.warning("Partial claims parse (%d items) — response was truncated", len(claims))
-                    return [str(c) for c in claims if c]
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-    logger.warning("Failed to parse claims from LLM response: %s", text[:200])
-    return []
+    claims = response.data.get("claims") if isinstance(response.data, dict) else None
+    if not isinstance(claims, list):
+        logger.warning("Claim extraction returned no 'claims' list (via_tool=%s)",
+                       getattr(response, "via_tool", False))
+        return []
+    return [str(c) for c in claims if c]
 
 
 def verify_claim(

@@ -80,6 +80,21 @@ def strip_thinking(text: str) -> str:
     return text
 
 
+def _maybe_strip_thinking(provider: str, text: str) -> str:
+    """Apply ``strip_thinking`` only for local (ollama-like) providers.
+
+    The aggressive cleanup — removing ``<think>``, ``<function_calls>`` and
+    ``<invoke>`` XML — exists to scrub bleed-through from distilled local models
+    (e.g. Qwen3.5-…-Claude-Opus-Distilled). Cloud providers (bedrock, anthropic,
+    openai, gemini) return clean text, and this tool documents codebases that
+    may legitimately contain such XML in the source it summarizes — so running
+    the stripper on cloud output risks corrupting a valid generated document.
+    """
+    if provider in _OLLAMA_LIKE_PROVIDERS:
+        return strip_thinking(text)
+    return text.strip() if text else text
+
+
 # ── Defaults derived from ai_discovery.shared model_defaults ──────────────────────────────
 
 
@@ -389,7 +404,7 @@ def invoke_llm(
         tier = _tier_for_doc_type(doc_type)
     config = get_config()
     text = _invoke_text(config, tier, prompt, max_tokens, project_slug=project_slug)
-    return strip_thinking(text)
+    return _maybe_strip_thinking(config["provider"], text)
 
 
 def _invoke_text(config: dict, tier: str, prompt: str, max_tokens: int, *,
@@ -416,6 +431,8 @@ def invoke_llm_with_meta(
     project_slug: str = "",
     enable_thinking: bool = False,
     num_ctx: int | None = None,
+    effort: str | None = None,
+    system: str = "",
 ) -> dict:
     """Like invoke_llm but returns metadata for UX (model, provider, truncation).
 
@@ -439,7 +456,8 @@ def invoke_llm_with_meta(
         text, tok_in, tok_out = invoke_anthropic(
             model_id, prompt, max_tokens,
             api_key=_resolve_api_key(config, "anthropic", "ANTHROPIC_API_KEY"),
-            base_url=config.get("anthropic.url", ""))
+            base_url=config.get("anthropic.url", ""),
+            effort=effort, system=system)
     elif _is_openai_compat(provider):
         url_key, _, api_key_env, default_url, mt_field = _OPENAI_COMPAT_PROVIDERS[provider]
         text, tok_in, tok_out = invoke_openai_compat(
@@ -458,7 +476,7 @@ def invoke_llm_with_meta(
 
     _log_usage(project_slug, model_id, tier, tok_in, tok_out, provider=provider)
     truncated = tok_out >= int(max_tokens * 0.95)
-    text = strip_thinking(text)
+    text = _maybe_strip_thinking(provider, text)
     return {
         "text": text,
         "model_id": model_id,

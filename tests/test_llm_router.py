@@ -244,3 +244,27 @@ def test_strip_thinking_truncated_tag():
 
 def test_strip_thinking_plain_text_passthrough():
     assert llm_router.strip_thinking("Just an answer.") == "Just an answer."
+
+
+# ── _maybe_strip_thinking (provider-scoped, W1-6) ────────────────────────────
+# The aggressive tag/XML stripping must run only for local (ollama-like)
+# providers, whose distilled models bleed <think>/<function_calls> XML. Cloud
+# providers return clean text, and generated docs may legitimately quote such
+# XML — stripping it there would corrupt output.
+
+
+def test_maybe_strip_thinking_strips_for_ollama():
+    out = llm_router._maybe_strip_thinking(
+        "ollama", "<think>reason</think>Answer.")
+    assert out == "Answer."
+
+
+def test_maybe_strip_thinking_preserves_cloud_xml():
+    text = "Use <function_calls> to trigger the tool, per the docs."
+    for provider in ("anthropic", "bedrock", "openai", "gemini"):
+        assert llm_router._maybe_strip_thinking(provider, text) == text
+
+
+def test_maybe_strip_thinking_preserves_think_tags_on_cloud():
+    text = "The parser handles <think> blocks in source."
+    assert llm_router._maybe_strip_thinking("anthropic", text) == text

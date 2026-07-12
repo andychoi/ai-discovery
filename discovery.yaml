@@ -13,6 +13,16 @@ max_concurrent: 10
 # Production mode: use tier3p (deep) instead of tier3d (standard) for doc generation
 prod: false
 
+# Per-tier reasoning effort for effort-capable Claude models (Opus 4.6+,
+# Sonnet 4.6+, Fable/Mythos 5). Enables adaptive thinking + output_config.effort.
+# Ignored on models/providers that don't support it (Haiku 4.5, OpenAI, Gemini,
+# local Ollama/MLX) — gated at the transport. Applied on the `anthropic`
+# provider today. Omit to use the built-in defaults (tier1: low, tier2/3: high).
+# effort:
+#   tier1: low       # bulk chunk summarization / claim extraction
+#   tier2: high      # flow analysis, screen specs
+#   tier3: xhigh     # deep multi-doc synthesis — the highest-value reasoning
+
 # Ollama configuration
 ollama:
   base_url: "http://localhost:11434"

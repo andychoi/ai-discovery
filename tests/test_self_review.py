@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ai_discovery.ai.llm_client import LLMResponse
+from ai_discovery.ai.llm_client import LLMResponse, StructuredResponse
 from ai_discovery.ai.self_review import (
     ReviewClaim,
     extract_claims,
@@ -53,14 +53,23 @@ def _mock_rag_results(results: list[dict]):
 # ---------------------------------------------------------------------------
 
 
+def _mock_structured_llm(data, *, via_tool=True):
+    """A MagicMock LLMClient whose invoke_structured returns *data*."""
+    client = MagicMock()
+    client.invoke_structured.return_value = StructuredResponse(
+        data=data, tokens_in=100, tokens_out=50, model="test-model",
+        tier="tier1", via_tool=via_tool,
+    )
+    return client
+
+
 def test_extract_claims_returns_list():
-    """Mock LLM returns JSON array of claims, verify parsed correctly."""
-    claims_json = json.dumps([
+    """Structured output returns {claims: [...]}, verify parsed correctly."""
+    client = _mock_structured_llm({"claims": [
         "The OrderService class handles payment processing",
         "The /api/users endpoint accepts POST requests",
         "The User entity has a foreign key to Organization",
-    ])
-    client = _mock_llm(claims_json)
+    ]})
 
     claims = extract_claims("# Some Doc\nContent here.", client)
 
@@ -68,29 +77,30 @@ def test_extract_claims_returns_list():
     assert "OrderService" in claims[0]
     assert "/api/users" in claims[1]
     assert "foreign key" in claims[2]
-    client.invoke_with_advisor.assert_called_once()
-    assert client.invoke_with_advisor.call_args[0][0] == "tier1"
+    client.invoke_structured.assert_called_once()
+    assert client.invoke_structured.call_args[0][0] == "tier1"
 
 
-def test_extract_claims_handles_non_json():
-    """Graceful fallback when LLM returns non-JSON text."""
-    client = _mock_llm("Here are some claims I found in the document...")
-
-    claims = extract_claims("# Doc\nContent", client)
-
-    assert claims == []
+def test_extract_claims_handles_missing_claims_key():
+    """Graceful fallback when the structured result has no 'claims' list."""
+    client = _mock_structured_llm({"unexpected": "shape"})
+    assert extract_claims("# Doc\nContent", client) == []
 
 
-def test_extract_claims_extracts_from_wrapped_json():
-    """LLM wraps JSON in explanation text, parser still extracts it."""
-    text = 'Here are the claims:\n["claim one", "claim two"]\nDone.'
-    client = _mock_llm(text)
-
+def test_extract_claims_tolerant_fallback_path():
+    """On providers without tool use, invoke_structured returns via_tool=False
+    but still a parsed object — extract_claims consumes it identically."""
+    client = _mock_structured_llm({"claims": ["claim one", "claim two"]},
+                                  via_tool=False)
     claims = extract_claims("# Doc", client)
+    assert claims == ["claim one", "claim two"]
 
-    assert len(claims) == 2
-    assert claims[0] == "claim one"
-    assert claims[1] == "claim two"
+
+def test_extract_claims_transport_error_returns_empty():
+    """A transport/parse exception degrades to no claims, never propagates."""
+    client = MagicMock()
+    client.invoke_structured.side_effect = RuntimeError("boom")
+    assert extract_claims("# Doc", client) == []
 
 
 # ---------------------------------------------------------------------------
@@ -169,10 +179,13 @@ def test_review_document_full_pipeline():
     claims_json = json.dumps(["Claim A is true", "Claim B is true"])
 
     client = MagicMock()
-    # First call: extract_claims -> returns JSON array
-    # Subsequent calls: verify_claim -> returns "verified"
+    # extract_claims -> invoke_structured (schema-enforced); verify_claim ->
+    # invoke_with_advisor (RAG verdict).
+    client.invoke_structured.return_value = StructuredResponse(
+        data={"claims": json.loads(claims_json)}, tokens_in=100, tokens_out=50,
+        model="m", tier="tier1", via_tool=True,
+    )
     client.invoke_with_advisor.side_effect = [
-        LLMResponse(text=claims_json, tokens_in=100, tokens_out=50, model="m", tier="tier1"),
         LLMResponse(text="verified", tokens_in=50, tokens_out=10, model="m", tier="tier1"),
         LLMResponse(text="unverified", tokens_in=50, tokens_out=10, model="m", tier="tier1"),
     ]
@@ -198,19 +211,16 @@ def test_review_document_full_pipeline():
 
 def test_review_document_caps_claims():
     """Content with many claims, max_claims=3, verify only 3 processed."""
-    many_claims = json.dumps([f"Claim {i}" for i in range(10)])
-
     client = MagicMock()
-    # First call: extract returns 10 claims
-    responses = [
-        LLMResponse(text=many_claims, tokens_in=100, tokens_out=50, model="m", tier="tier1"),
+    # extract returns 10 claims via structured output; only 3 get verified (cap).
+    client.invoke_structured.return_value = StructuredResponse(
+        data={"claims": [f"Claim {i}" for i in range(10)]},
+        tokens_in=100, tokens_out=50, model="m", tier="tier1", via_tool=True,
+    )
+    client.invoke_with_advisor.side_effect = [
+        LLMResponse(text="verified", tokens_in=50, tokens_out=10, model="m", tier="tier1")
+        for _ in range(3)
     ]
-    # Next 3 calls: verify (only 3 due to cap)
-    for _ in range(3):
-        responses.append(
-            LLMResponse(text="verified", tokens_in=50, tokens_out=10, model="m", tier="tier1"),
-        )
-    client.invoke_with_advisor.side_effect = responses
 
     rag_results = [
         {
@@ -227,8 +237,9 @@ def test_review_document_caps_claims():
         results = review_document("# Doc", Path("/tmp/test.db"), client, max_claims=3)
 
     assert len(results) == 3
-    # extract (1) + verify (3) = 4 total LLM calls
-    assert client.invoke_with_advisor.call_count == 4
+    # extract → 1 structured call; verify → 3 advisor calls (cap enforced)
+    assert client.invoke_structured.call_count == 1
+    assert client.invoke_with_advisor.call_count == 3
 
 
 # ---------------------------------------------------------------------------
