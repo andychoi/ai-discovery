@@ -385,6 +385,83 @@ def _phase_chunk(
     return chunks, rag_chunks
 
 
+def _phase_rag_embed(
+    rag_chunks: list,
+    config: DiscoveryConfig,
+    llm_client,
+    db_path: Path,
+    scan_id: int,
+    start_phase: int | None,
+    skip_phases: list[str],
+) -> None:
+    """Phase 10: embed RAG chunks into the vector store (side-effect only).
+
+    Nothing downstream reads a return value — the embeddings live in the DB.
+    Disabled via ``config.rag.enabled``; embedding failures are non-fatal (the
+    scan continues without RAG). Warms local embedding/tier1 models first so
+    they stay resident across phase transitions.
+    """
+    from .rag.embedder import embed_chunks
+
+    if not config.rag.enabled:
+        console.print("[dim]Phase 10 (rag_embed): disabled via config.rag.enabled=false[/]")
+        return
+    if not _phase_should_run(10, start_phase, skip_phases):
+        console.print("[dim]Phase 10 (rag_embed): skipped (already complete)[/]")
+        return
+
+    with _with_checkpoint(db_path, scan_id, 10, "rag_embed"):
+        # Pre-warm small models that stay resident for the whole run.
+        # (No-op on Bedrock; on Ollama this pins them with keep_alive=2h so they
+        # survive the 5-minute default unload timer across phase transitions.)
+        if config.provider in ("ollama", "mlx-gemma", "mlx-qwen"):
+            from ai_discovery.shared.model_defaults import MODELS
+            emb_model = MODELS.get(config.provider, {}).get("embedding", config.rag.ollama_model)
+            console.print(f"[dim]Warming embedding model ({emb_model})...[/]")
+            llm_client.warm_embedding("2h")
+            tier1_model = config.get_model("tier1")
+            console.print(f"[dim]Warming tier1 ({tier1_model})...[/]")
+            llm_client.warm("tier1", "2h")
+
+        with _timed("RAG embed"):
+            try:
+                workers = max(1, int(config.max_concurrent or 1))
+                with Progress(
+                    TextColumn("[bold cyan]Embedding RAG chunks"),
+                    BarColumn(),
+                    MofNCompleteColumn(),
+                    TextColumn("•"),
+                    TimeElapsedColumn(),
+                    TextColumn("•"),
+                    TimeRemainingColumn(),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    task = progress.add_task("embed", total=len(rag_chunks))
+
+                    def _on_progress(done: int, total: int) -> None:
+                        progress.update(task, completed=done)
+
+                    embed_result = embed_chunks(
+                        rag_chunks, db_path, llm_client,
+                        max_workers=workers,
+                        progress_callback=_on_progress,
+                    )
+                if embed_result.get("resumed"):
+                    console.print(
+                        f"  RAG embeddings: [green]{embed_result['embedded']}[/] vectors "
+                        f"[dim](resumed — skipped re-embedding)[/]"
+                    )
+                else:
+                    console.print(
+                        f"  RAG embeddings: [green]{embed_result['embedded']}[/] vectors "
+                        f"(dim={embed_result['dim']}, workers={workers})"
+                    )
+            except Exception as exc:
+                logger.warning("RAG embedding failed (continuing without RAG): %s", exc)
+                console.print(f"  [yellow]RAG embedding skipped:[/] {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -1200,65 +1277,10 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 10. Embed for RAG
     # ------------------------------------------------------------------
-    from .rag.embedder import embed_chunks
-
     # llm_client is already constructed up-front (before Phase 2); see CRIT-1 note.
-
-    if not config.rag.enabled:
-        console.print("[dim]Phase 10 (rag_embed): disabled via config.rag.enabled=false[/]")
-    elif _phase_should_run(10, start_phase, skip_phases):
-        with _with_checkpoint(db_path, scan_id, 10, "rag_embed"):
-            # Pre-warm small models that stay resident for the whole run.
-            # (No-op on Bedrock; on Ollama this pins them with keep_alive=2h so they
-            # survive the 5-minute default unload timer across phase transitions.)
-            if config.provider in ("ollama", "mlx-gemma", "mlx-qwen"):
-                from ai_discovery.shared.model_defaults import MODELS
-                emb_model = MODELS.get(config.provider, {}).get("embedding", config.rag.ollama_model)
-                console.print(f"[dim]Warming embedding model ({emb_model})...[/]")
-                llm_client.warm_embedding("2h")
-                tier1_model = config.get_model("tier1")
-                console.print(f"[dim]Warming tier1 ({tier1_model})...[/]")
-                llm_client.warm("tier1", "2h")
-
-            with _timed("RAG embed"):
-                try:
-                    workers = max(1, int(config.max_concurrent or 1))
-                    with Progress(
-                        TextColumn("[bold cyan]Embedding RAG chunks"),
-                        BarColumn(),
-                        MofNCompleteColumn(),
-                        TextColumn("•"),
-                        TimeElapsedColumn(),
-                        TextColumn("•"),
-                        TimeRemainingColumn(),
-                        console=console,
-                        transient=True,
-                    ) as progress:
-                        task = progress.add_task("embed", total=len(rag_chunks))
-
-                        def _on_progress(done: int, total: int) -> None:
-                            progress.update(task, completed=done)
-
-                        embed_result = embed_chunks(
-                            rag_chunks, db_path, llm_client,
-                            max_workers=workers,
-                            progress_callback=_on_progress,
-                        )
-                    if embed_result.get("resumed"):
-                        console.print(
-                            f"  RAG embeddings: [green]{embed_result['embedded']}[/] vectors "
-                            f"[dim](resumed — skipped re-embedding)[/]"
-                        )
-                    else:
-                        console.print(
-                            f"  RAG embeddings: [green]{embed_result['embedded']}[/] vectors "
-                            f"(dim={embed_result['dim']}, workers={workers})"
-                        )
-                except Exception as exc:
-                    logger.warning("RAG embedding failed (continuing without RAG): %s", exc)
-                    console.print(f"  [yellow]RAG embedding skipped:[/] {exc}")
-    else:
-        console.print("[dim]Phase 10 (rag_embed): skipped (already complete)[/]")
+    _phase_rag_embed(
+        rag_chunks, config, llm_client, db_path, scan_id, start_phase, skip_phases,
+    )
 
     # ------------------------------------------------------------------
     # 11. Tier 1: Summarize

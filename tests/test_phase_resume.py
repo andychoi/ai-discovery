@@ -173,3 +173,50 @@ def test_phase_chunk_resume_branch_rebuilds(monkeypatch, tmp_path):
         start_phase=12, skip_phases=[],
     )
     assert chunks == ["c"] and rag == ["r"]
+
+
+# ── _phase_rag_embed (extracted phase body, W2-1) ────────────────────────────
+
+
+def test_phase_rag_embed_disabled_returns_early(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    cfg = DiscoveryConfig()
+    cfg.rag.enabled = False
+    called = {"embed": False}
+    monkeypatch.setattr("ai_discovery.rag.embedder.embed_chunks",
+                        lambda *a, **k: called.__setitem__("embed", True) or {})
+    pipe._phase_rag_embed(["r"], cfg, object(), tmp_path / "x.db", 1, None, [])
+    assert called["embed"] is False
+
+
+def test_phase_rag_embed_skipped_when_already_complete(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    cfg = DiscoveryConfig()
+    called = {"embed": False}
+    monkeypatch.setattr("ai_discovery.rag.embedder.embed_chunks",
+                        lambda *a, **k: called.__setitem__("embed", True) or {})
+    # start_phase=12 → phase 10 already complete → no embedding.
+    pipe._phase_rag_embed(["r"], cfg, object(), tmp_path / "x.db", 1, 12, [])
+    assert called["embed"] is False
+
+
+def test_phase_rag_embed_runs_and_swallows_failure(monkeypatch, tmp_path):
+    import contextlib
+    import ai_discovery.pipeline as pipe
+    from ai_discovery.config import DiscoveryConfig
+
+    cfg = DiscoveryConfig()
+    cfg.provider = "bedrock"  # skip the local-model warming branch
+    monkeypatch.setattr(pipe, "_with_checkpoint",
+                        lambda *a, **k: contextlib.nullcontext())
+
+    def _boom(*a, **k):
+        raise RuntimeError("embed down")
+
+    monkeypatch.setattr("ai_discovery.rag.embedder.embed_chunks", _boom)
+    # Must not raise — RAG embedding failure is non-fatal.
+    pipe._phase_rag_embed(["r"], cfg, object(), tmp_path / "x.db", 1, None, [])
