@@ -314,6 +314,44 @@ def _find_previous_run(db_path: Path, repo: str, branch: str, commit_sha: str | 
 
 
 # ---------------------------------------------------------------------------
+# Extracted phase bodies
+#
+# W2-1: run_pipeline is a very long function; phases are being lifted into
+# self-contained module functions one at a time (each behavior-preserving and
+# covered by the full-pipeline integration test) so the orchestrator shrinks to
+# a sequence of calls. Each function owns its own run-vs-load decision and
+# checkpointing, matching the inline pattern it replaces.
+# ---------------------------------------------------------------------------
+
+
+def _phase_lang_detect(
+    repo_path,
+    db_path: Path,
+    scan_id: int,
+    start_phase: int | None,
+    skip_phases: list[str],
+) -> dict:
+    """Phase 5: detect languages. Returns the language-stats dict.
+
+    On resume (phase already complete) the stats are cheaply re-detected rather
+    than persisted/reloaded — language detection is a fast filesystem scan.
+    """
+    from .repo.lang_detector import detect_languages
+
+    if _phase_should_run(5, start_phase, skip_phases):
+        with _with_checkpoint(db_path, scan_id, 5, "lang_detect"):
+            with _timed("lang detect"), console.status("[bold cyan]Detecting languages..."):
+                lang_stats = detect_languages(repo_path)
+            lang_names = ", ".join(sorted(lang_stats.keys())) or "(none)"
+            console.print(f"  Languages detected: [green]{lang_names}[/]")
+            return lang_stats
+
+    console.print("[dim]Phase 5 (lang_detect): skipped (already complete)[/]")
+    with _timed("lang detect (cached)"), console.status("[bold cyan]Detecting languages (for resume)..."):
+        return detect_languages(repo_path)
+
+
+# ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
 
@@ -589,18 +627,9 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 5. Detect languages
     # ------------------------------------------------------------------
-    from .repo.lang_detector import detect_languages
-
-    if _phase_should_run(5, start_phase, skip_phases):
-        with _with_checkpoint(db_path, scan_id, 5, "lang_detect"):
-            with _timed("lang detect"), console.status("[bold cyan]Detecting languages..."):
-                lang_stats = detect_languages(resolved.repo_path)
-            lang_names = ", ".join(sorted(lang_stats.keys())) or "(none)"
-            console.print(f"  Languages detected: [green]{lang_names}[/]")
-    else:
-        console.print("[dim]Phase 5 (lang_detect): skipped (already complete)[/]")
-        with _timed("lang detect (cached)"), console.status("[bold cyan]Detecting languages (for resume)..."):
-            lang_stats = detect_languages(resolved.repo_path)
+    lang_stats = _phase_lang_detect(
+        resolved.repo_path, db_path, scan_id, start_phase, skip_phases,
+    )
 
     # ------------------------------------------------------------------
     # 6. Parse files

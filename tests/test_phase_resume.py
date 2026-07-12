@@ -94,3 +94,43 @@ def test_phase_should_run_gates_on_skip_list():
 
 def test_phase_should_run_no_constraints():
     assert _phase_should_run(6, None, []) is True
+
+
+# ── _phase_lang_detect (extracted phase body, W2-1) ──────────────────────────
+# The lang-detect phase is now a self-contained module function. These isolate
+# its run-vs-resume branch selection without a full pipeline run.
+
+
+def test_phase_lang_detect_run_branch(monkeypatch, tmp_path):
+    import contextlib
+    import ai_discovery.pipeline as pipe
+    import ai_discovery.repo.lang_detector as ld
+
+    monkeypatch.setattr(ld, "detect_languages", lambda p: {"python": 3, "java": 1})
+    # Neutralize the checkpoint context (no DB needed for this unit).
+    monkeypatch.setattr(pipe, "_with_checkpoint",
+                        lambda *a, **k: contextlib.nullcontext())
+
+    stats = pipe._phase_lang_detect(tmp_path, tmp_path / "x.db", 1,
+                                    start_phase=None, skip_phases=[])
+    assert stats == {"python": 3, "java": 1}
+
+
+def test_phase_lang_detect_resume_branch_recomputes(monkeypatch, tmp_path):
+    import ai_discovery.pipeline as pipe
+    import ai_discovery.repo.lang_detector as ld
+
+    calls = {"n": 0}
+
+    def _fake(p):
+        calls["n"] += 1
+        return {"go": 2}
+
+    monkeypatch.setattr(ld, "detect_languages", _fake)
+
+    # start_phase=6 → phase 5 is already complete; the resume branch re-detects
+    # (cheap) without entering the checkpoint context.
+    stats = pipe._phase_lang_detect(tmp_path, tmp_path / "x.db", 1,
+                                    start_phase=6, skip_phases=[])
+    assert stats == {"go": 2}
+    assert calls["n"] == 1
