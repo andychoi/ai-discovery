@@ -865,7 +865,7 @@ ai-discovery/
 
 ## License
 
-MIT
+AGPL-3.0 (GNU Affero General Public License v3.0)
 
 ---
 
