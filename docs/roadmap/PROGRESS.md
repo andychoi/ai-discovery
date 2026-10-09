@@ -209,3 +209,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k server` → 18 passed (envelope on every endpoint; paging/totals; tombstone successor; FTS injection-safe; graph caps; screens menu; notes; remote refused (403); token-guarded writes (401/200); bind check; static path traversal blocked); smoke run of every endpoint on the spring-petclinic v1 index; `discover --help` still imports neither fastapi nor tree-sitter; full `pytest -q` → 1454 passed, 3 skipped, 2 xfailed; ruff clean; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** `discover serve` (M4.5) wires `check_bind` + uvicorn; SPA build (M4.2); `/impact` (M5.2).
+
+## 2026-10-09 — M4.2 — web/ scaffold + wheel build
+- **Branch/commit:** rm/M4.2-web-scaffold @ 7cc69a4
+- **Changes:** `web/` (package.json with exact versions + package-lock.json, tsconfig, vite.config.ts, index.html, src/{main,App,api,vendors,vendor-types.d,styles,api.test}); `scripts/build_web.py` (new); `.gitignore` (static output, node_modules, web/dist); `pyproject.toml` package-data `server/static/**/*`; `tests/test_build_web.py` (11).
+- **Decisions:** renderer libraries are dynamic imports referenced from the entry (`window.__discoveryRenderers`) so they are emitted as local chunks but loaded only when a view needs them. The offline check flags *loads* (src/href, CSS url()/@import, JS import/from) of non-local hosts, not plain URL strings (XML namespaces and doc links inside libraries). Versions are 2024 releases (all verified on the registry). `python -m build` isn't installed in the dev venv; the wheel was built with `uv build --wheel`.
+- **Verify:** `python scripts/build_web.py` → vitest 2 passed, tsc clean, vite build ok, "80 files, 3.6 MiB, no external loads"; `uv build --wheel` → wheel contains `ai_discovery/server/static/index.html` + 79 assets (fonts, renderer chunks); `pytest -q tests/test_build_web.py` → 11 passed (incl. serving the real build); full `pytest -q` → 1465 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** CI step to run `scripts/build_web.py` before building the wheel (no CI config in repo yet); API type generation (`scripts/gen_api_types.py`, design §5) when the SPA grows (M4.3).

@@ -1,0 +1,25 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1d1f23;
+  --muted: #5b6270;
+  --accent: #2f5bd3;
+  --danger: #b42318;
+  font-family: "Inter", system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a;
+    --fg: #e6e8ec;
+    --muted: #9aa1ad;
+    --accent: #7ea2ff;
+    --danger: #ff8a7a;
+  }
+}
+body { margin: 0; background: var(--bg); }
+.shell { max-width: 72rem; margin: 0 auto; padding: 1rem; }
+header { display: flex; align-items: center; gap: 0.5rem; }
+h1 { font-size: 1.1rem; font-weight: 600; margin: 0; }
+.error { color: var(--danger); }
+code { font-size: 0.9em; }

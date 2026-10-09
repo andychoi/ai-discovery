@@ -1,0 +1,33 @@
+{
+  "name": "ai-discovery-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "ai-discovery wiki SPA. Built into src/ai_discovery/server/static/ by scripts/build_web.py; no Node at runtime.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fontsource/inter": "5.1.0",
+    "bpmn-js": "17.11.1",
+    "cytoscape": "3.30.4",
+    "dmn-js": "16.8.2",
+    "dompurify": "3.2.3",
+    "lucide-react": "0.460.0",
+    "marked": "14.1.4",
+    "mermaid": "11.4.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/cytoscape": "3.21.8",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "typescript": "5.6.3",
+    "vite": "5.4.11",
+    "vitest": "2.1.8"
+  }
+}
