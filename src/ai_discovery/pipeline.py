@@ -70,6 +70,9 @@ _PHASE_SPECS = {
     19: "finalise",
 }
 _PHASE_NAME_TO_NUM = {v: k for k, v in _PHASE_SPECS.items()}
+# Phases gated by _phase_should_run. 14-19 always run (or are config-driven,
+# e.g. 16 via process_mining.enabled), so --skip-phases rejects them (M0.6).
+_SKIPPABLE_PHASES = frozenset({2, 5, 6, 7, 8, 9, 10, 11, 12, 13})
 
 
 def _parse_phase_spec(spec: str) -> float:
@@ -267,27 +270,77 @@ def _budget_exhausted_fn(llm_client, config: DiscoveryConfig):
     return lambda: llm_client.total_cost_usd() >= limit
 
 
-def _find_previous_run(db_path: Path, repo: str, branch: str, commit_sha: str | None = None):
+def _repo_keys(repo: str, resolved=None) -> list[str]:
+    """Every string a previous scan_run may have stored for this repo (M0.6).
+
+    The raw CLI argument differs between `./repo`, `repo` and an absolute path,
+    so match on the argument, its absolute/resolved forms, and the resolver's
+    canonical path and URL.
+    """
+    keys = {repo}
+    if not _looks_like_url(repo):
+        p = Path(repo).expanduser()
+        keys.update({str(p.absolute()), str(p.resolve())})
+    if resolved is not None:
+        keys.add(str(resolved.repo_path))
+        keys.add(str(Path(resolved.repo_path).resolve()))
+        if getattr(resolved, "url", None):
+            keys.add(resolved.url)
+    return sorted(k for k in keys if k)
+
+
+def _looks_like_url(repo: str) -> bool:
+    return "://" in repo or repo.startswith("git@")
+
+
+def _iter_with_deadline(futures, started_at, timeout: float, poll: float = 1.0):
+    """Yield (future, expired) as futures finish or exceed *timeout* seconds of
+    run time (M0.6). `as_completed` + `result(timeout)` never times out because
+    it only yields finished futures. *started_at(future)* returns the monotonic
+    start time, or None while the future is still queued (queue time is free).
+    """
+    from concurrent.futures import FIRST_COMPLETED, wait
+
+    pending = set(futures)
+    while pending:
+        done, _ = wait(pending, timeout=poll, return_when=FIRST_COMPLETED)
+        for fut in done:
+            pending.discard(fut)
+            yield fut, False
+        now = time.monotonic()
+        for fut in list(pending):
+            t0 = started_at(fut)
+            if t0 is not None and now - t0 >= timeout:
+                pending.discard(fut)
+                fut.cancel()
+                yield fut, True
+
+
+def _find_previous_run(db_path: Path, repo, branch: str, commit_sha: str | None = None):
     """Find the most recent scan_run for the same repo.
 
+    *repo* is one key or a list of equivalent keys (see `_repo_keys`).
     Prefers an exact commit_sha match (repo-independent of branch name), then
     falls back to repo+branch. This handles repos whose default branch is
     'master' while the CLI default is 'main'.
     """
+    keys = [repo] if isinstance(repo, str) else list(repo)
+    marks = ",".join("?" * len(keys))
+    repo_clause = f"(repo_url IN ({marks}) OR repo_path IN ({marks}))"
     conn = get_conn(db_path)
     try:
         if commit_sha:
             row = conn.execute(
-                "SELECT * FROM scan_runs WHERE (repo_url = ? OR repo_path = ?) "
+                f"SELECT * FROM scan_runs WHERE {repo_clause} "
                 "AND commit_sha = ? ORDER BY id DESC LIMIT 1",
-                (repo, repo, commit_sha),
+                (*keys, *keys, commit_sha),
             ).fetchone()
             if row:
                 return row
         row = conn.execute(
-            "SELECT * FROM scan_runs WHERE (repo_url = ? OR repo_path = ?) AND branch = ? "
+            f"SELECT * FROM scan_runs WHERE {repo_clause} AND branch = ? "
             "ORDER BY id DESC LIMIT 1",
-            (repo, repo, branch),
+            (*keys, *keys, branch),
         ).fetchone()
         return row
     finally:
@@ -364,10 +417,29 @@ def run_pipeline(
     # the entry point where the error can reference the offending value.
     for spec in skip_phases:
         try:
-            _parse_phase_spec(spec)
+            num = _parse_phase_spec(spec)
         except ValueError as e:
             raise ValueError(f"--skip-phase {spec!r}: {e}") from e
-    prev_run = _find_previous_run(db_path, repo, resolved.branch, commit_sha=resolved.commit_sha)
+        # M0.6: phases 14-19 have no skip gate; reject instead of silently no-op.
+        if num not in _SKIPPABLE_PHASES:
+            raise ValueError(
+                f"--skip-phase {spec!r}: phase {num:g} ({_PHASE_SPECS.get(num, '?')}) cannot be skipped; "
+                f"skippable phases: {', '.join(f'{p:g}' for p in sorted(_SKIPPABLE_PHASES))}"
+            )
+    prev_run = _find_previous_run(
+        db_path, _repo_keys(repo, resolved), resolved.branch, commit_sha=resolved.commit_sha,
+    )
+
+    # M0.6: never resume a run recorded at a different commit — its checkpoints
+    # describe other code. (Falls back to repo+branch match when HEAD moved.)
+    if (resume or resume_from) and prev_run and prev_run["commit_sha"] \
+            and prev_run["commit_sha"] != resolved.commit_sha:
+        console.print(
+            f"[red bold]Cannot resume scan #{prev_run['id']}[/]: it was recorded at commit "
+            f"{prev_run['commit_sha'][:10]} but HEAD is {resolved.commit_sha[:10]}. "
+            "Run without --resume/--resume-from to start a new scan."
+        )
+        return "resume_refused"
 
     if resume and prev_run:
         if prev_run["status"] in ("push_failed", "llm_complete"):
@@ -1324,16 +1396,22 @@ def run_pipeline(
                 f"  Scenario flows: [green]{len(scenario_flows)}[/] reconstructed"
                 + (f" ([green]{verified_n}[/] source-verified)" if verified_n else "")
             )
+            # M0.6: persist now (artifacts added in phase 15) so a resume past
+            # phase 13 rehydrates from the DB instead of re-calling the LLM.
+            from .ai.flow_analyzer import persist_scenario_flows as _persist_flows
+            _persist_flows(scenario_flows, {}, scan_id, db_path)
     else:
-        console.print("[dim]Phase 13 (scenario_flow_inference): rebuilding (cheap)...[/]")
-        scenario_flows = []
-        flow_inference = ScenarioFlowInference(llm_client)
-        for scenario in scenarios:
-            try:
-                flow = flow_inference.infer_flow(scenario, summaries_dict)
-                scenario_flows.append(flow)
-            except Exception:
-                pass
+        from .ai.flow_analyzer import load_scenario_flows
+        scenario_flows, _ = load_scenario_flows(scan_id, db_path)
+        console.print(
+            f"[dim]Phase 13 (scenario_flow_inference): loaded {len(scenario_flows)} flows from DB[/]"
+        )
+        if not scenario_flows and scenarios:
+            console.print(
+                "[yellow]No persisted scenario flows for this scan (run predates flow "
+                "persistence or phase 13 was skipped). Re-run with --resume-from 13 to "
+                "rebuild them.[/]"
+            )
 
     # Free tier2 (~17 GB) before loading tier3 (~20 GB).
     tier2_model = config.get_model("tier2")
@@ -1534,7 +1612,10 @@ def run_pipeline(
 
                     return on_total_known, on_claim_done, _doc
 
+                _review_started: dict[int, float] = {}
+
                 def _review_one(rollup):
+                    _review_started[id(rollup)] = time.monotonic()
                     on_total, on_done, doc_counts = _make_callbacks(rollup)
                     claims = review_document(
                         rollup.content_md, db_path, llm_client,
@@ -1551,11 +1632,17 @@ def run_pipeline(
 
                 executor = ThreadPoolExecutor(max_workers=min(config.max_concurrent, len(rollups)))
                 futures = {executor.submit(_review_one, r): r for r in rollups}
+                _timed_out_reviews = 0
                 try:
-                    for future in _as_completed(futures):
+                    for future, _expired in _iter_with_deadline(
+                        futures, lambda f: _review_started.get(id(futures[f])), _PER_DOC_TIMEOUT,
+                    ):
                         rollup_submitted = futures[future]
                         try:
-                            rollup, claims, doc_counts = future.result(timeout=_PER_DOC_TIMEOUT)
+                            if _expired:
+                                _timed_out_reviews += 1
+                                raise _FuturesTimeout()
+                            rollup, claims, doc_counts = future.result()
                         except _FuturesTimeout:
                             logger.warning(
                                 "Self-review timed out for %s/%s after %ds",
@@ -1653,7 +1740,10 @@ def run_pipeline(
                     # queued. Abandoning threads (wait=False) would let them keep
                     # writing to generated_docs/claims after phase 18 starts
                     # reading those tables — a data-race we refuse to ship.
-                    executor.shutdown(wait=True, cancel_futures=True)
+                    # Exception (M0.6): when a review timed out, its thread may be
+                    # stuck forever. _review_one only *reads* (claims are persisted
+                    # here in the main loop), so abandoning it cannot race writes.
+                    executor.shutdown(wait=not _timed_out_reviews, cancel_futures=True)
 
             console.print(
                 f"  Self-review complete — "

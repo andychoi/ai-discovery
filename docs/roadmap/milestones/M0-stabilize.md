@@ -70,7 +70,7 @@
 - **Out of scope:** pre-run cost estimate (M2.4).
 
 ### M0.6 Resume correctness ★
-- **Status:** In progress (rm/M0.6-resume-correctness, 2026-10-08)
+- **Status:** Done (cd605f3)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M0.2, M0.5

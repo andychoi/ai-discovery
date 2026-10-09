@@ -69,3 +69,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k budget` → 23 passed (+ existing); full `pytest -q` → 1210 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** M1.10 — public `is_metered`/capability in `llm/`; M2.4 adds the pre-run estimate/cost gate.
+
+## 2026-10-08 — M0.6 — resume correctness
+- **Branch/commit:** rm/M0.6-resume-correctness @ cd605f3
+- **Changes:** `pipeline.py`: `_repo_keys` + multi-key `_find_previous_run`; refuse resume across commits (returns `resume_refused`; `cli.py` exits 2); phase 13 persists flows and the resume branch loads them via `load_scenario_flows`; `_SKIPPABLE_PHASES` validation; `_iter_with_deadline` for self-review (deadline counted from start, not submit). `ai/rollup.py`: `_load_rollups_from_db` keeps only rollup doc types. `tests/test_resume.py` (11 tests).
+- **Decisions:** reject (rather than implement) skipping phases 14–19 — they're replaced by named stages in M1.7/M1.8. When any self-review times out, the executor is shut down with `wait=False`: `_review_one` only reads (claims are persisted in the main loop), so abandoning a stuck thread can't race writes; its LLM cost may still accrue in the client.
+- **Cross-lane edit:** `ai/rollup.py` one-line filter (resume crash found by the new test: phase-15 `onboard` docs have no rollup template).
+- **Verify:** `pytest -q tests/test_resume.py` → 11 passed; full `pytest -q` → 1221 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** runs created before this change have no persisted phase-13 flows; resuming them past 13 now warns and suggests `--resume-from 13` instead of silently re-paying.

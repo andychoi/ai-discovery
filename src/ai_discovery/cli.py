@@ -280,6 +280,8 @@ def scan(
         skip_phases=[p.strip() for p in skip_phases.split(",")] if skip_phases else [],
         rescan=rescan,
     )
+    if status == "resume_refused":
+        raise typer.Exit(2)
     if status == "budget_exceeded":
         # M0.5: a budget stop is not success — exit 3 (see docs/roadmap/design/cli-v1.md).
         raise typer.Exit(3)

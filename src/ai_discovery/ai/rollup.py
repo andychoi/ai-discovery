@@ -594,6 +594,9 @@ def _load_rollups_from_db(scan_id: int, db_path: Path) -> list[RollupResult]:
             "unverified_claims, verified_row_count FROM generated_docs WHERE scan_id = ?",
             (scan_id,),
         ).fetchall()
+        # M0.6: generated_docs also holds non-rollup docs (e.g. phase-15 "onboard"
+        # guides) that have no rollup template — reloading them broke resume.
+        rows = [r for r in rows if r["doc_type"] in DOC_TYPES]
         return [
             RollupResult(
                 domain=r["domain"],
