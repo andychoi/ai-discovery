@@ -5,7 +5,7 @@
 **Refs:** `docs/roadmap/design/cli-v1.md`
 
 ### M2.1 `cli/` skeleton ★
-- **Status:** In progress (rm/M2.1-cli-skeleton, 2026-10-09)
+- **Status:** Done (f88f67a)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M1.2, M1.3

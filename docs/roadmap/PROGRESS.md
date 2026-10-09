@@ -126,3 +126,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k "store or lock"` → 30 passed; real concurrent run on eShop: second scan exit 4 (`lock_held`), first exit 0, lock removed, DB at `0001 baseline`; full `pytest -q` → 1318 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
 - **Bench/golden changes:** `tests/golden/snapshots/*.json` gain `"schema_migrations": 1` in `table_counts` — the new bookkeeping table; no other diff (checked with `git diff`).
 - **Follow-ups:** `doctor --repair` (M2.5) should offer to clear a foreign-host lock; pre-existing unused imports in `pipeline.py` (ruff F401) left for the stage extraction (M1.6/M1.7).
+
+## 2026-10-09 — M2.1 — v1 CLI skeleton
+- **Branch/commit:** rm/M2.1-cli-skeleton @ f88f67a
+- **Changes:** `cli.py` → `cli/legacy.py` (verbatim); `cli/__init__.py` (root callback + global flags, `main()` with flag hoisting, re-exports legacy names), `cli/context.py` (`Globals`, `get_globals`, `hoist_global_flags`), `cli/output.py` (`emit`, `fail`, `handle_errors`, `ProgressEmitter`), `cli/commands/__init__.py` (v1 registry, empty until M2.2+); `core/errors.py`, `core/logging.py` (new); `pyproject.toml` entry point → `ai_discovery.cli:main`; `tests/cli/test_cli_skeleton.py` (31).
+- **Decisions:** legacy commands stay registered on the same app until their v1 replacements land (no name clashes; hard break completes in M2.7). Global flags are declared once on the root callback and hoisted from anywhere in argv by `main()` (tests calling `app` directly put them first). NDJSON progress goes to stdout, or stderr when `--json` owns stdout.
+- **Verify:** `pytest -q tests/cli` → 53 passed, 2 xfailed; `discover --help` 0.36 s and imports no tree-sitter/boto3/sqlite-vec/pipeline; real `discover scan … --no-llm -q --no-color --progress none` (flags after the command) → exit 0; unknown flag → exit 2; full `pytest -q` → 1346 passed, 3 skipped, 2 xfailed; ruff F821/F401 clean on new modules; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** `.discovery/logs/<run>.log` file logging is wired in `configure_logging(log_file=)` but not yet enabled per run (needs a run id → M2.3 scan v1).

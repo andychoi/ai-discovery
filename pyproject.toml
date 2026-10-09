@@ -58,7 +58,7 @@ dev = [
 ]
 
 [project.scripts]
-discover = "ai_discovery.cli:app"
+discover = "ai_discovery.cli:main"
 
 [tool.pytest.ini_options]
 markers = [
