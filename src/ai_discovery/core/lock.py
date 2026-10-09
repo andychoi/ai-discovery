@@ -172,3 +172,39 @@ class RunLock:
         current = self._read()
         if current and holder and current.get("token") == holder.get("token"):
             self.path.unlink(missing_ok=True)
+
+
+def lock_status(path: Path | str) -> tuple[str, dict]:
+    """Inspect a lock without taking it (for ``status`` / ``doctor``).
+
+    Returns (state, holder) where state is one of:
+    ``none`` (no lock), ``held`` (live owner on this host), ``stale`` (dead or
+    recycled pid on this host — safe to remove), ``foreign`` (owned by another
+    host; liveness unknown), ``corrupt`` (unreadable).
+    """
+    probe = RunLock(path)
+    if not probe.path.exists():
+        return "none", {}
+    holder = probe._read()
+    if holder is None:
+        return "corrupt", {}
+    if not holder:
+        return "none", {}
+    if holder.get("hostname") != socket.gethostname():
+        return "foreign", holder
+    return ("stale" if RunLock._is_stale(holder) else "held"), holder
+
+
+def remove_lock(path: Path | str, expected_token: str | None) -> bool:
+    """Delete the lock only if it still carries *expected_token* (None = corrupt lock)."""
+    probe = RunLock(path)
+    holder = probe._read()
+    if expected_token is None:
+        if holder is None:
+            probe.path.unlink(missing_ok=True)
+            return True
+        return False
+    if holder and holder.get("token") == expected_token:
+        probe.path.unlink(missing_ok=True)
+        return True
+    return False

@@ -26,6 +26,7 @@ COMMANDS = [
     "init", "scan", "chat", "ingest", "query", "impact", "federate", "view",
     "test-llm", "ingest-docs", "export-graph", "detect-screens", "verify-drift",
 ]
+V1_COMMANDS = ["status", "doctor"]  # v1 commands added so far (M2.5); legacy ones go in M2.7
 
 runner = CliRunner()
 
@@ -44,7 +45,8 @@ def _text(result) -> str:
 
 def test_command_set_is_known() -> None:
     names = {c.name or c.callback.__name__.replace("_", "-") for c in app.registered_commands}
-    assert names == set(COMMANDS), f"CLI command set changed: {sorted(names ^ set(COMMANDS))}"
+    expected = set(COMMANDS) | set(V1_COMMANDS)
+    assert names == expected, f"CLI command set changed: {sorted(names ^ expected)}"
 
 
 @pytest.mark.parametrize("command", COMMANDS)

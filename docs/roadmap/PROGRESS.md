@@ -134,3 +134,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/cli` → 53 passed, 2 xfailed; `discover --help` 0.36 s and imports no tree-sitter/boto3/sqlite-vec/pipeline; real `discover scan … --no-llm -q --no-color --progress none` (flags after the command) → exit 0; unknown flag → exit 2; full `pytest -q` → 1346 passed, 3 skipped, 2 xfailed; ruff F821/F401 clean on new modules; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** `.discovery/logs/<run>.log` file logging is wired in `configure_logging(log_file=)` but not yet enabled per run (needs a run id → M2.3 scan v1).
+
+## 2026-10-09 — M2.5 — status + doctor --repair
+- **Branch/commit:** rm/M2.5-status-doctor @ 1188374
+- **Changes:** `cli/commands/{status,doctor,_index}.py` (new), registered in `cli/commands/__init__.py`; `core/lock.py` `lock_status`/`remove_lock`; `core/paths.py` `legacy_db_candidates`; `tests/cli/test_status_doctor.py` (13); `tests/cli/test_cli_smoke.py` command-set guard includes v1 commands.
+- **Decisions:** until scan v1 (M2.3) writes `.discovery/`, status/doctor fall back to a legacy `data/discovery-output/output-<slug>/` DB (under the repo or cwd) whose latest `scan_runs.repo_path` is this repo. Doctor exit 1 when any check fails. Foreign-host locks are removed only with `--repair --yes` (closes the M1.4 follow-up). FTS rebuild repair is added when FTS tables exist (M1.5/M3.5).
+- **Verify:** `pytest -q tests/cli -k "status or doctor"` → 13 passed; real run on spring-petclinic: status (248 nodes, 1278 edges, up to date) and doctor (9 checks, 1 legacy-layout warning) both exit 0 — the scan's `data/` dir written into the sample app was removed afterwards; `--help` still imports nothing heavy; full `pytest -q` → 1359 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** M2.7 removes `test-llm` (superseded by `doctor --llm`). Status gains stale-page and degradation counts with M1.8/M3.5.

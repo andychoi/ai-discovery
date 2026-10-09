@@ -150,3 +150,13 @@ class ProjectLayout:
             for d in (self.cache_dir, self.logs_dir, self.exports_dir):
                 d.mkdir(exist_ok=True)
         return self
+
+
+def legacy_db_candidates(root: Path | str) -> list[Path]:
+    """Legacy-layout DBs directly under *root* (``output-<slug>/`` and older ``<slug>/`` trees)."""
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    current = sorted(root.glob("output-*/discovery-*.db"))
+    older = sorted(p for p in root.glob("*/discovery-*.db") if not p.parent.name.startswith("output-"))
+    return current + older
