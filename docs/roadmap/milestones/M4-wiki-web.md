@@ -5,7 +5,7 @@
 **Refs:** `docs/roadmap/design/wiki-web.md`
 
 ### M4.1 FastAPI server + API v1 ★
-- **Status:** Planned
+- **Status:** In progress (rm/M4.1-api-v1, 2026-10-09)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M3.1, M1.2
