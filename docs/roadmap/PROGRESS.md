@@ -201,3 +201,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k "page_build or idempotence"` → 6 passed (byte-identical rows across two `--full` scans; tombstone + note follow-through; staleness file → modules → overview); real scans: spring-petclinic 144 pages / 144 FTS rows, eShop 640 / 640, sample apps untouched; full `pytest -q` → 1438 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
 - **Bench/golden changes:** none (golden uses the legacy run_pipeline path, which doesn't run post-scan hooks).
 - **Follow-ups:** `doctor --repair` FTS rebuild now has data to rebuild (add in a doctor touch-up); M3.6 parity tests can build on these fixtures.
+
+## 2026-10-09 — M4.1 — FastAPI server + API v1
+- **Branch/commit:** rm/M4.1-api-v1 @ 8f5c365
+- **Changes:** `server/{__init__,app,api_v1}.py` (new); `pyproject.toml` + `fastapi>=0.110`, `uvicorn>=0.29`; `tests/test_server_api.py` (18).
+- **Decisions:** `impact` endpoint waits for M5.2 as specified. `/status` stages come from `phase_checkpoints` until the stage runner (M1.8) fills `stage_runs`. `/tables` `procs` is `[]` until M6.10. Search wraps every user token in quotes with a prefix `*`, so FTS operators in input can't inject query syntax; falls back to LIKE when FTS5 is missing (`meta.degraded: fts_unavailable`). `meta` is cached 5 s per scan (git + staleness are not free). Starlette's TestClient peer `testclient` counts as loopback.
+- **Verify:** `pytest -q tests -k server` → 18 passed (envelope on every endpoint; paging/totals; tombstone successor; FTS injection-safe; graph caps; screens menu; notes; remote refused (403); token-guarded writes (401/200); bind check; static path traversal blocked); smoke run of every endpoint on the spring-petclinic v1 index; `discover --help` still imports neither fastapi nor tree-sitter; full `pytest -q` → 1454 passed, 3 skipped, 2 xfailed; ruff clean; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** `discover serve` (M4.5) wires `check_bind` + uvicorn; SPA build (M4.2); `/impact` (M5.2).

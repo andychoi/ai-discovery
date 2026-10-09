@@ -46,6 +46,8 @@ dependencies = [
     "scikit-learn>=1.4",
     "networkx>=3.0",
     "pydantic>=2.6",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
 ]
 
 [project.optional-dependencies]
