@@ -19,7 +19,7 @@
 - **Out of scope:** individual command behaviour beyond stubs.
 
 ### M2.2 `init` + first-run menu ★
-- **Status:** Planned
+- **Status:** In progress (rm/M2.2-init-menu, 2026-10-09)
 - **Size:** S
 - **Lane:** A
 - **Depends on:** M2.1
