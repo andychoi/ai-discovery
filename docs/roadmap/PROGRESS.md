@@ -160,3 +160,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/cli -k init` → 15 passed; real run on eShop with `--state-dir` (sample app untouched): detection printed, config written, exit 0; same without a TTY and without a choice → exit 2 `init_needs_choice`; full `pytest -q` → 1383 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** audit #88 framework detector reads only the first .csproj (eShop shows no framework). Advanced menu will offer excludes/encodings once those config keys exist (M6.1).
+
+## 2026-10-09 — M2.3 — scan v1
+- **Branch/commit:** rm/M2.3-scan-v1 @ 131d914
+- **Changes:** `cli/commands/scan.py`, `core/hooks.py` (new); legacy `scan` removed from `cli/legacy.py`; `pipeline.run_pipeline(..., layout=)`; `cli/output.ProgressEmitter` silent under `-q`; `tests/cli/test_scan_v1.py` (20); legacy-syntax CLI tests migrated (test_budget, test_config_v2, test_no_llm, test_resume, test_store_and_lock, test_cli_smoke).
+- **Decisions:** `--only` maps to `_SKIPPABLE_PHASES` until the stage engine (M1.8). "What's next" only suggests registered commands (no `serve`/`mcp` until M4.5/M5.3). `--source URL` and `--dry-run` deferred (M2.4 / follow-up) — not in this item's acceptance. `-c/--config` and `--provider` are gone from scan (config comes from `.discovery/config.yaml`; set via `discover init`).
+- **Verify:** `pytest -q tests/cli -k scan` → 20 passed; real keyless scans with `--state-dir` (sample apps untouched): spring-petclinic 43 files / 248 symbols / 1278 edges, eShop 378 / 1261 / 3297, both exit 0; full `pytest -q` → 1397 passed, 3 skipped, 2 xfailed; ruff clean on new modules; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Measured (baseline for M1.12/M6):** unresolved call edges — petclinic 1014/1278 (79%), eShop 2155/3297 (65%).
+- **Follow-ups:** README/CLAUDE.md still show `discover scan repo -p …` (M2.7 regenerates the CLI reference); `--source URL` (remote clone into state dir).

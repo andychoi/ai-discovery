@@ -14,7 +14,7 @@ import importlib
 
 import typer
 
-V1_COMMANDS: tuple[str, ...] = ("init", "status", "doctor")
+V1_COMMANDS: tuple[str, ...] = ("init", "scan", "status", "doctor")
 
 
 def register(app: typer.Typer) -> None:

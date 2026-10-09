@@ -96,5 +96,5 @@ def test_scan_cli_exit_code(status, code, tmp_path: Path) -> None:
     from ai_discovery.cli import app
 
     with patch("ai_discovery.pipeline.run_pipeline", return_value=status):
-        result = CliRunner().invoke(app, ["scan", str(tmp_path), "-p", "x", "-o", str(tmp_path / "o")])
+        result = CliRunner().invoke(app, ["-C", str(tmp_path), "scan"])
     assert result.exit_code == code, result.output

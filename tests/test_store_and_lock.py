@@ -201,5 +201,6 @@ def test_scan_cli_exits_4_when_locked(tmp_path: Path) -> None:
     from ai_discovery.cli import app
 
     with patch("ai_discovery.pipeline.run_pipeline", side_effect=LockHeld(tmp_path / "lock", {"pid": 1})):
-        result = CliRunner().invoke(app, ["scan", str(tmp_path), "-p", "x", "-o", str(tmp_path / "o")])
+        result = CliRunner().invoke(app, ["-C", str(tmp_path), "scan"])
     assert result.exit_code == 4, result.output
+    assert "lock_held" in result.output

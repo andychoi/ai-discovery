@@ -372,6 +372,7 @@ def run_pipeline(
     resume_from: str | None = None,
     skip_phases: list[str] | None = None,
     rescan: bool = False,
+    layout: "ProjectLayout | None" = None,
 ) -> str | None:
     """Run the pipeline under the project's single-flight run lock (M1.4).
 
@@ -381,12 +382,14 @@ def run_pipeline(
     """
     from .core.lock import RunLock
 
-    layout = ProjectLayout.legacy(output_dir, project_slug, docs_root).ensure()
+    # M2.3: v1 scans pass a ProjectLayout (`<repo>/.discovery/`); legacy callers
+    # still get the output-<slug> layout from output_dir/docs_root.
+    layout = (layout or ProjectLayout.legacy(output_dir, project_slug, docs_root)).ensure()
     with RunLock(layout.lock_path, purpose="scan"):
         return _run_pipeline_unlocked(
             repo=repo, branch=branch, project_slug=project_slug, output_dir=output_dir,
             config=config, docs_root=docs_root, resume=resume, resume_from=resume_from,
-            skip_phases=skip_phases, rescan=rescan,
+            skip_phases=skip_phases, rescan=rescan, layout=layout,
         )
 
 
@@ -401,6 +404,7 @@ def _run_pipeline_unlocked(
     resume_from: str | None = None,
     skip_phases: list[str] | None = None,
     rescan: bool = False,
+    layout: "ProjectLayout | None" = None,
 ) -> str | None:
     """Run the full discovery pipeline in offline mode.
 
@@ -421,7 +425,8 @@ def _run_pipeline_unlocked(
     # M1.2: every project path comes from core.paths.ProjectLayout (ADR-0001).
     # The current CLI still uses the legacy `-o/--docs-root/-p` layout; the v1
     # CLI (M2) switches scans to ProjectLayout.for_repo (`<repo>/.discovery/`).
-    layout = ProjectLayout.legacy(output_dir, project_slug, docs_root).ensure()
+    layout = (layout or ProjectLayout.legacy(output_dir, project_slug, docs_root)).ensure()
+    project_slug = layout.slug
     output_dir = layout.state_dir
     docs_dir = layout.docs_dir
     db_path = layout.db_path

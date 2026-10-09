@@ -74,7 +74,8 @@ class ProgressEmitter:
     """Stage/warn/error/done events in rich, json (NDJSON) or none mode."""
 
     def __init__(self, g: Globals):
-        self.mode = g.progress
+        # -q silences human-readable progress; NDJSON stays (it is machine output).
+        self.mode = "none" if (g.quiet and g.progress == "rich") else g.progress
         self._out = sys.stderr if g.json else sys.stdout
         self._console = stderr_console(g)
         self._t0 = time.monotonic()

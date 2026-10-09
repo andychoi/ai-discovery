@@ -90,8 +90,9 @@ def test_cli_exit_code_for_resume_refused(tmp_path: Path) -> None:
     from ai_discovery.cli import app
 
     with patch("ai_discovery.pipeline.run_pipeline", return_value="resume_refused"):
-        result = CliRunner().invoke(app, ["scan", str(tmp_path), "-p", "x", "-o", str(tmp_path / "o")])
+        result = CliRunner().invoke(app, ["--json", "-C", str(tmp_path), "scan", "--resume"])
     assert result.exit_code == 2
+    assert '"resume_refused"' in result.output
 
 
 # ── 3. phase 13 rehydrates without the LLM ────────────────────────────────

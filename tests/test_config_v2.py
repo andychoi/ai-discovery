@@ -52,7 +52,7 @@ def test_defaults_when_no_files(tmp_path: Path, no_env) -> None:
 def test_cli_flags_override_config(tmp_path: Path, no_env) -> None:
     from ai_discovery.cli import app
 
-    cfg_file = _write(tmp_path / "c.yaml", "provider: openai\nbudget_limit_usd: 9\nprod: true\n")
+    _write(tmp_path / ".discovery" / "config.yaml", "provider: openai\nbudget_limit_usd: 9\nprod: true\n")
     seen = {}
 
     def fake_run(**kwargs):
@@ -60,12 +60,11 @@ def test_cli_flags_override_config(tmp_path: Path, no_env) -> None:
         return "completed"
 
     with patch("ai_discovery.pipeline.run_pipeline", side_effect=fake_run):
-        result = CliRunner().invoke(app, ["scan", str(tmp_path), "-p", "x", "-o", str(tmp_path / "o"),
-                                          "-c", str(cfg_file), "--provider", "ollama", "--budget", "2"])
+        result = CliRunner().invoke(app, ["-C", str(tmp_path), "scan", "--budget", "2"])
     assert result.exit_code == 0, result.output
     cfg = seen["cfg"]
-    assert (cfg.provider, cfg.budget_limit_usd) == ("ollama", 2.0)
-    assert cfg.prod is True  # YAML prod: honoured, not reset by the absent --prod flag
+    assert (cfg.provider, cfg.budget_limit_usd) == ("openai", 2.0)
+    assert cfg.prod is True  # YAML prod: honoured when --quality is not given
 
 
 # ── discovery of the project file ─────────────────────────────────────────
@@ -125,8 +124,8 @@ def test_invalid_yaml_rejected(tmp_path: Path) -> None:
 def test_cli_reports_bad_config_with_exit_2(tmp_path: Path) -> None:
     from ai_discovery.cli import app
 
-    f = _write(tmp_path / "c.yaml", "provder: openai\n")
-    result = CliRunner().invoke(app, ["scan", str(tmp_path), "-p", "x", "-c", str(f)])
+    _write(tmp_path / "discovery.yaml", "provder: openai\n")
+    result = CliRunner().invoke(app, ["-C", str(tmp_path), "scan"])
     assert result.exit_code == 2
     assert "did you mean 'provider'" in " ".join(result.output.split())
 

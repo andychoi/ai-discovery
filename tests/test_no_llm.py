@@ -89,13 +89,15 @@ def test_cli_no_llm_flag_sets_config(tmp_path) -> None:
 
     from ai_discovery.cli import app
 
-    seen = {}
+    seen = []
 
     def fake_run_pipeline(**kwargs):
-        seen["no_llm"] = kwargs["config"].no_llm
+        seen.append(kwargs["config"].no_llm)
         return "completed"
 
     with patch("ai_discovery.pipeline.run_pipeline", side_effect=fake_run_pipeline):
-        result = CliRunner().invoke(app, ["scan", str(tmp_path), "-p", "x", "-o", str(tmp_path / "o"), "--no-llm"])
-    assert result.exit_code == 0, result.output
-    assert seen["no_llm"] is True
+        for args in (["scan"], ["scan", "--no-prose"], ["scan", "--prose"]):
+            result = CliRunner().invoke(app, ["-C", str(tmp_path), *args])
+            assert result.exit_code == 0, result.output
+    # default is structure only (keyless); --prose turns LLM stages on (M2.3)
+    assert seen == [True, True, False]

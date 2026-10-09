@@ -23,10 +23,10 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 SPRING_APP = FIXTURES / "projects" / "spring-boot-app"
 
 COMMANDS = [
-    "scan", "chat", "ingest", "query", "impact", "federate", "view",
+    "chat", "ingest", "query", "impact", "federate", "view",
     "test-llm", "ingest-docs", "export-graph", "detect-screens", "verify-drift",
 ]
-V1_COMMANDS = ["init", "status", "doctor"]  # v1 commands added so far (M2.5); legacy ones go in M2.7
+V1_COMMANDS = ["init", "scan", "status", "doctor"]  # v1 commands added so far (M2.5); legacy ones go in M2.7
 
 runner = CliRunner()
 
@@ -59,9 +59,10 @@ def test_help(command: str) -> None:
 # ── one real path per command ─────────────────────────────────────────────
 
 def test_scan_missing_repo_fails(tmp_path: Path) -> None:
-    # Current behaviour: raises ValueError (traceback) -> non-zero exit.
-    result = _invoke("scan", str(tmp_path / "nope"), "-p", "x", "-o", str(tmp_path / "o"))
-    assert result.exit_code != 0
+    # v1 (M2.3): clean reasoned error instead of the old ValueError traceback (audit #84).
+    result = _invoke("--json", "-C", str(tmp_path / "nope"), "scan")
+    assert result.exit_code == 5
+    assert '"project_not_found"' in result.output
 
 
 def test_chat_without_scan_fails(tmp_path: Path) -> None:
