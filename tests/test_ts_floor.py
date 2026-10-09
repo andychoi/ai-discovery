@@ -62,3 +62,33 @@ def test_route_parser_grammars_load() -> None:
     # route_parser disables itself silently when grammars fail to load.
     route_parser = importlib.import_module("ai_discovery.route_parser")
     assert route_parser._TS_AVAILABLE, "route_parser could not load JS/TS grammars (silent screen loss)"
+
+
+CRASH_FIXTURES = Path(__file__).parent / "fixtures" / "regressions"
+
+
+@pytest.mark.parametrize(
+    "path", sorted(p for p in CRASH_FIXTURES.rglob("*") if p.suffix in {".cs", ".java", ".js", ".ts", ".py"}),
+    ids=lambda p: p.parent.name + "/" + p.name,
+)
+def test_known_crash_fixtures_parse(path: Path) -> None:
+    """Files that crashed a tree-sitter release must parse cleanly.
+
+    Run in a subprocess: a native segfault would otherwise kill pytest.
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; from pathlib import Path\n"
+        "from ai_discovery.parsers.csharp import CSharpParser\n"
+        "from ai_discovery.parsers.java import JavaParser\n"
+        "from ai_discovery.parsers.javascript import JavaScriptParser\n"
+        "from ai_discovery.parsers.python_parser import PythonParser\n"
+        "f = Path(sys.argv[1])\n"
+        "for p in (CSharpParser(), JavaParser(), JavaScriptParser(), PythonParser()):\n"
+        "    if p.can_parse(f):\n"
+        "        for _ in range(3): assert p.parse_file(f)\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", code, str(path)], capture_output=True, text=True)
+    assert proc.returncode == 0, f"parser crashed (rc={proc.returncode}) on {path.name}: {proc.stderr[-500:]}"

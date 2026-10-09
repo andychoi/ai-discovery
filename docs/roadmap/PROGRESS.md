@@ -87,3 +87,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/test_secret_hygiene.py` → 16 passed; config_json leak test fails against the previous `pipeline.py` (proves the leak existed); full `pytest -q` → 1237 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** M2.5 doctor: git ≥ 2.31 check. Secrets inside *source code* sent to LLMs remain M1.13 (Exploring). Remote clone paths still live under the output dir (moves with M1.2).
+
+## 2026-10-08 — M0.10 — keyless --no-llm mode (+ tree-sitter 0.26 crash fix)
+- **Branch/commit:** rm/M0.10-no-llm @ 6dcea40
+- **Changes:** `config.py` `no_llm`; `cli.py` `--no-llm`; `pipeline.py` `_llm_skipped` gates phases 10–14, onboarding, 17 and the Ollama warm/unload calls; phase 2 writes structural specs; `ai/screen_spec_generator.py` `_spec_from_mapping` + `structural_screen_spec` (cross-lane, shared constructor so LLM and keyless specs can't drift). `tests/test_no_llm.py` (5): openai/bedrock/ollama with no keys and sockets blocked; keyless graph == LLM-scan graph; CLI flag.
+- **Found while verifying on real apps (`../sample-apps`):** py-tree-sitter **0.26.0 segfaults** on eShop `CatalogApi.cs` (and corrupts memory, crashing petclinic later). Original pre-roadmap code crashes identically → pre-existing. Pinned `tree-sitter>=0.25,<0.26` (cross-lane: pyproject grammar pins are lane C/M0.3); regression fixture `tests/fixtures/regressions/ts026-segfault/` (MIT, NOTICE.md) parsed in a subprocess by `test_ts_floor.py`. Also: UTF-8 BOM no longer counted as an encoding fallback (461 false "fallbacks" on eShop).
+- **Real-app keyless results:** spring-petclinic 248 nodes / 50 files / 1278 edges / 1 domain, 1s; eShop 1389 nodes / 567 files / 3271 edges / 319 domains, 1s; no screens (no supported menu format: Thymeleaf / Blazor). Exit 0 for both.
+- **Verify:** `pytest -q tests -k no_llm` → 5 passed; crash fixture fails on 0.26.0, passes on 0.25.2; full `pytest -q` → 1244 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** audit #86 domain classifier over/under-splits real apps (needs an M6 item); revisit tree-sitter ≥0.26 once upstream fixes the crash (the regression fixture will tell). Existing `.venv` must be re-installed (`uv pip install -e .`) to pick up the cap.

@@ -242,6 +242,7 @@ def scan(
     rescan: bool = typer.Option(False, "--rescan", help="Force full rescan (ignore cache)."),
     budget: Optional[float] = typer.Option(None, "--budget", help="Budget limit in USD."),
     prod: bool = typer.Option(False, "--prod", help="Use production model (tier3p) for doc generation instead of dev model (tier3d)."),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Keyless mode: deterministic phases only (no LLM, embeddings or API key)."),
 ) -> None:
     """Scan a repository, analyse its codebase, and generate SDLC documents offline.
 
@@ -258,6 +259,7 @@ def scan(
     if budget is not None:
         cfg.budget_limit_usd = budget
     cfg.prod = prod
+    cfg.no_llm = no_llm or cfg.no_llm
 
     console.print(f"[bold green]discover scan[/] repo={repo} branch={branch} project={project_slug}")
     tier3_label = "tier3p [bold](prod)[/]" if prod else "tier3d [dim](dev)[/]"

@@ -26,7 +26,9 @@ classifiers = [
 
 dependencies = [
     # Floors verified by tests/test_ts_floor.py (0.24 lacks QueryCursor).
-    "tree-sitter>=0.25",
+    # <0.26: 0.26.0 segfaults in QueryCursor.matches on real C# (eShop
+    # CatalogApi.cs; tests/fixtures/regressions/ts026-segfault).
+    "tree-sitter>=0.25,<0.26",
     "tree-sitter-c-sharp>=0.23.1",
     "tree-sitter-java>=0.23.5",
     "tree-sitter-python>=0.23.6",

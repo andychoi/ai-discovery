@@ -279,35 +279,8 @@ def generate_screen_spec(
         payload = response.data
 
         # Construct ScreenSpec object
-        spec = ScreenSpec(
-            screen_id=screen_mapping.screen.screen_id,
-            screen_label=screen_mapping.screen.label,
-            menu_path=screen_mapping.screen.menu_path,
-            purpose=payload.get("purpose", ""),
-            when_used=payload.get("when_used", ""),
-            interaction_mode=payload.get("interaction_mode", "inquiry"),
-            crud_profile=payload.get("crud_profile", "read_only"),
-            user_actions=payload.get("user_actions", []),
-            rules_narrative=payload.get("rules_narrative", ""),
-            rules=payload.get("rules", []),
-            fields_description=payload.get("fields_description", []),
-            downstream_effects=payload.get("downstream_effects", []),
-            open_items=payload.get("open_items", []),
-            related_docs={
-                "backend_specs": [c.class_name for c in screen_mapping.be_controllers],
-                "batch_jobs": screen_mapping.batch_jobs,
-                "databases": screen_mapping.db_tables,
-                "interfaces": screen_mapping.external_interfaces,
-            },
-            fe_component=screen_mapping.fe_component,
-            fe_api_calls=screen_mapping.fe_api_calls,
-            be_controllers=screen_mapping.be_controllers,
-            be_services=screen_mapping.be_services,
-            db_tables=screen_mapping.db_tables,
-            batch_jobs=screen_mapping.batch_jobs,
-            external_interfaces=screen_mapping.external_interfaces,
-            source_hashes=screen_mapping.source_hashes,
-            confidence=payload.get("confidence", 0.8),
+        spec = _spec_from_mapping(
+            screen_mapping, payload,
             tokens_in=response.tokens_in,
             tokens_out=response.tokens_out,
             model=response.model,
@@ -325,6 +298,51 @@ def generate_screen_spec(
             f"Screen spec generation failed for {screen_mapping.screen.screen_id}: {e}"
         )
         return None
+
+
+def _spec_from_mapping(screen_mapping, payload: dict, **extra) -> ScreenSpec:
+    """Build a ScreenSpec from the deterministic mapping plus LLM *payload*."""
+    return ScreenSpec(
+        screen_id=screen_mapping.screen.screen_id,
+        screen_label=screen_mapping.screen.label,
+        menu_path=screen_mapping.screen.menu_path,
+        purpose=payload.get("purpose", ""),
+        when_used=payload.get("when_used", ""),
+        interaction_mode=payload.get("interaction_mode", "inquiry"),
+        crud_profile=payload.get("crud_profile", "read_only"),
+        user_actions=payload.get("user_actions", []),
+        rules_narrative=payload.get("rules_narrative", ""),
+        rules=payload.get("rules", []),
+        fields_description=payload.get("fields_description", []),
+        downstream_effects=payload.get("downstream_effects", []),
+        open_items=payload.get("open_items", []),
+        related_docs={
+            "backend_specs": [c.class_name for c in screen_mapping.be_controllers],
+            "batch_jobs": screen_mapping.batch_jobs,
+            "databases": screen_mapping.db_tables,
+            "interfaces": screen_mapping.external_interfaces,
+        },
+        fe_component=screen_mapping.fe_component,
+        fe_api_calls=screen_mapping.fe_api_calls,
+        be_controllers=screen_mapping.be_controllers,
+        be_services=screen_mapping.be_services,
+        db_tables=screen_mapping.db_tables,
+        batch_jobs=screen_mapping.batch_jobs,
+        external_interfaces=screen_mapping.external_interfaces,
+        source_hashes=screen_mapping.source_hashes,
+        confidence=payload.get("confidence", 0.8),
+        **extra,
+    )
+
+
+def structural_screen_spec(screen_mapping) -> ScreenSpec:
+    """Screen spec from the mapping alone — no LLM (M0.10 keyless mode).
+
+    Technical sections (component, APIs, controllers, services, tables, hashes)
+    are filled; prose sections are empty. Confidence 1.0: every field is a
+    parsed fact, nothing is generated.
+    """
+    return _spec_from_mapping(screen_mapping, {"confidence": 1.0}, model="structural")
 
 
 def generate_all_screen_specs(

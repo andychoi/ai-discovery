@@ -120,3 +120,11 @@ def test_utf8_nodes_carry_no_encoding_hint() -> None:
     nodes = _parse(CSharpParser, FIXTURES / "OrderService.cs")
     assert nodes and not any("source_encoding" in n.framework_hints for n in nodes)
     assert enc.fallback_stats() == {}
+
+
+def test_utf8_bom_is_not_counted_as_fallback(tmp_path: Path) -> None:
+    f = tmp_path / "A.cs"
+    f.write_bytes(codecs.BOM_UTF8 + b"namespace A { class B { } }")
+    decoded = enc.read_source(f)
+    assert decoded.encoding == "utf-8-sig" and not decoded.is_fallback
+    assert enc.fallback_stats() == {}

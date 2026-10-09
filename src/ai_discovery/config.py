@@ -194,6 +194,10 @@ class DiscoveryConfig:
     budget_limit_usd: float = 50.0
     max_concurrent: int = 10
     prod: bool = False  # True → use tier3p for doc generation; False → tier3d
+    # M0.10 keyless mode: run only deterministic phases (no LLM, no embeddings,
+    # no network). Graph, screens (structural specs), FSM/DMN/EARS and the
+    # dependency catalog are still produced.
+    no_llm: bool = False
     # A-1 Louvain semantic batching: group Tier-1 chunks by call-graph
     # community and fire one structured call per batch (cheaper, and the
     # summarizer sees the callers/callees it describes). Degrades to the

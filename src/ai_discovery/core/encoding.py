@@ -49,7 +49,8 @@ class DecodedSource:
 
     @property
     def is_fallback(self) -> bool:
-        return self.encoding not in ("utf-8", "ascii") or self.lossy
+        # A UTF-8 BOM is ordinary (common in .NET repos), not a fallback.
+        return self.encoding not in ("utf-8", "utf-8-sig", "ascii") or self.lossy
 
     @property
     def text(self) -> str:

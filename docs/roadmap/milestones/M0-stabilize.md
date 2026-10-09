@@ -127,7 +127,7 @@
 - **Out of scope:** these commands are replaced in M2/M4; keep fixes minimal.
 
 ### M0.10 Keyless (`--no-llm`) mode in current pipeline ★
-- **Status:** In progress (rm/M0.10-no-llm, 2026-10-08)
+- **Status:** Done (6dcea40)
 - **Size:** S
 - **Lane:** A
 - **Depends on:** M0.6

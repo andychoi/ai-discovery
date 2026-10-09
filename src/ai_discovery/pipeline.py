@@ -238,6 +238,14 @@ def _is_metered(provider: str) -> bool:
     return provider not in _LOCAL_PROVIDERS
 
 
+def _llm_skipped(config: DiscoveryConfig, phase_label: str) -> bool:
+    """True (and says so) when keyless mode disables this LLM step (M0.10)."""
+    if getattr(config, "no_llm", False):
+        console.print(f"[dim]{phase_label}: skipped (--no-llm)[/]")
+        return True
+    return False
+
+
 def _budget_ok(llm_client, config: DiscoveryConfig, phase_label: str) -> bool:
     """Return True if budget still has room; print warning and return False otherwise.
 
@@ -595,8 +603,18 @@ def run_pipeline(
                 with _timed("screen map"), console.status("[bold cyan]Mapping screens to backend..."):
                     screen_mappings = map_all_screens(screens, resolved.repo_path)
 
-                # Generate specs via LLM
-                if not _budget_ok(llm_client, config, "Screen spec generation"):
+                # Generate specs via LLM (keyless: structural specs from the mapping)
+                if getattr(config, "no_llm", False):
+                    from .ai.screen_spec_generator import structural_screen_spec
+                    screen_specs = [structural_screen_spec(m) for m in screen_mappings]
+                    console.print(f"  Screen specs (structural, --no-llm): [green]{len(screen_specs)}[/]")
+                    write_all_screen_specs(
+                        screen_specs, docs_dir, project_slug,
+                        repo_url=resolved.url or str(resolved.repo_path),
+                        repo_commit=resolved.commit_sha,
+                    )
+                    persist_screen_specs(screen_specs, db_path, scan_id)
+                elif not _budget_ok(llm_client, config, "Screen spec generation"):
                     console.print("[yellow]Budget exceeded — skipping Phase 2 LLM.[/]")
                 else:
                     with _timed("screen specs"), Progress(
@@ -1216,6 +1234,8 @@ def run_pipeline(
 
     if not config.rag.enabled:
         console.print("[dim]Phase 10 (rag_embed): disabled via config.rag.enabled=false[/]")
+    elif _llm_skipped(config, "Phase 10 (rag_embed)"):
+        pass
     elif _phase_should_run(10, start_phase, skip_phases):
         with _with_checkpoint(db_path, scan_id, 10, "rag_embed"):
             # Pre-warm small models that stay resident for the whole run.
@@ -1275,7 +1295,7 @@ def run_pipeline(
     # ------------------------------------------------------------------
     from .ai.summarizer import summarize_chunks, persist_summaries, reuse_prior_summaries
 
-    if not _phase_should_run(11, start_phase, skip_phases):
+    if _llm_skipped(config, "Phase 11 (tier1_summarize)") or not _phase_should_run(11, start_phase, skip_phases):
         console.print("[dim]Phase 11 (tier1_summarize): loading from DB...[/]")
         summaries_dict = _load_summaries_from_db(db_path, scan_id)
         console.print(f"  Loaded [green]{len(summaries_dict)}[/] summaries from DB")
@@ -1326,7 +1346,7 @@ def run_pipeline(
     # ------------------------------------------------------------------
     from .ai.flow_analyzer import analyze_all_domains, persist_flows
 
-    if not _phase_should_run(12, start_phase, skip_phases):
+    if _llm_skipped(config, "Phase 12 (tier2_flow_analysis)") or not _phase_should_run(12, start_phase, skip_phases):
         console.print("[dim]Phase 12 (tier2_flow_analysis): loading from DB...[/]")
         flows_by_domain = _load_flows_from_db(db_path, scan_id)
         console.print(f"  Loaded [green]{sum(len(v) for v in flows_by_domain.values())}[/] flows from DB")
@@ -1367,7 +1387,10 @@ def run_pipeline(
 
     # 13: Scenario Flow Inference
     from .ai.flow_analyzer import ScenarioFlowInference
-    if _phase_should_run(13, start_phase, skip_phases):
+    if getattr(config, "no_llm", False):
+        _llm_skipped(config, "Phase 13 (scenario_flow_inference)")
+        scenario_flows = []
+    elif _phase_should_run(13, start_phase, skip_phases):
         with _with_checkpoint(db_path, scan_id, 13, "scenario_flow_inference"):
             console.print("[bold cyan]Phase 13: Reconstructing scenario flows...[/]")
             scenario_flows = []
@@ -1417,71 +1440,74 @@ def run_pipeline(
 
     # Free tier2 (~17 GB) before loading tier3 (~20 GB).
     tier2_model = config.get_model("tier2")
-    if config.provider == "ollama":
+    if config.provider == "ollama" and not getattr(config, "no_llm", False):
         console.print(f"[dim]Unloading tier2 ({tier2_model})...[/]")
         llm_client.unload("tier2")
 
     # ------------------------------------------------------------------
     # 14. Tier 3: Doc rollup
     # ------------------------------------------------------------------
-    if not _budget_ok(llm_client, config, "Tier 3 doc rollup"):
-        _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        return "budget_exceeded"
-
     from .ai.rollup import generate_all_docs, persist_rollups, DOC_TYPES
 
-    with _with_checkpoint(db_path, scan_id, 14, "tier3_doc_rollup"):
-        if config.provider == "ollama":
-            tier3_model = config.get_model("tier3")
-            console.print(f"[dim]Warming tier3 ({tier3_model})...[/]")
-            llm_client.warm("tier3", "1h")
+    if getattr(config, "no_llm", False):
+        _llm_skipped(config, "Phase 14 (tier3_doc_rollup)")
+        rollups = []
+    elif not _budget_ok(llm_client, config, "Tier 3 doc rollup"):
+        _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
+        return "budget_exceeded"
+    else:
+        with _with_checkpoint(db_path, scan_id, 14, "tier3_doc_rollup"):
+            if config.provider == "ollama":
+                tier3_model = config.get_model("tier3")
+                console.print(f"[dim]Warming tier3 ({tier3_model})...[/]")
+                llm_client.warm("tier3", "1h")
 
-        console.print("[bold cyan]Tier 3: Generating SDLC documents...[/]")
-        with _timed("Tier 3 doc rollup"), Progress(
-            SpinnerColumn(),
-            TextColumn("[bold]Tier 3 docs"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-        ) as progress:
-            total_docs = len(domains) * len(DOC_TYPES)
-            ptask = progress.add_task("Generating", total=total_docs)
+            console.print("[bold cyan]Tier 3: Generating SDLC documents...[/]")
+            with _timed("Tier 3 doc rollup"), Progress(
+                SpinnerColumn(),
+                TextColumn("[bold]Tier 3 docs"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+            ) as progress:
+                total_docs = len(domains) * len(DOC_TYPES)
+                ptask = progress.add_task("Generating", total=total_docs)
 
-            def _on_rollup_progress(done: int, total: int):
-                progress.update(ptask, completed=done, total=total)
+                def _on_rollup_progress(done: int, total: int):
+                    progress.update(ptask, completed=done, total=total)
 
-            rollups = generate_all_docs(
-                domains, summaries_dict, flows_by_domain, llm_client,
-                on_progress=_on_rollup_progress,
-                max_workers=config.max_concurrent,
-                db_path=db_path,
-                scan_id=scan_id,
-                budget_exhausted=_budget_exhausted_fn(llm_client, config),
-            )
-
-        # P0-4: deterministic structural check (no LLM). Flag file:line citations
-        # and qualified symbols in the generated prose that are absent from the
-        # parsed graph — likely fabrications — and annotate the doc so readers see
-        # the warning before relying on it.
-        try:
-            from .ai.prose_validator import build_known_graph, validate_prose, annotate
-            known_graph = build_known_graph(all_nodes)
-            flagged_total = 0
-            for r in rollups:
-                v = validate_prose(r.content_md, known_graph)
-                if not v.is_clean:
-                    r.content_md = annotate(r.content_md, v)
-                    flagged_total += v.count
-            if flagged_total:
-                console.print(
-                    f"  [yellow]Unverified code references flagged:[/] {flagged_total} "
-                    "(annotated in docs)"
+                rollups = generate_all_docs(
+                    domains, summaries_dict, flows_by_domain, llm_client,
+                    on_progress=_on_rollup_progress,
+                    max_workers=config.max_concurrent,
+                    db_path=db_path,
+                    scan_id=scan_id,
+                    budget_exhausted=_budget_exhausted_fn(llm_client, config),
                 )
-        except Exception as exc:  # annotation is non-critical: warn, don't lose docs
-            console.print(f"  [yellow]Prose validation skipped:[/] {exc}")
 
-        persist_rollups(rollups, scan_id, db_path, project_slug)
-        console.print(f"  Documents: [green]{len(rollups)}[/] generated")
+            # P0-4: deterministic structural check (no LLM). Flag file:line citations
+            # and qualified symbols in the generated prose that are absent from the
+            # parsed graph — likely fabrications — and annotate the doc so readers see
+            # the warning before relying on it.
+            try:
+                from .ai.prose_validator import build_known_graph, validate_prose, annotate
+                known_graph = build_known_graph(all_nodes)
+                flagged_total = 0
+                for r in rollups:
+                    v = validate_prose(r.content_md, known_graph)
+                    if not v.is_clean:
+                        r.content_md = annotate(r.content_md, v)
+                        flagged_total += v.count
+                if flagged_total:
+                    console.print(
+                        f"  [yellow]Unverified code references flagged:[/] {flagged_total} "
+                        "(annotated in docs)"
+                    )
+            except Exception as exc:  # annotation is non-critical: warn, don't lose docs
+                console.print(f"  [yellow]Prose validation skipped:[/] {exc}")
+
+            persist_rollups(rollups, scan_id, db_path, project_slug)
+            console.print(f"  Documents: [green]{len(rollups)}[/] generated")
 
     # 15: Generate Visual Artifacts (BPMN + Mermaid sequence/flowchart) and persist
     from .generators.bpmn_generator import BPMNGenerator
@@ -1505,7 +1531,7 @@ def run_pipeline(
         # A-7: tour/onboarding guides — deterministic call-graph learning path
         # per domain + ONE Tier-2 narrative call each. Budget-gated; a domain
         # too small to tour costs nothing.
-        if _budget_ok(llm_client, config, "Onboarding guides"):
+        if not _llm_skipped(config, "Onboarding guides") and _budget_ok(llm_client, config, "Onboarding guides"):
             from .generators.onboarding_generator import generate_onboarding_docs
 
             onboard_docs = generate_onboarding_docs(
@@ -1555,8 +1581,8 @@ def run_pipeline(
         console.print("[dim]Phase 16: Flow statistics disabled (set process_mining.enabled=true to enable)[/]")
 
     # Free tier3 (~20 GB) so self-review (tier1) has headroom.
-    if config.provider == "ollama":
-        console.print(f"[dim]Unloading tier3 ({tier3_model})...[/]")
+    if config.provider == "ollama" and not getattr(config, "no_llm", False):
+        console.print(f"[dim]Unloading tier3 ({config.get_model('tier3')})...[/]")
         llm_client.unload("tier3")
 
     # Checkpoint: LLM tiers done — resume can skip here on rerun
@@ -1565,7 +1591,9 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 17. Self-review (before write so annotations appear in output files)
     # ------------------------------------------------------------------
-    if not _budget_ok(llm_client, config, "self-review"):
+    if _llm_skipped(config, "Phase 17 (self_review)"):
+        record_phase_complete(db_path, scan_id, 17, "self_review", {"skipped": "no_llm"})
+    elif not _budget_ok(llm_client, config, "self-review"):
         console.print("[yellow]Skipping self-review due to budget limit.[/]")
         record_phase_complete(db_path, scan_id, 17, "self_review", {"skipped": "budget"})
     elif not rollups:
