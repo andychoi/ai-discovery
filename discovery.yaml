@@ -1,7 +1,7 @@
 # AI-Discovery Configuration
 # Customize discovery behavior, model selection, and optional features
 
-# Provider: bedrock | ollama | mlx-gemma | mlx-qwen
+# Provider: bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic
 provider: ollama
 
 # LLM cost limit (USD) — stops pipeline if exceeded
@@ -31,14 +31,10 @@ rag:
   chunk_overlap: 200
   top_k: 5
 
-# Process Mining Configuration (Stage 10.5) — OPTIONAL
-# Set enabled: true to enable process mining and conformance analysis
+# Flow Statistics Configuration (Phase 16) — OPTIONAL
+# Set enabled: true to enable per-scenario flow statistics reports
 process_mining:
   enabled: false
-  miner_variant: inductive
-  fitness_threshold: 0.9
-  precision_threshold: 0.85
-  generalization_threshold: 0.8
   max_traces: 10000
   output_reports: true
 

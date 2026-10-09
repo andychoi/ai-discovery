@@ -104,3 +104,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k paths` → 12 passed; `rg -n '"output-' src/ai_discovery | grep -v core/paths.py` → empty; ruff F821 on src → only the known `ingest-docs` NameError (M0.9); real run on spring-petclinic: scan → export-graph (248 nodes, 1278 edges, 7 FSMs) → impact OK; full `pytest -q` → 1256 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** `impact` needs the entity table name (`owners`), not the class (`Owner`) — UX item for M5.2. Add a ruff F821 check to CI (no linter configured yet).
+
+## 2026-10-08 — M1.3 — config v2 (layered + validated)
+- **Branch/commit:** rm/M1.3-config-v2 @ 54dba00
+- **Changes:** `config.py` → `config/__init__.py` (env overrides factored into `_apply_env_overrides`); `config/loader.py` (`load_config`, `ConfigError`, `config_sources`, user/project discovery); `config/template.py` (single template, moved out of `cli.py init`); `cli.py` `_load_config` (exit 2 on bad config), `--prod` no longer resets YAML; `discovery.yaml` + `discovery.yaml.example` regenerated; `pyproject.toml` + `pydantic>=2.6`; `tests/conftest.py` (autouse isolation); `tests/test_config_v2.py` (20).
+- **Decisions:** pydantic validates the merged dict against the *existing* dataclasses (`__pydantic_config__ = extra=forbid` + `TypeAdapter`) — strictness without rewriting the ~130 consumers. Model-role rename (fast/standard/deep, quality draft|final) moved to M1.10 (it rewrites the LLM layer). SecretStr not used: persistence is already covered by M0.8 redaction.
+- **Behaviour changes:** a `discovery.yaml` in the working directory is now auto-loaded (README promised "no config needed" but the file was ignored without `-c`); configs with unknown/removed keys now fail fast instead of being silently ignored.
+- **Verify:** `pytest -q tests -k config` → 52 passed; full `pytest -q` → 1277 passed, 3 skipped, 2 xfailed; golden unchanged; ruff F821/F401 on config/ + cli.py clean except known ingest-docs NameError (M0.9); `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** `.env.sample` still lists unread variables (M0.1). `doctor`/`status` (M2.5) should print `config_sources()`.

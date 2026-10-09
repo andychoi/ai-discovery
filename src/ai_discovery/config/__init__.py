@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-import yaml
 
 log = logging.getLogger(__name__)
 
@@ -159,7 +158,7 @@ class ProcessMiningConfig:
 
     Formerly configured pm4py-based mining (miner_variant, fitness/precision/
     generalization thresholds); those fields were removed 2026-06-06 along with
-    pm4py — old discovery.yaml keys are silently ignored via _only_known().
+    pm4py — old keys are now rejected with a "delete this key" hint (config/loader.py).
     """
     enabled: bool = False  # Default: disabled (opt-in via config or CLI flag)
     max_traces: int = 10000  # Max traces to process per scenario
@@ -261,132 +260,92 @@ class DiscoveryConfig:
     # ── factory ───────────────────────────────────────────────────────────
 
     @classmethod
-    def load(cls, config_path: Optional[str] = None) -> "DiscoveryConfig":
-        """Load configuration from a YAML file (if provided) with env-var
-        override for the LLM provider.
+    def load(cls, config_path: Optional[str] = None, *, cwd: Optional[Path] = None) -> "DiscoveryConfig":
+        """Load configuration (M1.3): defaults < user file < project file < env.
 
-        Environment variable ``DISCOVERY_LLM_PROVIDER`` overrides the
-        ``provider`` field when set.
+        *config_path* (``-c``) replaces project-file discovery and must exist.
+        Without it, ``<project>/.discovery/config.yaml`` (walking up from
+        *cwd*) or ``./discovery.yaml`` is used when present. Unknown keys and
+        wrong types raise ``ConfigError``. CLI flags are applied by the caller
+        on top of the returned object.
         """
-        cfg = cls()
-        yaml_has_bedrock = False
+        from .loader import load_config
 
-        if config_path and Path(config_path).exists():
-            with open(config_path) as fh:
-                raw = yaml.safe_load(fh) or {}
+        return load_config(config_path, cwd=cwd)
 
-            # Top-level scalars
-            if "provider" in raw:
-                cfg.provider = raw["provider"]
-            if "budget_limit_usd" in raw:
-                cfg.budget_limit_usd = float(raw["budget_limit_usd"])
-            if "max_concurrent" in raw:
-                cfg.max_concurrent = int(raw["max_concurrent"])
-            if "semantic_batching" in raw:
-                cfg.semantic_batching = bool(raw["semantic_batching"])
 
-            # Nested sections — filter to known fields so forward/backward
-            # compatible YAMLs don't raise TypeError on unexpected keys.
-            def _only_known(dc_cls, d: dict) -> dict:
-                allowed = {f.name for f in fields(dc_cls)}
-                dropped = set(d) - allowed
-                if dropped:
-                    log.warning("Ignoring unknown %s keys in YAML: %s",
-                                dc_cls.__name__, sorted(dropped))
-                return {k: v for k, v in d.items() if k in allowed}
+def _apply_env_overrides(cfg: "DiscoveryConfig", yaml_has_bedrock: bool) -> "DiscoveryConfig":
+    """Environment-variable overrides (precedence above every config file)."""
+    # Env-var overrides
+    env_provider = os.environ.get("DISCOVERY_LLM_PROVIDER")
+    if env_provider:
+        cfg.provider = env_provider
 
-            if "bedrock" in raw and isinstance(raw["bedrock"], dict):
-                cfg.bedrock = BedrockConfig(**_only_known(BedrockConfig, raw["bedrock"]))
-                yaml_has_bedrock = True
-            if "ollama" in raw and isinstance(raw["ollama"], dict):
-                cfg.ollama = OllamaConfig(**_only_known(OllamaConfig, raw["ollama"]))
-            if "mlx_gemma" in raw and isinstance(raw["mlx_gemma"], dict):
-                cfg.mlx_gemma = MLXGemmaConfig(**_only_known(MLXGemmaConfig, raw["mlx_gemma"]))
-            if "mlx_qwen" in raw and isinstance(raw["mlx_qwen"], dict):
-                cfg.mlx_qwen = MLXQwenConfig(**_only_known(MLXQwenConfig, raw["mlx_qwen"]))
-            if "openai" in raw and isinstance(raw["openai"], dict):
-                cfg.openai = OpenAIConfig(**_only_known(OpenAIConfig, raw["openai"]))
-            if "gemini" in raw and isinstance(raw["gemini"], dict):
-                cfg.gemini = GeminiConfig(**_only_known(GeminiConfig, raw["gemini"]))
-            if "anthropic" in raw and isinstance(raw["anthropic"], dict):
-                cfg.anthropic = AnthropicConfig(**_only_known(AnthropicConfig, raw["anthropic"]))
-            if "rag" in raw and isinstance(raw["rag"], dict):
-                cfg.rag = RagConfig(**_only_known(RagConfig, raw["rag"]))
-            if "process_mining" in raw and isinstance(raw["process_mining"], dict):
-                cfg.process_mining = ProcessMiningConfig(**_only_known(ProcessMiningConfig, raw["process_mining"]))
-            if "advisor" in raw and isinstance(raw["advisor"], dict):
-                cfg.advisor = AdvisorConfig(**_only_known(AdvisorConfig, raw["advisor"]))
+    # Ollama base URL override (needed when running in a container — host LLM via host.docker.internal)
+    env_ollama_url = os.environ.get("OLLAMA_URL")
+    if env_ollama_url:
+        cfg.ollama.base_url = env_ollama_url
 
-        # Env-var overrides
-        env_provider = os.environ.get("DISCOVERY_LLM_PROVIDER")
-        if env_provider:
-            cfg.provider = env_provider
+    # MLX base URL override — both mlx-gemma and mlx-qwen target the same
+    # ai-mlx-server instance, so they share MLX_SERVER_URL. In Docker, set
+    # this to http://host.docker.internal:11435 so the container can reach
+    # the host-native MLX runtime (MLX is Apple Silicon, can't run in a
+    # Linux container).
+    env_mlx_url = os.environ.get("MLX_SERVER_URL")
+    if env_mlx_url:
+        cfg.mlx_gemma.base_url = env_mlx_url
+        cfg.mlx_qwen.base_url = env_mlx_url
+    env_mlx_key = os.environ.get("MLX_API_KEY")
+    if env_mlx_key:
+        cfg.mlx_gemma.api_key = env_mlx_key
+        cfg.mlx_qwen.api_key = env_mlx_key
 
-        # Ollama base URL override (needed when running in a container — host LLM via host.docker.internal)
-        env_ollama_url = os.environ.get("OLLAMA_URL")
-        if env_ollama_url:
-            cfg.ollama.base_url = env_ollama_url
+    # Cloud API provider overrides — keys belong in env, not YAML.
+    # The anthropic SDK resolves ANTHROPIC_API_KEY itself, but we also
+    # surface it on the config for symmetry with openai/gemini.
+    env_openai_key = os.environ.get("OPENAI_API_KEY")
+    if env_openai_key:
+        cfg.openai.api_key = env_openai_key
+    env_openai_url = os.environ.get("OPENAI_BASE_URL")
+    if env_openai_url:
+        cfg.openai.base_url = env_openai_url
+    env_gemini_key = os.environ.get("GEMINI_API_KEY")
+    if env_gemini_key:
+        cfg.gemini.api_key = env_gemini_key
+    env_gemini_url = os.environ.get("GEMINI_BASE_URL")
+    if env_gemini_url:
+        cfg.gemini.base_url = env_gemini_url
+    env_anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    if env_anthropic_key:
+        cfg.anthropic.api_key = env_anthropic_key
 
-        # MLX base URL override — both mlx-gemma and mlx-qwen target the same
-        # ai-mlx-server instance, so they share MLX_SERVER_URL. In Docker, set
-        # this to http://host.docker.internal:11435 so the container can reach
-        # the host-native MLX runtime (MLX is Apple Silicon, can't run in a
-        # Linux container).
-        env_mlx_url = os.environ.get("MLX_SERVER_URL")
-        if env_mlx_url:
-            cfg.mlx_gemma.base_url = env_mlx_url
-            cfg.mlx_qwen.base_url = env_mlx_url
-        env_mlx_key = os.environ.get("MLX_API_KEY")
-        if env_mlx_key:
-            cfg.mlx_gemma.api_key = env_mlx_key
-            cfg.mlx_qwen.api_key = env_mlx_key
+    env_region = os.environ.get("AWS_REGION_NAME") or os.environ.get("AWS_DEFAULT_REGION")
+    if env_region:
+        cfg.bedrock.region = env_region
 
-        # Cloud API provider overrides — keys belong in env, not YAML.
-        # The anthropic SDK resolves ANTHROPIC_API_KEY itself, but we also
-        # surface it on the config for symmetry with openai/gemini.
-        env_openai_key = os.environ.get("OPENAI_API_KEY")
-        if env_openai_key:
-            cfg.openai.api_key = env_openai_key
-        env_openai_url = os.environ.get("OPENAI_BASE_URL")
-        if env_openai_url:
-            cfg.openai.base_url = env_openai_url
-        env_gemini_key = os.environ.get("GEMINI_API_KEY")
-        if env_gemini_key:
-            cfg.gemini.api_key = env_gemini_key
-        env_gemini_url = os.environ.get("GEMINI_BASE_URL")
-        if env_gemini_url:
-            cfg.gemini.base_url = env_gemini_url
-        env_anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-        if env_anthropic_key:
-            cfg.anthropic.api_key = env_anthropic_key
+    # Fall back to shared LLM_* env vars if no YAML bedrock override
+    if not yaml_has_bedrock:
+        env_fast = os.environ.get("LLM_FAST_BEDROCK_MODEL")
+        env_std = os.environ.get("LLM_STANDARD_BEDROCK_MODEL")
+        if env_fast:
+            cfg.bedrock.tier1 = env_fast
+        if env_std:
+            cfg.bedrock.tier2 = env_std
 
-        env_region = os.environ.get("AWS_REGION_NAME") or os.environ.get("AWS_DEFAULT_REGION")
-        if env_region:
-            cfg.bedrock.region = env_region
+    # tier3d / tier3p env-var overrides (always applied)
+    env_tier3d = os.environ.get("DISCOVERY_TIER3D_MODEL")
+    env_tier3p = os.environ.get("DISCOVERY_TIER3P_MODEL")
+    if env_tier3d:
+        cfg.bedrock.tier3d = env_tier3d
+    if env_tier3p:
+        cfg.bedrock.tier3p = env_tier3p
 
-        # Fall back to shared LLM_* env vars if no YAML bedrock override
-        if not yaml_has_bedrock:
-            env_fast = os.environ.get("LLM_FAST_BEDROCK_MODEL")
-            env_std = os.environ.get("LLM_STANDARD_BEDROCK_MODEL")
-            if env_fast:
-                cfg.bedrock.tier1 = env_fast
-            if env_std:
-                cfg.bedrock.tier2 = env_std
+    # RAG embedding overrides
+    env_embed_provider = os.environ.get("DISCOVERY_EMBEDDING_PROVIDER")
+    if env_embed_provider:
+        cfg.rag.embedding_provider = env_embed_provider
+    env_embed_model = os.environ.get("DISCOVERY_EMBEDDING_MODEL")
+    if env_embed_model:
+        cfg.rag.bedrock_model = env_embed_model
 
-        # tier3d / tier3p env-var overrides (always applied)
-        env_tier3d = os.environ.get("DISCOVERY_TIER3D_MODEL")
-        env_tier3p = os.environ.get("DISCOVERY_TIER3P_MODEL")
-        if env_tier3d:
-            cfg.bedrock.tier3d = env_tier3d
-        if env_tier3p:
-            cfg.bedrock.tier3p = env_tier3p
-
-        # RAG embedding overrides
-        env_embed_provider = os.environ.get("DISCOVERY_EMBEDDING_PROVIDER")
-        if env_embed_provider:
-            cfg.rag.embedding_provider = env_embed_provider
-        env_embed_model = os.environ.get("DISCOVERY_EMBEDDING_MODEL")
-        if env_embed_model:
-            cfg.rag.bedrock_model = env_embed_model
-
-        return cfg
+    return cfg

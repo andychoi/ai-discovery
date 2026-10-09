@@ -21,7 +21,7 @@
 - **Out of scope:** CLI flags (M2.1).
 
 ### M1.3 Config v2 ★
-- **Status:** In progress (rm/M1.3-config-v2, 2026-10-08)
+- **Status:** Done (54dba00)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** —
