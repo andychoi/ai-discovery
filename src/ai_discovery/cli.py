@@ -268,7 +268,7 @@ def scan(
         base_url, _ = cfg.get_endpoint()
         console.print(f"  endpoint={base_url}  tier1={cfg.get_model('tier1')}")
 
-    run_pipeline(
+    status = run_pipeline(
         repo=repo,
         branch=branch,
         project_slug=project_slug,
@@ -280,6 +280,9 @@ def scan(
         skip_phases=[p.strip() for p in skip_phases.split(",")] if skip_phases else [],
         rescan=rescan,
     )
+    if status == "budget_exceeded":
+        # M0.5: a budget stop is not success — exit 3 (see docs/roadmap/design/cli-v1.md).
+        raise typer.Exit(3)
 
 
 @app.command()

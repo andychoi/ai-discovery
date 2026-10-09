@@ -226,13 +226,21 @@ def _release_node_source(nodes: list) -> int:
     return freed
 
 
+def _is_metered(provider: str) -> bool:
+    """True for providers that bill per token (M0.5: every paid provider, not
+    just Bedrock). Local providers are free — same set the cost tracker rates at $0."""
+    from .shared.model_defaults import _LOCAL_PROVIDERS
+
+    return provider not in _LOCAL_PROVIDERS
+
+
 def _budget_ok(llm_client, config: DiscoveryConfig, phase_label: str) -> bool:
     """Return True if budget still has room; print warning and return False otherwise.
 
-    Local providers (ollama) have no cost — budget checks are skipped.
-    For Bedrock, budget_limit_usd: 0.0 means 'no LLM' (pipeline stops immediately).
+    Local providers (ollama, mlx-*) have no cost — budget checks are skipped.
+    For metered providers, budget_limit_usd: 0.0 means 'no LLM' (pipeline stops immediately).
     """
-    if config.provider != "bedrock":
+    if not _is_metered(config.provider):
         return True
     cost = llm_client.total_cost_usd()
     if cost >= config.budget_limit_usd:
@@ -253,7 +261,7 @@ def _budget_exhausted_fn(llm_client, config: DiscoveryConfig):
     loops, or None when there's nothing to enforce (non-bedrock, or no limit set)
     so the loops skip the check entirely with zero overhead.
     """
-    if config.provider != "bedrock" or not config.budget_limit_usd:
+    if not _is_metered(config.provider) or not config.budget_limit_usd:
         return None
     limit = config.budget_limit_usd
     return lambda: llm_client.total_cost_usd() >= limit
@@ -301,8 +309,11 @@ def run_pipeline(
     resume_from: str | None = None,
     skip_phases: list[str] | None = None,
     rescan: bool = False,
-) -> None:
+) -> str | None:
     """Run the full discovery pipeline in offline mode.
+
+    Returns the final scan status ("completed" or "budget_exceeded"); None for
+    early exits that did no work (already scanned, no code nodes).
 
     Intermediate state (SQLite DB, repo clone, cache) lives under
     output_dir/{project_slug}/. Final markdown is written to
@@ -1196,7 +1207,7 @@ def run_pipeline(
         console.print(f"  Loaded [green]{len(summaries_dict)}[/] summaries from DB")
     elif not _budget_ok(llm_client, config, "Tier 1 summarization"):
         _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        return
+        return "budget_exceeded"
     else:
         with _with_checkpoint(db_path, scan_id, 11, "tier1_summarize"):
             console.print("[bold cyan]Tier 1: Summarizing code chunks...[/]")
@@ -1247,7 +1258,7 @@ def run_pipeline(
         console.print(f"  Loaded [green]{sum(len(v) for v in flows_by_domain.values())}[/] flows from DB")
     elif not _budget_ok(llm_client, config, "Tier 2 flow analysis"):
         _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        return
+        return "budget_exceeded"
     else:
         with _with_checkpoint(db_path, scan_id, 12, "tier2_flow_analysis"):
             if config.provider == "ollama":
@@ -1335,7 +1346,7 @@ def run_pipeline(
     # ------------------------------------------------------------------
     if not _budget_ok(llm_client, config, "Tier 3 doc rollup"):
         _finalise_scan(scan_id, db_path, "budget_exceeded", llm_client)
-        return
+        return "budget_exceeded"
 
     from .ai.rollup import generate_all_docs, persist_rollups, DOC_TYPES
 
@@ -1734,8 +1745,12 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # 19. Finalise (offline-only — no push)
     # ------------------------------------------------------------------
+    # M0.5: a budget hit mid-phase lets later phases run on partial LLM output;
+    # record it so the scan is resumable and the CLI exits non-zero.
+    _exhausted = _budget_exhausted_fn(llm_client, config)
+    final_status = "budget_exceeded" if (_exhausted is not None and _exhausted()) else "completed"
     with _with_checkpoint(db_path, scan_id, 19, "finalise"):
-        _finalise_scan(scan_id, db_path, "completed", llm_client)
+        _finalise_scan(scan_id, db_path, final_status, llm_client)
 
         # Print summary
         cost = llm_client.total_cost_usd()
@@ -1766,6 +1781,14 @@ def run_pipeline(
             if next_phase is not None:
                 console.print(f"  [dim]To resume from a specific phase: discover scan repo --resume --resume-from={int(next_phase)}[/]")
         console.print()
+
+    if final_status == "budget_exceeded":
+        console.print(
+            f"[red bold]Budget limit reached during the scan[/] "
+            f"(${llm_client.total_cost_usd():.2f} >= ${config.budget_limit_usd:.2f}); "
+            "LLM output is partial. Raise --budget and re-run with --resume."
+        )
+    return final_status
 
 
 def _display_checkpoint_status(db_path: Path, scan_id: int) -> None:

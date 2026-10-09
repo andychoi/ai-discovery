@@ -61,3 +61,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k encoding` → 26 passed; same twin tests on pre-change parsers → 12 failed (proves coverage); full `pytest -q` → 1187 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** other readers outside parsers still use `errors="ignore"` (e.g. menu/route/SQL extractors) — sweep in M6.1 walker work; file-level encoding hints from `web.config`/`.editorconfig` not used yet.
+
+## 2026-10-08 — M0.5 — budget enforced for all paid providers
+- **Branch/commit:** rm/M0.5-budget-all-providers @ 85e03ef
+- **Changes:** `pipeline.py`: `_is_metered()` (not in `shared.model_defaults._LOCAL_PROVIDERS`) replaces the `provider != "bedrock"` checks in `_budget_ok`/`_budget_exhausted_fn`; `run_pipeline` returns final status; end-of-run check marks `budget_exceeded` when spend hit the limit mid-phase; `cli.py` scan exits 3 on `budget_exceeded`. `tests/test_budget.py` (23 tests incl. end-to-end OpenAI over-budget scan via golden stub).
+- **Decisions:** a mid-phase budget hit now records `budget_exceeded` instead of `completed`, so the run is resumable after raising `--budget` (resume treats non-completed runs as unfinished). Imported the private `_LOCAL_PROVIDERS` from lane-B `shared/model_defaults.py` read-only rather than editing it; M1.10 should expose a public capability for this.
+- **Verify:** `pytest -q tests -k budget` → 23 passed (+ existing); full `pytest -q` → 1210 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** M1.10 — public `is_metered`/capability in `llm/`; M2.4 adds the pre-run estimate/cost gate.
