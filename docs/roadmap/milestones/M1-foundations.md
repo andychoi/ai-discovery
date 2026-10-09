@@ -35,7 +35,7 @@
 - **Out of scope:** provider internals (M1.10).
 
 ### M1.4 Store: numbered migrations + run lock ★
-- **Status:** Planned
+- **Status:** In progress (rm/M1.4-store-migrations-lock, 2026-10-09)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M1.2
