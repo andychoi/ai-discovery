@@ -9,6 +9,7 @@ Pattern lifted from app/shared/sdlc_db.py.
 """
 
 import functools
+import json
 import logging
 import sqlite3
 import time
@@ -17,7 +18,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -525,6 +526,31 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         if "resolved_by" not in cols:
             conn.execute("ALTER TABLE call_edges ADD COLUMN resolved_by TEXT DEFAULT ''")
 
+    if current < 15:
+        # M0.8: scan_runs.config_json used to store the full config, including
+        # provider API keys; phase error messages could carry secrets. Scrub
+        # rows written by earlier versions.
+        _scrub_secrets(conn)
+
+
+def _scrub_secrets(conn: sqlite3.Connection) -> None:
+    """Redact secrets in previously persisted config_json / error_msg (M0.8)."""
+    from .core.redact import redact_mapping, safe_message
+
+    for row in conn.execute("SELECT id, config_json FROM scan_runs WHERE config_json IS NOT NULL").fetchall():
+        try:
+            cleaned = json.dumps(redact_mapping(json.loads(row["config_json"])))
+        except (ValueError, TypeError):
+            cleaned = "{}"
+        if cleaned != row["config_json"]:
+            conn.execute("UPDATE scan_runs SET config_json = ? WHERE id = ?", (cleaned, row["id"]))
+    for row in conn.execute(
+        "SELECT rowid AS rid, error_msg FROM phase_checkpoints WHERE error_msg IS NOT NULL"
+    ).fetchall():
+        cleaned = safe_message(row["error_msg"], 500)
+        if cleaned != row["error_msg"]:
+            conn.execute("UPDATE phase_checkpoints SET error_msg = ? WHERE rowid = ?", (cleaned, row["rid"]))
+
 
 # ---------------------------------------------------------------------------
 # Entity relationship (foreign-key) helpers — FK-aware table docs, Phase 1
@@ -668,10 +694,12 @@ def record_phase_error(
 ) -> None:
     """Record failure of a phase checkpoint.
 
-    Error messages are truncated to 500 chars to avoid storing
-    sensitive data (API keys, connection strings) from exception traces.
+    Error messages are redacted, then truncated to 500 chars (M0.8: redaction
+    first, so truncation can never keep the head of a secret).
     """
-    safe_msg = str(error_msg)[:500]
+    from .core.redact import safe_message
+
+    safe_msg = safe_message(error_msg, 500)
     conn = get_conn(db_path)
     try:
         conn.execute(

@@ -32,6 +32,7 @@ from rich.progress import (
 )
 
 from .config import DiscoveryConfig
+from .core.redact import redact_mapping
 from .db import (
     init_db, get_conn, now_iso, record_phase_start, record_phase_complete,
     record_phase_error, get_all_checkpoints, get_last_complete_phase
@@ -543,7 +544,8 @@ def run_pipeline(
                     project_slug,
                     now_iso(),
                     "running",
-                    json.dumps(asdict(config)),
+                    # M0.8: never persist API keys/tokens with the run record.
+                    json.dumps(redact_mapping(asdict(config))),
                 ),
             )
             scan_id = cursor.lastrowid

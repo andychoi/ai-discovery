@@ -78,3 +78,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/test_resume.py` → 11 passed; full `pytest -q` → 1221 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** runs created before this change have no persisted phase-13 flows; resuming them past 13 now warns and suggests `--resume-from 13` instead of silently re-paying.
+
+## 2026-10-08 — M0.8 — secret hygiene
+- **Branch/commit:** rm/M0.8-secret-hygiene @ b6348b8
+- **Changes:** `core/redact.py` (new); `pipeline.py` config_json via `redact_mapping`; `db.py` `record_phase_error` uses `safe_message` (redact then truncate), `SCHEMA_VERSION` 14→15 with `_scrub_secrets` migration; `repo/resolver.py` `_git` helper (timeout `DISCOVERY_GIT_TIMEOUT`=900s, `GIT_TERMINAL_PROMPT=0`, credentials via `GIT_CONFIG_COUNT/KEY_0/VALUE_0` `http.extraHeader`), `_clean_url`, `_scrub_remote`; `ResolvedRepo.url` is credential-free. `tests/test_secret_hygiene.py` (16 tests).
+- **Migration reserved/used:** db.py schema v15 (legacy inline migration; numbered migrations start with M1.4).
+- **Decisions:** redaction is key-name based for mappings (unset values kept, so the record shows a setting was empty) plus pattern based for free text. Header credentials require git ≥ 2.31 (`GIT_CONFIG_COUNT`); `doctor` (M2.5) should check the git version.
+- **Verify:** `pytest -q tests/test_secret_hygiene.py` → 16 passed; config_json leak test fails against the previous `pipeline.py` (proves the leak existed); full `pytest -q` → 1237 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** M2.5 doctor: git ≥ 2.31 check. Secrets inside *source code* sent to LLMs remain M1.13 (Exploring). Remote clone paths still live under the output dir (moves with M1.2).

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..core.redact import redact_text
 from .lang_detector import _SKIP_DIRS
 
 
@@ -25,33 +28,78 @@ def _is_url(repo: str) -> bool:
     return repo.startswith("https://") or repo.startswith("git@") or repo.startswith("ssh://")
 
 
-def _auth_url(repo: str) -> str:
-    """Inject a token into https URLs for private repos.
+_GIT_TIMEOUT = int(os.environ.get("DISCOVERY_GIT_TIMEOUT", "900"))
 
-    Checks GITHUB_TOKEN (for github.com) and GITEA_TOKEN / DISCOVERY_GITEA_TOKEN
-    (for Gitea hosts). Returns the URL unchanged if no matching token is found.
+
+def _token_for(repo: str) -> tuple[str, str] | None:
+    """(username, token) for private https repos, or None.
+
+    Checks GITHUB_TOKEN / GH_TOKEN (github.com) and DISCOVERY_GITEA_TOKEN /
+    GITEA_TOKEN (other hosts).
     """
     if not repo.startswith("https://"):
-        return repo
+        return None
     gh_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if gh_token and "github.com" in repo:
-        return repo.replace("https://", f"https://x-access-token:{gh_token}@")
+        return "x-access-token", gh_token
     gitea_token = os.environ.get("DISCOVERY_GITEA_TOKEN") or os.environ.get("GITEA_TOKEN")
     if gitea_token and "github.com" not in repo:
-        return repo.replace("https://", f"https://git:{gitea_token}@")
-    return repo
+        return "git", gitea_token
+    return None
+
+
+def _git_env(repo: str | None = None) -> dict[str, str]:
+    """Environment for git subprocesses (M0.8).
+
+    Credentials go in an ``http.extraHeader`` supplied through
+    ``GIT_CONFIG_COUNT``/``KEY``/``VALUE`` env vars (git >= 2.31): never in the
+    clone URL (which git persists to .git/config) and never on the command line
+    (visible in the process list). Prompts are disabled so a missing credential
+    fails fast instead of hanging.
+    """
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    cred = _token_for(repo) if repo else None
+    if cred:
+        basic = base64.b64encode(f"{cred[0]}:{cred[1]}".encode()).decode()
+        env.update({
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "http.extraHeader",
+            "GIT_CONFIG_VALUE_0": f"Authorization: Basic {basic}",
+        })
+    return env
+
+
+def _git(args: list[str], *, cwd: Path | None = None, repo: str | None = None,
+         check: bool = False) -> subprocess.CompletedProcess:
+    """Run git with a timeout and credential env; redact secrets in errors."""
+    try:
+        result = subprocess.run(
+            ["git", *args], cwd=cwd, env=_git_env(repo),
+            capture_output=True, text=True, timeout=_GIT_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"git {args[0]} timed out after {_GIT_TIMEOUT}s") from exc
+    if check and result.returncode != 0:
+        raise RuntimeError(f"git {args[0]} failed: {redact_text(result.stderr.strip())}")
+    return result
+
+
+def _clean_url(url: str) -> str:
+    """Strip any user:token@ credentials from an https URL."""
+    return re.sub(r"^(https?://)[^/@]+@", r"\1", url)
+
+
+def _scrub_remote(clone_path: Path) -> None:
+    """Remove credentials an older version embedded in origin's URL (M0.8)."""
+    current = _git(["remote", "get-url", "origin"], cwd=clone_path)
+    url = current.stdout.strip()
+    if current.returncode == 0 and _clean_url(url) != url:
+        _git(["remote", "set-url", "origin", _clean_url(url)], cwd=clone_path, check=True)
 
 
 def _get_commit_sha(repo_path: Path) -> str:
     """Get HEAD commit SHA via git rev-parse."""
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo_path,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout.strip()
+    return _git(["rev-parse", "HEAD"], cwd=repo_path, check=True).stdout.strip()
 
 
 def _fingerprint_dir(root: Path) -> str:
@@ -103,93 +151,44 @@ def resolve_repo(repo: str, branch: str, work_dir: Path) -> ResolvedRepo:
         if name.endswith(".git"):
             name = name[:-4]
         clone_path = work_dir / name
-        clone_url = _auth_url(repo)
+        clean_repo = _clean_url(repo)
 
         if clone_path.exists() and (clone_path / ".git").exists():
+            _scrub_remote(clone_path)
             # Already cloned — fetch, then checkout the requested branch with
             # fallback to the remote's actual default branch.
-            subprocess.run(
-                ["git", "fetch", "origin"],
-                cwd=clone_path,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            result = subprocess.run(
-                ["git", "checkout", branch],
-                cwd=clone_path,
-                capture_output=True,
-                text=True,
-            )
+            _git(["fetch", "origin"], cwd=clone_path, repo=clean_repo, check=True)
+            result = _git(["checkout", branch], cwd=clone_path)
             if result.returncode != 0:
                 # Requested branch doesn't exist — resolve the remote default.
                 # Try origin/HEAD first; if not set, ask the remote to auto-set it.
-                head = subprocess.run(
-                    ["git", "rev-parse", "--abbrev-ref", "origin/HEAD"],
-                    cwd=clone_path,
-                    capture_output=True,
-                    text=True,
-                )
+                head = _git(["rev-parse", "--abbrev-ref", "origin/HEAD"], cwd=clone_path)
                 if head.returncode != 0:
-                    subprocess.run(
-                        ["git", "remote", "set-head", "origin", "--auto"],
-                        cwd=clone_path,
-                        capture_output=True,
-                    )
-                    head = subprocess.run(
-                        ["git", "rev-parse", "--abbrev-ref", "origin/HEAD"],
-                        cwd=clone_path,
-                        capture_output=True,
-                        text=True,
-                    )
+                    _git(["remote", "set-head", "origin", "--auto"], cwd=clone_path, repo=clean_repo)
+                    head = _git(["rev-parse", "--abbrev-ref", "origin/HEAD"], cwd=clone_path)
                 branch = head.stdout.strip().removeprefix("origin/") if head.returncode == 0 else "master"
-                subprocess.run(
-                    ["git", "checkout", branch],
-                    cwd=clone_path,
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-            subprocess.run(
-                ["git", "pull", "origin", branch],
-                cwd=clone_path,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+                _git(["checkout", branch], cwd=clone_path, check=True)
+            _git(["pull", "origin", branch], cwd=clone_path, repo=clean_repo, check=True)
         else:
-            # Fresh clone — try requested branch first, fall back to default
-            result = subprocess.run(
-                ["git", "clone", "--branch", branch, clone_url, str(clone_path)],
-                capture_output=True,
-                text=True,
-            )
+            # Fresh clone — try requested branch first, fall back to default.
+            # The persisted remote URL is credential-free (M0.8).
+            result = _git(["clone", "--branch", branch, clean_repo, str(clone_path)], repo=clean_repo)
             if result.returncode != 0:
-                fallback = subprocess.run(
-                    ["git", "clone", clone_url, str(clone_path)],
-                    capture_output=True,
-                    text=True,
-                )
+                fallback = _git(["clone", clean_repo, str(clone_path)], repo=clean_repo)
                 if fallback.returncode != 0:
-                    hint = fallback.stderr.strip() or result.stderr.strip()
+                    hint = redact_text(fallback.stderr.strip() or result.stderr.strip())
                     raise RuntimeError(
-                        f"git clone failed for {repo}\n{hint}"
+                        f"git clone failed for {clean_repo}\n{hint}"
                     )
                 # Resolve actual default branch
-                head = subprocess.run(
-                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                    cwd=clone_path,
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
+                head = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=clone_path, check=True)
                 branch = head.stdout.strip()
 
         commit_sha = _get_commit_sha(clone_path)
         return ResolvedRepo(
             repo_path=clone_path,
             is_local=False,
-            url=repo,
+            url=clean_repo,
             branch=branch,
             commit_sha=commit_sha,
         )
