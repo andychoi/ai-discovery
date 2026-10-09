@@ -177,3 +177,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k pages_model` → 18 passed; full `pytest -q` → 1415 passed, 3 skipped, 2 xfailed; ruff clean on `pages/`; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** none.
+
+## 2026-10-09 — M3.2 — code page builders
+- **Branch/commit:** rm/M3.2-code-builders @ 538bead
+- **Changes:** `pages/builders/code.py` (new: `Snapshot` loader cached per build, four builders); `tests/test_builders_code.py` (9).
+- **Decisions:** sections are built in Python rather than Jinja templates (`pages/templates/` not created) — simpler, deterministic, and the page body is already composed from `Section`s; templates can come with the SPA if a format needs them. Entry points = `endpoint`/`batch_job` nodes, `main` methods and `domains.entry_points`. Duplicate qualified names get `<qn>@<path>:<line>` keys. The overview shows the 30 largest domains (eShop has 319, audit #86).
+- **Verify:** `pytest -q tests -k builders_code` → 9 passed (all citations resolve on disk; byte-identical rebuilds; caps; link consistency); built for real scans: spring-petclinic 111 pages / 275 citations in 0.04 s, eShop 601 pages / 1273 citations in 0.21 s; full `pytest -q` → 1424 passed, 3 skipped, 2 xfailed; ruff clean; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** pages are not yet persisted by scans — the post-scan page-build hook is M3.5.
