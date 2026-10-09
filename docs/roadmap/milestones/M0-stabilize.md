@@ -20,7 +20,7 @@
 - **Out of scope:** license decision (open item in ROADMAP.md); code changes.
 
 ### M0.2 Golden characterization harness ★
-- **Status:** Planned
+- **Status:** In progress (rm/M0.2-golden-harness, 2026-10-08)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** —
