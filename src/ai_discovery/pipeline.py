@@ -616,6 +616,8 @@ def run_pipeline(
                 TaskProgressColumn(),
                 console=console,
             ) as progress:
+                from .core.encoding import reset_fallback_stats
+                reset_fallback_stats()  # M0.4: per-scan fallback count
                 files = list(walk_repo(resolved.repo_path, set(lang_stats.keys())))
                 task = progress.add_task("Parsing", total=len(files))
 
@@ -648,6 +650,13 @@ def run_pipeline(
                 f"[green]{len(files)}[/] files"
                 + (f"  ([yellow]{parse_errors} errors[/])" if parse_errors else "")
             )
+            # M0.4: report files decoded via a legacy/lossy fallback (never dropped).
+            from .core.encoding import fallback_stats
+            _enc_fallbacks = fallback_stats()
+            if _enc_fallbacks:
+                _enc_summary = ", ".join(f"{n} {enc}" for enc, n in sorted(_enc_fallbacks.items()))
+                console.print(f"  Encoding fallback: [yellow]{_enc_summary}[/] file(s)")
+                logger.info("Encoding fallback decodes: %s", _enc_fallbacks)
 
             # HIGH-7: ingest OpenAPI/Swagger specs as an authoritative endpoint
             # source. Spec endpoints flow into the same verified-facts API table

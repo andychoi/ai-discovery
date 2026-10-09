@@ -9,6 +9,7 @@ from tree_sitter import Language, Parser, Query, QueryCursor
 
 from ..graph.models import CodeNode
 from .base import LanguageParser, find_enclosing_guard
+from ..core.encoding import encoding_hints, read_source
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,9 @@ class JavaScriptParser(LanguageParser):
         if _is_minified_path(file_path):
             logger.debug("Skipping bundled/minified path: %s", file_path)
             return []
-        source = file_path.read_bytes()
+        decoded = read_source(file_path)
+        source = decoded.data  # UTF-8 bytes, legacy encodings transcoded (M0.4)
+        _enc_hints = encoding_hints(decoded)
         if _is_minified(source):
             logger.debug("Skipping minified file: %s", file_path)
             return []
@@ -173,6 +176,8 @@ class JavaScriptParser(LanguageParser):
         # 4. Mongoose models (new mongoose.Schema({...}) + mongoose.model(...)).
         nodes.extend(self._extract_mongoose_models(root, file_stem, fp))
 
+        for _n in nodes:
+            _n.framework_hints.update(_enc_hints)
         return nodes
 
     # ── class processing ──────────────────────────────────────────────

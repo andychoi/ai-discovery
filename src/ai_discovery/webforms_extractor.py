@@ -9,6 +9,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from .core.encoding import read_source
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def _attrs(body: str) -> dict[str, str]:
 
 def extract_webforms_page(path: Path) -> WebFormsPage | None:
     try:
-        content = path.read_text(encoding="utf-8", errors="ignore")
+        content = read_source(path).text
     except Exception:
         logger.debug("webforms_extractor: cannot read %s", path)
         return None

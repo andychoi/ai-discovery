@@ -7,6 +7,7 @@ from ..graph.domain_classifier import infer_domain
 from ..graph.models import CodeNode
 from ..webforms_extractor import extract_webforms_page
 from .base import LanguageParser
+from ..core.encoding import read_source
 
 
 class WebFormsParser(LanguageParser):
@@ -29,7 +30,7 @@ class WebFormsParser(LanguageParser):
         ]
         text = ""
         try:
-            text = file_path.read_text(encoding="utf-8", errors="ignore")
+            text = read_source(file_path).text
         except Exception:
             pass
         domain = (

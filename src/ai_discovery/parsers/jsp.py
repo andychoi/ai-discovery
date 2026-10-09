@@ -7,6 +7,7 @@ from ..graph.domain_classifier import infer_domain
 from ..graph.models import CodeNode
 from ..jsp_extractor import extract_jsp_page
 from .base import LanguageParser
+from ..core.encoding import read_source
 
 
 class JspParser(LanguageParser):
@@ -24,7 +25,7 @@ class JspParser(LanguageParser):
             return []
         text = ""
         try:
-            text = file_path.read_text(encoding="utf-8", errors="ignore")
+            text = read_source(file_path).text
         except Exception:
             pass
         domain = infer_domain(page.bean_classes[0], str(file_path)) if page.bean_classes else None

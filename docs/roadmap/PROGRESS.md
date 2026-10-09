@@ -52,3 +52,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/cli tests/test_ts_floor.py` → 35 passed, 2 xfailed; full `pytest -q` → 1161 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** audit #84 scan traceback on missing repo (M2.3). Existing `tests/test_cli_commands.py` (function-level detect/verify tests) left as is; fold into tests/cli when M2 replaces the CLI.
+
+## 2026-10-08 — M0.4 — encoding fallback
+- **Branch/commit:** rm/M0.4-encoding-fallback @ 39b2b9a
+- **Changes:** `src/ai_discovery/core/{__init__,encoding}.py` (new); `parsers/{csharp,java,python_parser,javascript}.py` read via `read_source` and stamp `framework_hints.source_encoding`; `parsers/{jsp,webforms,import_map}.py`, `jsp_extractor.py`, `webforms_extractor.py` read via `read_source` (previously `errors="ignore"` silently deleted Hangul); `tests/test_encoding.py`, `tests/fixtures/encoding/` (UTF-8 sources; CP949/EUC-KR/UTF-16/BOM twins generated at test time).
+- **Decisions:** strict UTF-8 is tried **before** a declared charset hint (design doc updated) — a JSP still declaring EUC-KR after conversion to UTF-8 must not decode as mojibake. Fallback stats count distinct files (JSP/WebForms files are read by both extractor and parser).
+- **Cross-lane edit (README exception):** `pipeline.py` parse phase — reset fallback stats before parsing, print/log the count after. 9 lines, no behaviour change for UTF-8 repos.
+- **Verify:** `pytest -q tests -k encoding` → 26 passed; same twin tests on pre-change parsers → 12 failed (proves coverage); full `pytest -q` → 1187 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** other readers outside parsers still use `errors="ignore"` (e.g. menu/route/SQL extractors) — sweep in M6.1 walker work; file-level encoding hints from `web.config`/`.editorconfig` not used yet.

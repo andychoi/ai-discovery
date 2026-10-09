@@ -45,15 +45,15 @@
 - **Out of scope:** new CLI (M2).
 
 ### M0.4 Encoding fallback ★
-- **Status:** In progress (rm/M0.4-encoding-fallback, 2026-10-08)
+- **Status:** Done (39b2b9a)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** —
 - **Owns:** `src/ai_discovery/core/encoding.py` (new), `src/ai_discovery/parsers/*` (decode call sites), `tests/fixtures/encoding/` (new)
 - **Acceptance:**
-  - Source bytes decoded via: BOM sniff (UTF-8-sig/UTF-16) → strict UTF-8 → CP949 → EUC-KR (→ JSP `pageEncoding` / `<?xml encoding?>` hint when present), then re-encoded to UTF-8 bytes **before** tree-sitter so offsets stay consistent.
+  - Source bytes decoded via: BOM sniff (UTF-8-sig/UTF-16) → strict UTF-8 → declared hint (JSP `pageEncoding`/`charset`, `<?xml encoding?>`) → CP949 → EUC-KR → lossy replace, then re-encoded to UTF-8 bytes **before** tree-sitter so offsets stay consistent.
   - Fixtures in cs/java/jsp/aspx with Korean comments and string literals parse with the same node count as their UTF-8 twins; Korean text preserved in extracted strings.
-  - Per-scan count of fallback-decoded files recorded (log + `scan_runs` note); no file silently dropped for decoding.
+  - Per-scan count of fallback-decoded files reported (console + log after parse); each affected node carries `framework_hints.source_encoding` (persisted); no file silently dropped for decoding. (DB-level `degradations` table arrives with M1.5/M1.8.)
 - **Verify:** `pytest -q tests -k encoding`
 - **Out of scope:** the `_parse_one` call-site in `pipeline.py` belongs to lane A — coordinate (single small edit, noted in PROGRESS.md).
 

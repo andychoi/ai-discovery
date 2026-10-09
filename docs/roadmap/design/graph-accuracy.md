@@ -41,8 +41,8 @@ Clean-room rule (ADR-0006): repowise approaches are described in prose in the ca
 
 **Target.** `src/ai_discovery/core/encoding.py` (new). Its `read_source(path) -> (utf8_bytes, detected, lossy)` follows this order:
 1. **BOM sniff.** UTF-8-sig, UTF-16 LE/BE.
-2. **Declared hints.** JSP `pageEncoding=` / `contentType charset=`, `web.config` `<globalization fileEncoding=>`, `.csproj`/`.editorconfig` `charset` when cheap.
-3. **Strict UTF-8.**
+2. **Strict UTF-8.** Tried before declared hints (changed in M0.4): valid UTF-8 is a stronger signal than a possibly stale header such as a JSP still declaring `EUC-KR` after conversion.
+3. **Declared hints.** JSP `pageEncoding=` / `contentType charset=`, `<?xml encoding=?>`, `<meta charset>`, Python `coding:` cookie (in-file only; `web.config`/`.editorconfig` hints not yet used).
 4. **Legacy candidates.** Configurable list, default `["cp949", "euc-kr"]`. CP949 is a superset of EUC-KR, so try it first.
 5. **Last resort.** UTF-8 with `errors="replace"`, `lossy=True`.
 

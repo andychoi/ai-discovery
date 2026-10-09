@@ -8,6 +8,7 @@ from tree_sitter import Language, Parser, Query, QueryCursor
 
 from ..graph.models import CodeNode
 from .base import LanguageParser, find_enclosing_guard
+from ..core.encoding import encoding_hints, read_source
 
 CS_LANGUAGE = Language(tscsharp.language())
 
@@ -139,7 +140,9 @@ class CSharpParser(LanguageParser):
     # ── public API ────────────────────────────────────────────────────
 
     def parse_file(self, file_path: Path) -> list[CodeNode]:
-        source = file_path.read_bytes()
+        decoded = read_source(file_path)
+        source = decoded.data  # UTF-8 bytes, legacy encodings transcoded (M0.4)
+        _enc_hints = encoding_hints(decoded)
         parser = Parser(CS_LANGUAGE)
         tree = parser.parse(source)
         root = tree.root_node
@@ -271,6 +274,8 @@ class CSharpParser(LanguageParser):
                     framework_hints=m_framework_hints,
                 ))
 
+        for _n in nodes:
+            _n.framework_hints.update(_enc_hints)
         return nodes
 
     # ── helpers ────────────────────────────────────────────────────────

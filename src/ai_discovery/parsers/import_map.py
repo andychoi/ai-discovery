@@ -29,6 +29,7 @@ from pathlib import Path
 
 from ..graph.models import CodeNode
 from .base import LanguageParser
+from ..core.encoding import read_source
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ class _ImportMapParser(LanguageParser):
 
     def parse_file(self, file_path: Path) -> list[CodeNode]:
         try:
-            text = Path(file_path).read_text(encoding="utf-8", errors="ignore")
+            text = read_source(file_path).text
         except OSError as exc:
             logger.warning("import-map: cannot read %s: %s", file_path, exc)
             return []
