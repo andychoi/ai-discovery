@@ -45,7 +45,7 @@
 - **Out of scope:** new CLI (M2).
 
 ### M0.4 Encoding fallback ★
-- **Status:** Planned
+- **Status:** In progress (rm/M0.4-encoding-fallback, 2026-10-08)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** —
