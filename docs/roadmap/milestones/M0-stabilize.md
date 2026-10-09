@@ -118,8 +118,7 @@
 - **Depends on:** —
 - **Owns:** `src/ai_discovery/viewer/server.py`, `src/ai_discovery/viewer/dashboard.py`, `src/ai_discovery/rag/chat.py`, `src/ai_discovery/drift_checker.py`, `src/ai_discovery/cli.py`
 - **Acceptance:**
-  - Viewer finds docs/diagrams under the `output-<slug>` layout (and legacy); dashboard queries filter by latest scan.
-  - `chat` indexes the docs tree the scan actually writes (or says loudly that none exists).
+  - ~~Viewer finds docs/diagrams under the `output-<slug>` layout~~ and ~~`chat` indexes the docs tree the scan writes~~ — done by M1.2 (all readers use `ProjectLayout`). Remaining: dashboard queries filter by latest scan.
   - `verify-drift` exits non-zero when the spec dir is missing/empty and defaults to the real screens dir.
   - `ingest-docs` no longer raises NameError (`_VALID_PUSH_MODES`).
   - Each fix has a regression test; viewer tests build the new layout.

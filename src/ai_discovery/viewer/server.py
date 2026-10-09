@@ -23,6 +23,7 @@ from typing import Any, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from ..core.paths import ProjectLayout
 from .dashboard import DashboardData, build_summary
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,10 @@ class ViewerContext:
         self.slug = slug
         self.output_dir = output_dir.resolve()
         self.docs_root = docs_root.resolve()
-        self.slug_output_root = (self.output_dir / slug).resolve()
-        self.slug_docs_root = (self.docs_root / slug).resolve()
+        # M1.2: same resolver as the scan writer (output-<slug>, legacy <slug>).
+        layout = ProjectLayout.legacy(self.output_dir, slug, self.docs_root, for_read=True)
+        self.slug_output_root = layout.state_dir.resolve()
+        self.slug_docs_root = layout.docs_dir.resolve()
         self.env = Environment(
             loader=FileSystemLoader(str(_TEMPLATES_DIR)),
             autoescape=select_autoescape(["html"]),

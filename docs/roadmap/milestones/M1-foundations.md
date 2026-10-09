@@ -7,7 +7,7 @@
 > Rule for M1.6–M1.8: **move code verbatim first, change behaviour in a later PR.** Golden snapshot (M0.2) must be unchanged by M1.6/M1.7.
 
 ### M1.2 ProjectLayout (`core/paths.py`) ★
-- **Status:** In progress (rm/M1.2-project-layout, 2026-10-08)
+- **Status:** Done (48cc2d2)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** —
@@ -16,6 +16,7 @@
   - `ProjectLayout.for_repo(path, state_dir=None)` → `<repo>/.discovery/{discovery.db,cache/,logs/,exports/,lock,config.yaml,.gitignore}`; `--state-dir` for read-only/remote sources; repo root via `git rev-parse --show-toplevel` (worktree-safe) with non-git fallback.
   - `.discovery/.gitignore` = `*` + `!config.yaml` + `!.gitignore`.
   - `rg "output-" src/` returns hits only in `core/paths.py` (legacy-layout reader kept there for `doctor`).
+  - Current CLI/pipeline use `ProjectLayout.legacy` (no behaviour change, golden unchanged); `.discovery/` becomes the scan default with the v1 CLI (M2.3).
 - **Verify:** `pytest -q tests -k paths`; `rg -n '"output-' src/ai_discovery | grep -v core/paths.py` → empty
 - **Out of scope:** CLI flags (M2.1).
 

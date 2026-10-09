@@ -96,3 +96,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k no_llm` → 5 passed; crash fixture fails on 0.26.0, passes on 0.25.2; full `pytest -q` → 1244 passed, 3 skipped, 2 xfailed; golden unchanged; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** audit #86 domain classifier over/under-splits real apps (needs an M6 item); revisit tree-sitter ≥0.26 once upstream fixes the crash (the regression fixture will tell). Existing `.venv` must be re-installed (`uv pip install -e .`) to pick up the cap.
+
+## 2026-10-08 — M1.2 — ProjectLayout single path resolver
+- **Branch/commit:** rm/M1.2-project-layout @ 48cc2d2
+- **Changes:** `core/paths.py` (new: `ProjectLayout.for_repo/legacy`, `repo_root`, `find_project`, `ensure`); `pipeline.py`, `cli.py` (`_project_output_dir` → `_layout`), `viewer/server.py`, `viewer/dashboard.py` resolve paths only via `ProjectLayout`; `tests/test_paths.py` (12: v1 layout incl. worktree + state-dir override, legacy parity + read fallback, viewer/chat readers agree with writer, impact regression, grep guard).
+- **Decisions:** current commands keep the legacy layout (no user-visible change, golden unchanged); `.discovery/` becomes the scan default with the v1 CLI (M2.3) — acceptance note added. Viewer and chat path bugs from M0.9 fixed here as a side effect; M0.9 trimmed accordingly.
+- **Verify:** `pytest -q tests -k paths` → 12 passed; `rg -n '"output-' src/ai_discovery | grep -v core/paths.py` → empty; ruff F821 on src → only the known `ingest-docs` NameError (M0.9); real run on spring-petclinic: scan → export-graph (248 nodes, 1278 edges, 7 FSMs) → impact OK; full `pytest -q` → 1256 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** `impact` needs the entity table name (`owners`), not the class (`Owner`) — UX item for M5.2. Add a ruff F821 check to CI (no linter configured yet).

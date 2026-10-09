@@ -32,6 +32,7 @@ from rich.progress import (
 )
 
 from .config import DiscoveryConfig
+from .core.paths import ProjectLayout
 from .core.redact import redact_mapping
 from .db import (
     init_db, get_conn, now_iso, record_phase_start, record_phase_complete,
@@ -388,14 +389,13 @@ def run_pipeline(
         skip_phases: List of phases to skip (e.g. ["16", "10"])
     """
 
-    # Track 3: per-project output dir is `output/output-<slug>/`. Read-side
-    # CLI commands (chat, view, ingest) fall back to legacy `output/<slug>/`
-    # when only the legacy path exists, so previously-scanned repos keep
-    # working without forced migration. New scans always create the new path.
-    output_dir = Path(output_dir) / f"output-{project_slug}"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    docs_dir = Path(docs_root) / f"output-{project_slug}"
-    db_path = output_dir / f"discovery-{project_slug}.db"
+    # M1.2: every project path comes from core.paths.ProjectLayout (ADR-0001).
+    # The current CLI still uses the legacy `-o/--docs-root/-p` layout; the v1
+    # CLI (M2) switches scans to ProjectLayout.for_repo (`<repo>/.discovery/`).
+    layout = ProjectLayout.legacy(output_dir, project_slug, docs_root).ensure()
+    output_dir = layout.state_dir
+    docs_dir = layout.docs_dir
+    db_path = layout.db_path
     _pipeline_start = time.perf_counter()
 
     # ------------------------------------------------------------------

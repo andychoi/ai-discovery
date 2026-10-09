@@ -20,19 +20,12 @@ app = typer.Typer(name="discover", help="Brownfield codebase discovery & doc gen
 _VALID_INGEST_TARGETS = {"dochub", "gitea"}
 
 
-def _project_output_dir(output: Path, slug: str) -> Path:
-    """Track 3: per-project output dir is `<output>/output-<slug>/`.
+def _layout(output: Path, slug: str, docs_root: Path = Path("./data")):
+    """Read-side project layout for the current CLI (M1.2: one resolver,
+    `core.paths.ProjectLayout`; falls back to pre-Track-3 `<output>/<slug>/`)."""
+    from ai_discovery.core.paths import ProjectLayout
 
-    Read-side commands fall back to the legacy `<output>/<slug>/` layout if
-    the new path doesn't exist but the legacy one does — so existing scans
-    keep working without a forced migration. Write-side commands (scan)
-    always create the new path.
-    """
-    new_path = Path(output) / f"output-{slug}"
-    legacy_path = Path(output) / slug
-    if not new_path.exists() and legacy_path.exists():
-        return legacy_path
-    return new_path
+    return ProjectLayout.legacy(output, slug, docs_root, for_read=True)
 
 
 @app.command()
@@ -309,9 +302,11 @@ def chat(
     if provider:
         cfg.provider = provider
 
-    output_dir = _project_output_dir(output, project_slug)
-    db_path = output_dir / f"discovery-{project_slug}.db"
-    docs_dir = output_dir / "docs"
+    # Docs live under the scan's --docs-root (default ./data), not under the
+    # intermediate dir — chat previously indexed a docs folder nothing writes.
+    layout = _layout(output, project_slug)
+    db_path = layout.db_path
+    docs_dir = layout.docs_dir
 
     if not db_path.exists():
         console.print(f"[red]No discovery DB found:[/] {db_path}")
@@ -351,9 +346,9 @@ def ingest(
         console.print(f"[red]Invalid --target '{target}'. Must be: dochub | gitea[/]")
         raise typer.Exit(code=1)
 
-    intermediate = _project_output_dir(output, project_slug)
-    db_path = intermediate / f"discovery-{project_slug}.db"
-    docs_dir = _project_output_dir(docs_root, project_slug)
+    layout = _layout(output, project_slug, docs_root)
+    db_path = layout.db_path
+    docs_dir = layout.docs_dir
 
     if not db_path.exists():
         console.print(f"[red]No discovery DB found:[/] {db_path}")
@@ -428,7 +423,7 @@ def ingest(
 def query(
     sql: str = typer.Argument(..., help="SQL query to run against the discovery DB."),
     db: Path = typer.Option(
-        Path("./data/discovery-output"), "--db", help="Path to discovery SQLite DB (e.g. data/discovery-output/{slug}/discovery-{slug}.db)."
+        Path("./data/discovery-output"), "--db", help="Path to the scan's SQLite DB (the discovery-*.db file under the scan output dir)."
     ),
 ) -> None:
     """Run an ad-hoc SQL query against the discovery database."""
@@ -484,16 +479,16 @@ def impact(
     )
     from ai_discovery.graph.impact import EntityNotFound, query_entity_impact
 
-    artifacts_dir = _project_output_dir(output, project_slug)
-    fsm_path = artifacts_dir / "entity_state_machines.json"
+    layout = _layout(output, project_slug)
+    fsm_path = layout.artifact("entity_state_machines.json")
     if not fsm_path.exists():
         console.print(f"[red]No FSM artifact at {fsm_path}. Run `discover scan` first.[/]")
         raise typer.Exit(1)
 
     fsms = load_entity_state_machines_json(fsm_path)
-    cross_path = artifacts_dir / "cross_entity_transitions.json"
+    cross_path = layout.artifact("cross_entity_transitions.json")
     cross_links = load_cross_entity_links_json(cross_path) if cross_path.exists() else []
-    cond_path = artifacts_dir / "entity_conditions.json"
+    cond_path = layout.artifact("entity_conditions.json")
     conditions = load_entity_conditions_json(cond_path) if cond_path.exists() else []
 
     try:
@@ -613,7 +608,7 @@ def view(
 
     from ai_discovery.viewer.server import ViewerContext, make_server
 
-    slug_output = _project_output_dir(output, project_slug).resolve()
+    slug_output = _layout(output, project_slug, docs_root).state_dir.resolve()
     if not slug_output.is_dir():
         console.print(
             f"[red]No scan output at {slug_output}.[/] Run `discover scan` first, "
@@ -821,8 +816,8 @@ def export_graph(
     """
     from ai_discovery.generators.graph_export import write_graph_export
 
-    slug_output = _project_output_dir(output, project_slug).resolve()
-    db_path = slug_output / f"discovery-{project_slug}.db"
+    layout = _layout(output, project_slug)
+    db_path = layout.db_path.resolve()
     if not db_path.exists():
         console.print(
             f"[red]Database not found:[/] {db_path}. Run `discover scan` first, "
@@ -830,7 +825,7 @@ def export_graph(
         )
         raise typer.Exit(code=1)
 
-    dest = out_file or (slug_output / f"knowledge-graph-{project_slug}.json")
+    dest = out_file or layout.graph_export_path
     try:
         path = write_graph_export(db_path, project_slug, dest, scan_id=scan_id)
     except ValueError as exc:

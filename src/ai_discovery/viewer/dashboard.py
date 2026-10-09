@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
 
+from ..core.paths import ProjectLayout
+
 # Quality thresholds pulled from CLAUDE.md "Key Metrics & Targets".
 # Edges at or above HIGH_CONF_THRESHOLD count as confidently resolved;
 # edges below LOW_CONF_THRESHOLD are the triage pile.
@@ -22,7 +24,7 @@ MAX_LOW_CONF_RATIO = 0.15
 # The canonical artifacts written by `discover scan` — presence of each
 # indicates the corresponding phase completed.
 _ARTIFACTS: tuple[tuple[str, str, str], ...] = (
-    ("db", "discovery-{slug}.db", "SQLite — nodes, edges, docs, costs"),
+    ("db", "<db>", "SQLite — nodes, edges, docs, costs"),  # path from ProjectLayout.db_path
     ("fsms", "entity_state_machines.json", "Phase 3 FSM backbone"),
     ("cross_links", "cross_entity_transitions.json", "Phase 3b/3.1c cross-entity links"),
     ("conditions", "entity_conditions.json", "Phase 3d guard correlations"),
@@ -105,11 +107,12 @@ class DashboardData:
 # ---------------------------------------------------------------------------
 
 def discover_artifacts(output_dir: Path, slug: str) -> list[Artifact]:
-    """Inventory the canonical artifacts under ``output_dir/slug``."""
-    base = output_dir / slug
+    """Inventory the canonical artifacts of project *slug* under *output_dir*."""
+    layout = ProjectLayout.legacy(output_dir, slug, for_read=True)
+    base = layout.state_dir
     result: list[Artifact] = []
     for key, name_tpl, desc in _ARTIFACTS:
-        path = base / name_tpl.format(slug=slug)
+        path = layout.db_path if key == "db" else base / name_tpl.format(slug=slug)
         result.append(Artifact(key=key, path=path, description=desc, exists=path.exists()))
     for key, dirname in _ARTIFACT_DIRS:
         path = base / dirname
@@ -249,8 +252,8 @@ def _read_frontmatter(path: Path) -> dict[str, str]:
 
 
 def doc_tree(docs_root: Path, slug: str) -> dict[str, list[DocTreeEntry]]:
-    """Walk ``docs_root/<slug>/<BUCKET>/*.md`` and extract frontmatter hints."""
-    project_root = docs_root / slug
+    """Walk the project's ``<BUCKET>/*.md`` docs and extract frontmatter hints."""
+    project_root = ProjectLayout.legacy(docs_root, slug, docs_root, for_read=True).docs_dir
     if not project_root.is_dir():
         return {}
     tree: dict[str, list[DocTreeEntry]] = {}
