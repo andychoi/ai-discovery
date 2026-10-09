@@ -17,7 +17,7 @@
 - **Out of scope:** MCP (M5.3).
 
 ### M4.2 `web/` scaffold + wheel build ★
-- **Status:** Planned
+- **Status:** In progress (rm/M4.2-web-scaffold, 2026-10-09)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** —
