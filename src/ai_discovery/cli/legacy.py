@@ -40,39 +40,6 @@ def _layout(output: Path, slug: str, docs_root: Path = Path("./data")):
 
 
 @app.command()
-def init(
-    config: Path = typer.Option(
-        Path("discovery.yaml"), "--config", "-c",
-        help="Output path for generated config template."
-    ),
-    provider: str = typer.Option(
-        "aigw", "--provider",
-        help="Default LLM provider (aigw|omlx|openrouter|bedrock|ollama|mlx-gemma|mlx-qwen|openai|gemini|anthropic)."
-    ),
-) -> None:
-    """Generate a discovery.yaml config template.
-
-    Creates a discovery.yaml file with all configurable options and helpful
-    comments. Useful for getting started or documenting your setup.
-    """
-
-    config_path = Path(config)
-    if config_path.exists():
-        console.print(f"[yellow]File already exists: {config_path}[/]")
-        if not typer.confirm("Overwrite?"):
-            console.print("Aborted.")
-            raise typer.Exit(code=0)
-
-    from ai_discovery.config.template import render_template
-
-    yaml_content = render_template(provider)
-    config_path.write_text(yaml_content)
-    console.print(f"[green]✓ Generated[/] {config_path}")
-    console.print(f"  [dim]Next: edit {config_path} or use with --config {config_path}[/]")
-    console.print(f"  [dim]Then: discover scan repo --project-slug=myapp --config {config_path}[/]")
-
-
-@app.command()
 def scan(
     repo: str = typer.Argument(..., help="Path to a folder/git repo, or URL of a git repository to scan."),
     project_slug: str = typer.Option(..., "--project-slug", "-p", help="Target project slug."),

@@ -241,6 +241,9 @@ class DiscoveryConfig:
     budget_limit_usd: float = 50.0
     max_concurrent: int = 10
     prod: bool = False  # True → use tier3p for doc generation; False → tier3d
+    # M2.2 spend mode recorded by `discover init`: False = structure only (no
+    # LLM calls, no key); True = add LLM prose. `scan --prose/--no-prose` overrides.
+    prose: bool = False
     # M0.10 keyless mode: run only deterministic phases (no LLM, no embeddings,
     # no network). Graph, screens (structural specs), FSM/DMN/EARS and the
     # dependency catalog are still produced.

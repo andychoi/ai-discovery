@@ -14,7 +14,7 @@ from ai_discovery.config import (
     )
 
 
-def render_template(provider: str = "aigw") -> str:
+def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
     """YAML config template for *provider*, with comments, from the dataclass defaults."""
     # Build template as list of (key, value) tuples to preserve ordering
     # and allow duplicate blank-line entries.
@@ -24,6 +24,9 @@ def render_template(provider: str = "aigw") -> str:
         ("", None),
         ("# Provider: aigw | omlx | openrouter | bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic", None),
         ("provider", provider),
+        ("", None),
+        ("# Spend mode: false = structure only (no LLM calls, no key needed); true = add LLM prose", None),
+        ("prose", prose),
         ("", None),
         ("# LLM cost limit (USD) — stops pipeline if exceeded", None),
         ("budget_limit_usd", 50.0),

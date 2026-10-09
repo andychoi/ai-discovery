@@ -152,3 +152,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k store` → all pass (11 new); real eShop scan: migrations 0001+0002, `current_scan` = completed run; full `pytest -q` → 1370 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
 - **Bench/golden changes:** `table_counts` gain the new (empty) v1 tables, `current_scan: 1`, `schema_migrations: 2`; `pages_fts*` excluded (FTS5 shadow-table counts depend on the SQLite build).
 - **Follow-ups:** `doctor --repair` FTS rebuild when pages exist (M3.5); audit #87 single connection factory.
+
+## 2026-10-09 — M2.2 — init + first-run menu
+- **Branch/commit:** rm/M2.2-init-menu @ e9228ea
+- **Changes:** `cli/commands/init.py` (new; `detect_stack`, menu, `write_mcp_entry`); legacy `init` removed from `cli/legacy.py`; `config` new `prose` setting (schema + template; checked-in YAMLs regenerated); `tests/cli/test_init.py` (15); smoke-test command set updated.
+- **Decisions:** `--mcp` writes `.mcp.json` only when a `discover mcp` command is registered (M5.3) — writing an entry for a server that doesn't exist would give Claude Code a broken MCP server; the merge writer is implemented and tested now. Prompts use typer's public API only: typer 0.27 vendors click (`typer._click`), so `import click` fails.
+- **Verify:** `pytest -q tests/cli -k init` → 15 passed; real run on eShop with `--state-dir` (sample app untouched): detection printed, config written, exit 0; same without a TTY and without a choice → exit 2 `init_needs_choice`; full `pytest -q` → 1383 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** audit #88 framework detector reads only the first .csproj (eShop shows no framework). Advanced menu will offer excludes/encodings once those config keys exist (M6.1).

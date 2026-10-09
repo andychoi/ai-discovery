@@ -4,6 +4,9 @@
 # Provider: aigw | omlx | openrouter | bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic
 provider: aigw
 
+# Spend mode: false = structure only (no LLM calls, no key needed); true = add LLM prose
+prose: false
+
 # LLM cost limit (USD) — stops pipeline if exceeded
 budget_limit_usd: 50.0
 

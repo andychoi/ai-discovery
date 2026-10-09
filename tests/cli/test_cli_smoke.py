@@ -23,10 +23,10 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 SPRING_APP = FIXTURES / "projects" / "spring-boot-app"
 
 COMMANDS = [
-    "init", "scan", "chat", "ingest", "query", "impact", "federate", "view",
+    "scan", "chat", "ingest", "query", "impact", "federate", "view",
     "test-llm", "ingest-docs", "export-graph", "detect-screens", "verify-drift",
 ]
-V1_COMMANDS = ["status", "doctor"]  # v1 commands added so far (M2.5); legacy ones go in M2.7
+V1_COMMANDS = ["init", "status", "doctor"]  # v1 commands added so far (M2.5); legacy ones go in M2.7
 
 runner = CliRunner()
 
@@ -57,13 +57,6 @@ def test_help(command: str) -> None:
 
 
 # ── one real path per command ─────────────────────────────────────────────
-
-def test_init_writes_config(tmp_path: Path) -> None:
-    cfg = tmp_path / "cfg.yaml"
-    result = _invoke("init", "-c", str(cfg), "--provider", "ollama")
-    assert result.exit_code == 0, result.output
-    assert cfg.exists() and "provider" in cfg.read_text(encoding="utf-8")
-
 
 def test_scan_missing_repo_fails(tmp_path: Path) -> None:
     # Current behaviour: raises ValueError (traceback) -> non-zero exit.
