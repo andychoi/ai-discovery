@@ -33,7 +33,7 @@
 - **Out of scope:** asserting LLM prose content.
 
 ### M0.3 CLI smoke tests + tree-sitter floor ★
-- **Status:** In progress (rm/M0.3-cli-smoke-ts-floor, 2026-10-08)
+- **Status:** Done (78b8cc8)
 - **Size:** S
 - **Lane:** C
 - **Depends on:** —

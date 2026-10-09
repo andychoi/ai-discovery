@@ -44,3 +44,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** initial golden snapshots created.
 - **Environment note:** tests run from a local `.venv` (`uv venv .venv --python 3.12 && uv pip install -e ".[dev]"`); `.venv` is gitignored.
 - **Follow-ups:** audit #81 domain named from absolute path segment (lane C); audit #82 `screens` table never written (M3.3). Stub screen/tier1 structured calls return schema defaults, so `screen_specs` content is placeholder.
+
+## 2026-10-08 — M0.3 — CLI smoke tests + tree-sitter floor
+- **Branch/commit:** rm/M0.3-cli-smoke-ts-floor @ 78b8cc8
+- **Changes:** `tests/cli/test_cli_smoke.py` (command-set guard, `--help` for all 13, one no-network path each), `tests/test_ts_floor.py` (module Queries compile, each parser extracts ≥1 node, route_parser grammars load), `pyproject.toml` tree-sitter floors.
+- **Decisions:** known bugs asserted as correct behaviour under `xfail(strict=True)` (ingest-docs NameError, verify-drift exit 0) — M0.9 must remove the markers. Floor verified empirically: throwaway venvs with tree-sitter 0.24.0 (9/10 fail, ImportError QueryCursor) and 0.25.0 + c-sharp 0.23.1 / java 0.23.5 / python 0.23.6 / javascript 0.23.1 / typescript 0.23.2 (10/10 pass).
+- **Verify:** `pytest -q tests/cli tests/test_ts_floor.py` → 35 passed, 2 xfailed; full `pytest -q` → 1161 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** audit #84 scan traceback on missing repo (M2.3). Existing `tests/test_cli_commands.py` (function-level detect/verify tests) left as is; fold into tests/cli when M2 replaces the CLI.
