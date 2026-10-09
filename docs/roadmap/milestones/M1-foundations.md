@@ -21,7 +21,7 @@
 - **Out of scope:** CLI flags (M2.1).
 
 ### M1.3 Config v2 ★
-- **Status:** Planned
+- **Status:** In progress (rm/M1.3-config-v2, 2026-10-08)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** —
@@ -29,7 +29,7 @@
 - **Acceptance:**
   - Pydantic v2 schema; precedence CLI > env > project `.discovery/config.yaml` > user `~/.config/ai-discovery/config.yaml` > defaults — tested.
   - Auto-load without `-c`; unknown key → error with "did you mean"; one template (generated from schema).
-  - Model roles `models.fast|standard|deep` + `quality: draft|final` replace tier1/2/3d/3p and `--prod`/`prod:`; env vars documented and all read.
+  - `prod:` honoured from YAML (no longer overwritten by the CLI default); env vars documented and all read. (Model roles moved to M1.10, which owns the tier→role rename across the LLM layer.)
   - Secrets never serialized by `model_dump()` (SecretStr).
 - **Verify:** `pytest -q tests -k config`
 - **Out of scope:** provider internals (M1.10).
@@ -117,6 +117,7 @@
 - **Owns:** `src/ai_discovery/llm/` (new), `src/ai_discovery/ai/llm_client.py`, `src/ai_discovery/shared/llm_router.py`, `src/ai_discovery/shared/llm_invoke.py`, `src/ai_discovery/shared/model_defaults.py` (shims)
 - **Acceptance:**
   - One invoke path; provider registry; roles fast/standard/deep resolved from config v2; capability matrix (temperature constraints, structured output, max tokens field, timeout class).
+  - Config: `models.fast|standard|deep` + `quality: draft|final` replace tier1/2/3d/3p and `--prod`/`prod:` (moved here from M1.3; cross-lane edit of `config/`).
   - No module-global config (`llm_router.configure()` removed); client object passed explicitly.
   - Old modules are thin shims re-exporting the new API.
 - **Verify:** `pytest -q tests -k "llm or provider"`
