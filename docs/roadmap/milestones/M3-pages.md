@@ -7,7 +7,7 @@
 > Builders read the **existing** DB tables (`code_nodes`, `call_edges`, `screens`, `screen_mappings`, `entity_state_machines`, `db_relationship`, `domains`, …). They do not wait for M1.6–M1.9.
 
 ### M3.1 Page model, registry, notes ★
-- **Status:** Planned
+- **Status:** In progress (rm/M3.1-page-model, 2026-10-09)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M1.5
