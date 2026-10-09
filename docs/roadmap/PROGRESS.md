@@ -19,7 +19,7 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 | Kind | Number | Item | Date |
 |---|---|---|---|
 | migration | 0001 | M1.4 (baseline) | 2026-10-09 |
-| migration | 0002 | reserved for M1.5 | 2026-10-09 |
+| migration | 0002 | M1.5 (v1 tables) | 2026-10-09 |
 
 ---
 
@@ -142,3 +142,13 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/cli -k "status or doctor"` → 13 passed; real run on spring-petclinic: status (248 nodes, 1278 edges, up to date) and doctor (9 checks, 1 legacy-layout warning) both exit 0 — the scan's `data/` dir written into the sample app was removed afterwards; `--help` still imports nothing heavy; full `pytest -q` → 1359 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** M2.7 removes `test-llm` (superseded by `doctor --llm`). Status gains stale-page and degradation counts with M1.8/M3.5.
+
+## 2026-10-09 — M1.5 — current_scan + v1 tables
+- **Branch/commit:** rm/M1.5-current-scan-tables @ fca86f3
+- **Changes:** `store/migrations/m0002_v1_tables.py`, `store/{scans,fts,vectors}.py` (new); `pipeline.py` `_finalise_scan` flips `current_scan` + GC on `completed`; `config` new `store.keep_snapshots` (template + checked-in YAMLs regenerated); `cli/commands/status.py` reads `current_scan`; `rag/embedder.py` (cross-lane) embedder identity pin + reindex on change; `tests/test_store_v1_tables.py` (11); `tests/golden/test_golden.py` skips `pages_fts*`.
+- **Decisions:** `pages_fts` is created only when FTS5 exists (migration never fails for it; `store.fts.create_fts` adds it later). GC counts only finished scans toward `keep` (running + current always kept). Embedder change → automatic full re-embed (never a silent mix). `evidence_rows` and `scan_runs` extra columns deferred to M8 / M1.8 as designed.
+- **Bug avoided:** pin read/write must use the embedder's `pysqlite3` connection — mixing it with a stdlib `sqlite3` connection on the same WAL DB gave `disk I/O error` (audit #87). `pinned_embedder`/`get_current_scan` now only treat "no such table" as absent and re-raise other errors.
+- **Migration numbers:** 0002 used.
+- **Verify:** `pytest -q tests -k store` → all pass (11 new); real eShop scan: migrations 0001+0002, `current_scan` = completed run; full `pytest -q` → 1370 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** `table_counts` gain the new (empty) v1 tables, `current_scan: 1`, `schema_migrations: 2`; `pages_fts*` excluded (FTS5 shadow-table counts depend on the SQLite build).
+- **Follow-ups:** `doctor --repair` FTS rebuild when pages exist (M3.5); audit #87 single connection factory.

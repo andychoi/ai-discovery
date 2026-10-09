@@ -167,6 +167,15 @@ class OpenRouterConfig:
     tier3p: str = _OR.get("expert", "anthropic/claude-opus-4.6")
 
 
+# ── Store config ─────────────────────────────────────────────────────────────
+
+
+@dataclass
+class StoreConfig:
+    """Snapshot retention (M1.5): completed scans kept besides the current one's."""
+    keep_snapshots: int = 3
+
+
 # ── RAG config ───────────────────────────────────────────────────────────────
 
 
@@ -253,6 +262,7 @@ class DiscoveryConfig:
     omlx: OMLXConfig = field(default_factory=OMLXConfig)
     openrouter: OpenRouterConfig = field(default_factory=OpenRouterConfig)
     rag: RagConfig = field(default_factory=RagConfig)
+    store: StoreConfig = field(default_factory=StoreConfig)
     process_mining: ProcessMiningConfig = field(default_factory=ProcessMiningConfig)
     advisor: AdvisorConfig = field(default_factory=AdvisorConfig)
 

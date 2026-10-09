@@ -99,6 +99,8 @@ def _table_counts(conn: sqlite3.Connection) -> dict[str, int]:
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
     counts = {}
     for name in names:
+        if name.startswith("pages_fts"):
+            continue  # derived FTS5 index + shadow tables: build-dependent, rebuildable (M1.5)
         try:
             counts[name] = conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
         except sqlite3.OperationalError:

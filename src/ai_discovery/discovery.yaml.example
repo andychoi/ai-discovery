@@ -32,6 +32,10 @@ rag:
   chunk_overlap: 200
   top_k: 5
 
+# Snapshot retention: completed scans kept in the index (the current one is always kept)
+store:
+  keep_snapshots: 3
+
 # Flow Statistics Configuration (Phase 16) — OPTIONAL
 # Set enabled: true to enable per-scenario flow statistics reports
 process_mining:

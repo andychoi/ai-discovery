@@ -1899,7 +1899,8 @@ def _run_pipeline_unlocked(
     _exhausted = _budget_exhausted_fn(llm_client, config)
     final_status = "budget_exceeded" if (_exhausted is not None and _exhausted()) else "completed"
     with _with_checkpoint(db_path, scan_id, 19, "finalise"):
-        _finalise_scan(scan_id, db_path, final_status, llm_client)
+        _finalise_scan(scan_id, db_path, final_status, llm_client,
+                       keep_snapshots=config.store.keep_snapshots)
 
         # Print summary
         cost = llm_client.total_cost_usd()
@@ -2190,8 +2191,14 @@ def _finalise_scan(
     db_path: Path,
     status: str,
     llm_client=None,
+    keep_snapshots: int = 3,
 ) -> None:
-    """Mark scan_run as finished and persist LLM costs."""
+    """Mark scan_run as finished and persist LLM costs.
+
+    M1.5: a ``completed`` scan becomes ``current_scan`` (what readers see) in
+    the same transaction, then old snapshots beyond *keep_snapshots* are
+    garbage-collected. Budget-stopped or failed scans are never flipped.
+    """
     if llm_client is not None:
         try:
             llm_client.persist_costs(scan_id, db_path)
@@ -2204,6 +2211,11 @@ def _finalise_scan(
             "UPDATE scan_runs SET status = ?, finished_at = ? WHERE id = ?",
             (status, now_iso(), scan_id),
         )
+        if status == "completed":
+            from .store.scans import gc_snapshots, set_current_scan
+
+            set_current_scan(conn, scan_id)
+            gc_snapshots(conn, keep=keep_snapshots)
         conn.commit()
     finally:
         conn.close()

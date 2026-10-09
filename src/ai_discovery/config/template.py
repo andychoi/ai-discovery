@@ -10,7 +10,7 @@ from __future__ import annotations
 from ai_discovery.config import (
     BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig,
     OpenAIConfig, GeminiConfig, AnthropicConfig, AIGWConfig, OMLXConfig, OpenRouterConfig,
-    RagConfig, ProcessMiningConfig, AdvisorConfig
+    RagConfig, ProcessMiningConfig, AdvisorConfig, StoreConfig
     )
 
 
@@ -134,6 +134,9 @@ def render_template(provider: str = "aigw") -> str:
                  "embedding_model": rag.embedding_model, "bedrock_model": rag.bedrock_model,
                  "ollama_model": rag.ollama_model, "chunk_size": rag.chunk_size,
                  "chunk_overlap": rag.chunk_overlap, "top_k": rag.top_k}),
+        ("", None),
+        ("# Snapshot retention: completed scans kept in the index (the current one is always kept)", None),
+        ("store", {"keep_snapshots": StoreConfig().keep_snapshots}),
     ])
 
     # Process Mining config

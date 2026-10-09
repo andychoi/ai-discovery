@@ -44,11 +44,20 @@ def freshness(repo: Path, indexed_commit: Optional[str]) -> dict[str, Any]:
     return info
 
 
+_RUN_COLS = "id, status, commit_sha, branch, started_at, finished_at, repo_path"
+
+
 def _latest_run(conn: sqlite3.Connection) -> Optional[dict]:
-    row = conn.execute(
-        "SELECT id, status, commit_sha, branch, started_at, finished_at, repo_path "
-        "FROM scan_runs ORDER BY id DESC LIMIT 1").fetchone()
-    return dict(row) if row else None
+    """The scan readers see (``current_scan``, M1.5); the newest run otherwise."""
+    from ...store.scans import get_current_scan
+
+    current = get_current_scan(conn)
+    if current is not None:
+        row = conn.execute(f"SELECT {_RUN_COLS} FROM scan_runs WHERE id = ?", (current,)).fetchone()
+        if row:
+            return {**dict(row), "current": True}
+    row = conn.execute(f"SELECT {_RUN_COLS} FROM scan_runs ORDER BY id DESC LIMIT 1").fetchone()
+    return {**dict(row), "current": False} if row else None
 
 
 def _costs(conn: sqlite3.Connection, scan_id: int) -> dict[str, Any]:

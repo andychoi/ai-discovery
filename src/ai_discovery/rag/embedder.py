@@ -198,6 +198,14 @@ def embed_chunks(
     desired_hashes = [_chunk_hash(c) for c in chunks]
     desired_set = set(desired_hashes)
 
+    # M1.5: never mix embedders. If the store was built with another model,
+    # re-embed everything (drop + rebuild) instead of adding incomparable rows.
+    identity = embedding_identity(llm_client)
+    if identity and not force and _pinned_identity(db_path) not in (None, identity):
+        logger.warning("RAG embed: embedding model changed (%s -> %s); reindexing all chunks",
+                       _pinned_identity(db_path), identity)
+        force = True
+
     if force:
         existing_by_hash: dict[str, int] = {}
     else:
@@ -333,12 +341,50 @@ def embed_chunks(
                 conn.commit()
 
         total = conn.execute("SELECT COUNT(*) FROM discovery_chunk_meta").fetchone()[0]
+        if identity and dim:
+            from ..store.vectors import pin_embedder
+
+            pin_embedder(conn, VEC_STORE, identity, dim)  # on the vec connection (see _pinned_identity)
+            conn.commit()
         return {
             "embedded": total, "dim": dim, "resumed": False,
             "added": len(new_vecs), "removed": len(stale_hashes), "kept": kept,
         }
     finally:
         conn.close()
+
+
+VEC_STORE = "code"
+
+
+def embedding_identity(llm_client) -> str | None:
+    """``provider:model`` of the client's embedder, or None when unknown (e.g. mocks)."""
+    cfg = getattr(llm_client, "_config", None)
+    provider_fn = getattr(llm_client, "_embedding_provider", None)
+    if cfg is None or not callable(provider_fn):
+        return None
+    try:
+        provider = provider_fn()
+        rag = cfg.rag
+        model = rag.embedding_model or (
+            rag.bedrock_model if provider == "bedrock" else llm_client._embedding_model_for(provider))
+    except Exception:  # noqa: BLE001 — identity is best-effort; unknown means "don't pin"
+        return None
+    return f"{provider}:{model}" if isinstance(provider, str) and isinstance(model, str) else None
+
+
+def _pinned_identity(db_path: Path) -> str | None:
+    # Same driver as the vector writes: pysqlite3 and stdlib sqlite3 are separate
+    # SQLite libraries and must not hold the same WAL DB open at once (their
+    # POSIX locks clobber each other -> "disk I/O error").
+    from ..store.vectors import pinned_embedder
+
+    conn = _get_vec_conn(db_path)
+    try:
+        pinned = pinned_embedder(conn, VEC_STORE)
+    finally:
+        conn.close()
+    return pinned[0] if pinned else None
 
 
 def _load_existing_hashes(db_path: Path) -> dict[str, int]:

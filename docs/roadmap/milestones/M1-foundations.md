@@ -48,7 +48,7 @@
 - **Out of scope:** new tables (M1.5).
 
 ### M1.5 Store: `current_scan` + new tables ★
-- **Status:** In progress (rm/M1.5-current-scan-tables, 2026-10-09)
+- **Status:** Done (fca86f3)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M1.4

@@ -23,7 +23,7 @@ from . import (
     AdvisorConfig, AIGWConfig, AnthropicConfig, BedrockConfig, DiscoveryConfig, GeminiConfig,
     MLXGemmaConfig, MLXQwenConfig, OllamaConfig, OMLXConfig, OpenAIConfig, OpenRouterConfig,
     ProcessMiningConfig,
-    RagConfig, _apply_env_overrides,
+    RagConfig, StoreConfig, _apply_env_overrides,
 )
 
 PROJECT_FILE = "config.yaml"          # inside .discovery/
@@ -40,7 +40,7 @@ REMOVED_KEYS: dict[str, str] = {
 _SECTIONS = (
     BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig, OpenAIConfig,
     GeminiConfig, AnthropicConfig, AIGWConfig, OMLXConfig, OpenRouterConfig, RagConfig, ProcessMiningConfig, AdvisorConfig,
-    DiscoveryConfig,
+    StoreConfig, DiscoveryConfig,
 )
 for _cls in _SECTIONS:
     # Strict validation for stdlib dataclasses (pydantic honours this attribute).
