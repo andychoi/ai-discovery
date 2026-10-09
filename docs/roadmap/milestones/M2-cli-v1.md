@@ -58,7 +58,7 @@
 - **Out of scope:** pricing table (M1.11).
 
 ### M2.5 `status` + `doctor` ★
-- **Status:** Planned
+- **Status:** In progress (rm/M2.5-status-doctor, 2026-10-09)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M2.1, M1.4
