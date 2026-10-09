@@ -140,3 +140,5 @@ File paths are relative to `src/ai_discovery/` unless they start with a top-leve
 | 78 | Call edges scored on recall only; no precision sample | `tests/corpus/metrics.py:75-83` | M0.11 |
 | 79 | Spec says corpus Phase 3 is "pending", but `tests/corpus/external/` (manifest, fetch, ground_truth) exists | `docs/specs/2026-05-31-corpus-accuracy-harness.md` | M0.11 |
 | 80 | Viewer tests build the old layout, so they pass while the product breaks | `tests/test_viewer_dashboard.py:29,90` | M0.9 |
+| 81 | Domain classifier can name a domain after a segment of the repo's *absolute* path (e.g. `private` from macOS `/private/var/...`), so domain names and doc filenames depend on checkout location. Found by the M0.2 golden harness (WebForms node in `dotnet-webforms` fixture) | `graph/domain_classifier.py` (Unverified exact line) | M6.1 (path handling) — golden normalizes it meanwhile |
+| 82 | `screens` table is defined but never written; screen identity only lands in `screen_specs`/`screen_mappings` | `db.py:170` (schema), no `INSERT INTO screens` in `src/` | M3.3 |

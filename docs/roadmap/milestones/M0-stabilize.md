@@ -20,17 +20,17 @@
 - **Out of scope:** license decision (open item in ROADMAP.md); code changes.
 
 ### M0.2 Golden characterization harness ★
-- **Status:** In progress (rm/M0.2-golden-harness, 2026-10-08)
+- **Status:** Done (8226863)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** —
 - **Owns:** `tests/golden/` (new), `tests/golden/stub_llm.py` (new)
 - **Acceptance:**
-  - A recorded-response stub LLM (keyed by prompt hash; unknown prompt → deterministic placeholder), injected from `tests/golden/` by monkeypatching the `shared/llm_router.py` invoke functions — no edit to lane-B files; a real config-selectable stub provider arrives with M1.10.
-  - 2 fixtures reusing `tests/fixtures/projects/spring-boot-app` (Java/Spring) and `tests/fixtures/webforms` (C#/WebForms) scanned end-to-end; snapshot = per-table row counts, sorted `(caller, callee, resolved_by)` edge tuples, sorted doc paths, screen ids.
+  - A recorded-response stub LLM (keyed by prompt hash; unknown prompt → deterministic placeholder), injected from `tests/golden/` by patching `ai_discovery.ai.llm_client.LLMClient` (same seam as `tests/test_integration.py`) — no edit to lane-B files; a real config-selectable stub provider arrives with M1.10.
+  - 2 composed fixtures scanned end-to-end: `java-spring-jsp` (`projects/spring-boot-app` + `jsp/`) and `dotnet-webforms` (`projects/aspnet-core-app` + `webforms/`); snapshot = per-table row counts, sorted call-edge tuples (repo-relative), domains, screen ids (from `screen_specs`), output file paths, LLM call counts per method/tier.
   - Two consecutive runs produce identical snapshots; snapshot update requires `UPDATE_GOLDEN=1`.
 - **Verify:** `pytest -q tests/golden`
-- **Out of scope:** asserting LLM prose content; JSP coverage (add later if a JSP fixture is needed).
+- **Out of scope:** asserting LLM prose content.
 
 ### M0.3 CLI smoke tests + tree-sitter floor ★
 - **Status:** Planned

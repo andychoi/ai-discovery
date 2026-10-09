@@ -35,3 +35,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Decisions:** ADR-0006 no-copy rule kept as engineering policy even though licenses are now compatible.
 - **Verify:** `python scripts/roadmap_lint.py` → ok (76 items).
 - **Follow-ups:** no WebForms/JSP/VB.NET/ABAP sample repo yet.
+
+## 2026-10-08 — M0.2 — golden characterization harness in place
+- **Branch/commit:** rm/M0.2-golden-harness @ 8226863
+- **Changes:** `tests/golden/stub_llm.py` (deterministic `LLMClient` stand-in: prompt-hash lookup in optional `recorded_llm.json`, tier-shaped placeholders, schema-default structured output, call log; unknown attributes raise), `tests/golden/test_golden.py` (composed fixtures `java-spring-jsp`, `dotnet-webforms`; two scans must match; compare to `tests/golden/snapshots/*.json`; `UPDATE_GOLDEN=1` to rewrite).
+- **Decisions:** injection seam is `ai_discovery.ai.llm_client.LLMClient` (as in `tests/test_integration.py`), not `shared/llm_router` functions; embedding/search and self-review persistence patched as in the integration test. Machine-specific path segments that leak into domain names are normalized to `<abs-path-segment>`.
+- **Verify:** `pytest -q tests/golden` → 2 passed; tampered golden → fails with update hint; full `pytest -q` → 1126 passed, 3 skipped (baseline 1124 + 2); `roadmap_lint` ok.
+- **Bench/golden changes:** initial golden snapshots created.
+- **Environment note:** tests run from a local `.venv` (`uv venv .venv --python 3.12 && uv pip install -e ".[dev]"`); `.venv` is gitignored.
+- **Follow-ups:** audit #81 domain named from absolute path segment (lane C); audit #82 `screens` table never written (M3.3). Stub screen/tier1 structured calls return schema defaults, so `screen_specs` content is placeholder.

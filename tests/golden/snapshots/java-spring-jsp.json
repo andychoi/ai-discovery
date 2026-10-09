@@ -1,0 +1,303 @@
+{
+  "call_edges": [
+    [
+      "src/main/java/com/example/batch/OrderExportJob.java",
+      "exportOrders",
+      "println",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/controller/CustomerController.java",
+      "get",
+      "getCustomer",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/controller/CustomerController.java",
+      "list",
+      "getCustomers",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/controller/OrderController.java",
+      "create",
+      "createOrder",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/controller/OrderController.java",
+      "get",
+      "getOrder",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/controller/OrderController.java",
+      "list",
+      "getOrders",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/controller/ProductController.java",
+      "create",
+      "createProduct",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/controller/ProductController.java",
+      "get",
+      "getProduct",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/controller/ProductController.java",
+      "list",
+      "getAllProducts",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/controller/ProductController.java",
+      "update",
+      "createProduct",
+      "direct_call",
+      "receiver_type",
+      0.93
+    ],
+    [
+      "src/main/java/com/example/service/CustomerService.java",
+      "getCustomer",
+      "findById",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/CustomerService.java",
+      "getCustomer",
+      "orElse",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/CustomerService.java",
+      "getCustomers",
+      "findAll",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/OrderService.java",
+      "createOrder",
+      "save",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/OrderService.java",
+      "getOrder",
+      "findById",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/OrderService.java",
+      "getOrder",
+      "orElse",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/OrderService.java",
+      "getOrders",
+      "findAll",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/ProductService.java",
+      "createProduct",
+      "save",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/ProductService.java",
+      "getAllProducts",
+      "findAll",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/ProductService.java",
+      "getProduct",
+      "findById",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/java/com/example/service/ProductService.java",
+      "getProduct",
+      "orElse",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/webapp/WEB-INF/views/customer/list.jsp",
+      "list",
+      "com.acme.CustomerService",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "src/main/webapp/WEB-INF/views/login.jsp",
+      "login",
+      "com.acme.UserBean",
+      "direct_call",
+      "unresolved",
+      0.5
+    ]
+  ],
+  "doc_files": [
+    "output-java-spring-jsp/ASD/<abs-path-segment>.md",
+    "output-java-spring-jsp/ASD/acme.md",
+    "output-java-spring-jsp/ASD/batch.md",
+    "output-java-spring-jsp/ASD/customercontroller.md",
+    "output-java-spring-jsp/ASD/customerservice.md",
+    "output-java-spring-jsp/ASD/entity.md",
+    "output-java-spring-jsp/ASD/ordercontroller.md",
+    "output-java-spring-jsp/ASD/orderservice.md",
+    "output-java-spring-jsp/ASD/productcontroller.md",
+    "output-java-spring-jsp/ASD/productservice.md",
+    "output-java-spring-jsp/ASIS/<abs-path-segment>.md",
+    "output-java-spring-jsp/ASIS/acme.md",
+    "output-java-spring-jsp/ASIS/batch.md",
+    "output-java-spring-jsp/ASIS/customercontroller.md",
+    "output-java-spring-jsp/ASIS/customerservice.md",
+    "output-java-spring-jsp/ASIS/entity.md",
+    "output-java-spring-jsp/ASIS/ordercontroller.md",
+    "output-java-spring-jsp/ASIS/orderservice.md",
+    "output-java-spring-jsp/ASIS/productcontroller.md",
+    "output-java-spring-jsp/ASIS/productservice.md",
+    "output-java-spring-jsp/ASSC/<abs-path-segment>.md",
+    "output-java-spring-jsp/ASSC/acme.md",
+    "output-java-spring-jsp/ASSC/batch.md",
+    "output-java-spring-jsp/ASSC/customercontroller.md",
+    "output-java-spring-jsp/ASSC/customerservice.md",
+    "output-java-spring-jsp/ASSC/entity.md",
+    "output-java-spring-jsp/ASSC/ordercontroller.md",
+    "output-java-spring-jsp/ASSC/orderservice.md",
+    "output-java-spring-jsp/ASSC/productcontroller.md",
+    "output-java-spring-jsp/ASSC/productservice.md",
+    "output-java-spring-jsp/INTERFACES/java-spring-jsp-dependencies.md",
+    "output-java-spring-jsp/ONBOARD/java-spring-jsp-onboard-OrderController.md",
+    "output-java-spring-jsp/ONBOARD/java-spring-jsp-onboard-ProductController.md",
+    "output-java-spring-jsp/PF/batch-exportorders.md",
+    "output-java-spring-jsp/PF/customercontroller-get.md",
+    "output-java-spring-jsp/PF/customercontroller-list.md",
+    "output-java-spring-jsp/PF/ordercontroller-create.md",
+    "output-java-spring-jsp/PF/ordercontroller-get.md",
+    "output-java-spring-jsp/PF/ordercontroller-list.md",
+    "output-java-spring-jsp/PF/productcontroller-create.md",
+    "output-java-spring-jsp/PF/productcontroller-get.md",
+    "output-java-spring-jsp/PF/productcontroller-list.md",
+    "output-java-spring-jsp/PF/productcontroller-update.md",
+    "output-java-spring-jsp/screens/categories.md",
+    "output-java-spring-jsp/screens/customers-detail.md",
+    "output-java-spring-jsp/screens/customers-list.md",
+    "output-java-spring-jsp/screens/orders-detail.md",
+    "output-java-spring-jsp/screens/orders-invoice.md",
+    "output-java-spring-jsp/screens/orders-list.md",
+    "output-java-spring-jsp/screens/products-add.md",
+    "output-java-spring-jsp/screens/products-edit.md",
+    "output-java-spring-jsp/screens/products-list.md",
+    "output-java-spring-jsp/screens/reports-inventory.md",
+    "output-java-spring-jsp/screens/reports-sales.md"
+  ],
+  "domains": [
+    "<abs-path-segment>",
+    "CustomerController",
+    "CustomerService",
+    "OrderController",
+    "OrderService",
+    "ProductController",
+    "ProductService",
+    "acme",
+    "batch",
+    "entity"
+  ],
+  "intermediate_files": [
+    "interfaces.json"
+  ],
+  "llm_calls": {
+    "invoke:tier1": 42,
+    "invoke:tier2": 2,
+    "invoke_structured:screen": 11,
+    "invoke_structured:tier1": 10,
+    "invoke_with_advisor:tier2": 40,
+    "invoke_with_advisor:tier3": 30
+  },
+  "scan_status": "completed",
+  "screen_ids": [
+    "categories",
+    "customers-detail",
+    "customers-list",
+    "orders-detail",
+    "orders-invoice",
+    "orders-list",
+    "products-add",
+    "products-edit",
+    "products-list",
+    "reports-inventory",
+    "reports-sales"
+  ],
+  "table_counts": {
+    "business_flows": 10,
+    "call_edges": 23,
+    "code_nodes": 42,
+    "db_relationship": 3,
+    "domains": 10,
+    "entity_state_machines": 0,
+    "generated_docs": 32,
+    "llm_costs": 0,
+    "node_summaries": 42,
+    "phase_checkpoints": 15,
+    "review_claims": 0,
+    "scan_runs": 1,
+    "scenario_flows": 5,
+    "schema_version": 1,
+    "screen_mappings": 0,
+    "screen_review_claims": 0,
+    "screen_source_hashes": 0,
+    "screen_specs": 11,
+    "screens": 0,
+    "state_transitions": 0
+  }
+}

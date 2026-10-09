@@ -1,0 +1,192 @@
+{
+  "call_edges": [
+    [
+      "Controllers/OrdersController.cs",
+      "CreateOrder",
+      "CreatedAtAction",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Controllers/OrdersController.cs",
+      "CreateOrder",
+      "nameof",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Controllers/OrdersController.cs",
+      "GetOrder",
+      "Ok",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Controllers/OrdersController.cs",
+      "GetOrders",
+      "Ok",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Controllers/ProductsController.cs",
+      "CreateProduct",
+      "CreatedAtAction",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Controllers/ProductsController.cs",
+      "CreateProduct",
+      "nameof",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Controllers/ProductsController.cs",
+      "GetProduct",
+      "Ok",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Controllers/ProductsController.cs",
+      "GetProducts",
+      "Ok",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Controllers/ProductsController.cs",
+      "ProductsController",
+      "ProductService",
+      "direct_call",
+      "short_name",
+      0.8
+    ],
+    [
+      "Services/ProductService.cs",
+      "GetAllProducts",
+      "GetAllAsync",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Services/ProductService.cs",
+      "GetProduct",
+      "GetByIdAsync",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "Services/ProductService.cs",
+      "ProductService",
+      "repository",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "WebForms/Default.aspx",
+      "Default",
+      "MyApp.Default.btnSave_Click",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "WebForms/Default.aspx",
+      "Default",
+      "MyApp.Default.lnkCancel_Click",
+      "direct_call",
+      "unresolved",
+      0.5
+    ],
+    [
+      "WebForms/Pages/Customer.aspx",
+      "Customer",
+      "MyApp.Pages.Customer.grid_RowCommand",
+      "direct_call",
+      "unresolved",
+      0.5
+    ]
+  ],
+  "doc_files": [
+    "output-dotnet-webforms/ASD/<abs-path-segment>.md",
+    "output-dotnet-webforms/ASD/ecommerceapi.md",
+    "output-dotnet-webforms/ASD/myapp.md",
+    "output-dotnet-webforms/ASIS/<abs-path-segment>.md",
+    "output-dotnet-webforms/ASIS/ecommerceapi.md",
+    "output-dotnet-webforms/ASIS/myapp.md",
+    "output-dotnet-webforms/ASSC/<abs-path-segment>.md",
+    "output-dotnet-webforms/ASSC/ecommerceapi.md",
+    "output-dotnet-webforms/ASSC/myapp.md",
+    "output-dotnet-webforms/INTERFACES/dotnet-webforms-dependencies.md",
+    "output-dotnet-webforms/ONBOARD/dotnet-webforms-onboard-EcommerceApi.md",
+    "output-dotnet-webforms/PF/ecommerceapi-createorder.md",
+    "output-dotnet-webforms/PF/ecommerceapi-createproduct.md",
+    "output-dotnet-webforms/PF/ecommerceapi-getorder.md",
+    "output-dotnet-webforms/PF/ecommerceapi-getorders.md",
+    "output-dotnet-webforms/PF/ecommerceapi-getproduct.md",
+    "output-dotnet-webforms/PF/ecommerceapi-getproducts.md",
+    "output-dotnet-webforms/screens/orders-detail.md",
+    "output-dotnet-webforms/screens/orders-list.md",
+    "output-dotnet-webforms/screens/products-create.md",
+    "output-dotnet-webforms/screens/products-list.md"
+  ],
+  "domains": [
+    "<abs-path-segment>",
+    "EcommerceApi",
+    "MyApp"
+  ],
+  "intermediate_files": [
+    "interfaces.json"
+  ],
+  "llm_calls": {
+    "invoke:tier1": 17,
+    "invoke:tier2": 1,
+    "invoke_structured:screen": 4,
+    "invoke_structured:tier1": 5,
+    "invoke_with_advisor:tier2": 21,
+    "invoke_with_advisor:tier3": 9
+  },
+  "scan_status": "completed",
+  "screen_ids": [
+    "orders-detail",
+    "orders-list",
+    "products-create",
+    "products-list"
+  ],
+  "table_counts": {
+    "business_flows": 3,
+    "call_edges": 15,
+    "code_nodes": 17,
+    "db_relationship": 0,
+    "domains": 3,
+    "entity_state_machines": 0,
+    "generated_docs": 10,
+    "llm_costs": 0,
+    "node_summaries": 17,
+    "phase_checkpoints": 15,
+    "review_claims": 0,
+    "scan_runs": 1,
+    "scenario_flows": 6,
+    "schema_version": 1,
+    "screen_mappings": 0,
+    "screen_review_claims": 0,
+    "screen_source_hashes": 0,
+    "screen_specs": 4,
+    "screens": 0,
+    "state_transitions": 0
+  }
+}
