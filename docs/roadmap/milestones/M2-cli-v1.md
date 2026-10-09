@@ -32,7 +32,7 @@
 - **Out of scope:** scanning.
 
 ### M2.3 `scan` v1 ★
-- **Status:** Planned
+- **Status:** In progress (rm/M2.3-scan-v1, 2026-10-09)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M2.1, M0.10
