@@ -6,6 +6,12 @@ A sophisticated brownfield reverse-engineering engine that parses code, infers b
 
 ## Quick Links
 
+**v1 Roadmap (active development)**:
+- **Start here for implementation work**: `docs/roadmap/README.md` — protocol, lanes, read order
+- Next ready items: `python scripts/roadmap_lint.py --next`; or run the `/roadmap-next` skill
+- Item status lives only in `docs/roadmap/milestones/M*.md`; log every session in `docs/roadmap/PROGRESS.md`
+- repowise (`../repowise`) is AGPL — learn from `docs/roadmap/research/edge-case-catalog.md`, never copy its code (ADR-0006)
+
 **Documentation**:
 - **Start here**: `docs/INDEX.md` — Navigation guide
 - **Architecture**: `docs/architecture/overview.md` — High-level design
@@ -149,6 +155,8 @@ source_hashes:
 ## Using Skills
 
 Five custom skills accelerate development. The first three help build the discovery pipeline itself; the last two run *after* a scan to verify and improve its output.
+
+> **Note (2026-10-08):** these five skills are documented but not yet present in the repo (no `.claude/skills/` for them). `/discover-triage` and `/discover-consistency` are scheduled in roadmap item M5.4. The only skill in the repo today is `/roadmap-next` (`.claude/skills/roadmap-next/SKILL.md`).
 
 ### `/parser-extension`
 **When**: You want to add Go, Rust, Java, C#, JavaScript, or any other language.

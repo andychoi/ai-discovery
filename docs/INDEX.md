@@ -13,6 +13,18 @@ Navigation guide for the AI-Discovery reverse-engineering engine documentation.
 
 ---
 
+## v1 Roadmap (Active Development)
+
+Implementation work for v1 is organized in `roadmap/`:
+
+- **`roadmap/README.md`** — start here: work-item protocol, lanes, clean-room rule
+- **`roadmap/ROADMAP.md`** — milestones M0–M8, slices, not-building list, risks, open items
+- **`roadmap/milestones/`** — work items (single source of truth for status)
+- **`roadmap/adr/`**, **`roadmap/design/`** — decisions and target designs (architecture, CLI, wiki web, MCP/agents, graph accuracy, SAP, evidence overlays, benchmark protocol)
+- **`roadmap/research/`** — repowise benchmark, edge-case catalog, ai-discovery audit, review of `new-requirement-research.md`
+
+---
+
 ## Architecture (System Design)
 
 Learn how the system is built:
