@@ -7,7 +7,7 @@
 > Rule for M1.6–M1.8: **move code verbatim first, change behaviour in a later PR.** Golden snapshot (M0.2) must be unchanged by M1.6/M1.7.
 
 ### M1.2 ProjectLayout (`core/paths.py`) ★
-- **Status:** Planned
+- **Status:** In progress (rm/M1.2-project-layout, 2026-10-08)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** —
