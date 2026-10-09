@@ -20,7 +20,7 @@
 - **Out of scope:** concrete builders.
 
 ### M3.2 Builders: overview, module, file, symbol ★
-- **Status:** Planned
+- **Status:** In progress (rm/M3.2-code-builders, 2026-10-09)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M3.1
