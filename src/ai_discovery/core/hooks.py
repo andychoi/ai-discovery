@@ -20,7 +20,7 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 # Modules imported (once) before hooks run, so they can self-register.
-HOOK_MODULES: tuple[str, ...] = ()
+HOOK_MODULES: tuple[str, ...] = ("ai_discovery.pages.build",)
 
 
 @dataclass
@@ -48,6 +48,11 @@ def register_post_scan(name: str, fn: PostScanHook) -> None:
     if any(n == name for n, _ in _HOOKS):
         raise ValueError(f"post-scan hook {name!r} already registered")
     _HOOKS.append((name, fn))
+
+
+def is_registered(name: str) -> bool:
+    """Whether *name* is registered (does not import the built-in hook modules)."""
+    return any(n == name for n, _ in _HOOKS)
 
 
 def unregister_post_scan(name: str) -> None:

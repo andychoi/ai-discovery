@@ -85,6 +85,21 @@ def _encoding_fallbacks(conn: sqlite3.Connection, scan_id: int) -> int:
     return len(rows)
 
 
+def _pages(conn: sqlite3.Connection, scan_id: int, repo: Path) -> dict[str, Any]:
+    """Wiki pages for the scan and how many went stale since (M3.5)."""
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM pages WHERE scan_id = ?", (scan_id,)).fetchone()[0]
+    except sqlite3.OperationalError:
+        return {"total": 0, "stale": 0}  # pre-0002 DB
+    if not total:
+        return {"total": 0, "stale": 0}
+    from ...pages.build import stale_pages
+
+    stale = stale_pages(conn, scan_id, repo)
+    return {"total": total, "stale": len(stale),
+            "stale_sample": [f"{k} ({v})" for k, v in list(stale.items())[:5]]}
+
+
 def collect(index: IndexRef) -> dict[str, Any]:
     from ...core.lock import lock_status
 
@@ -97,6 +112,7 @@ def collect(index: IndexRef) -> dict[str, Any]:
             result["counts"] = _counts(conn, run["id"])
             result["costs"] = _costs(conn, run["id"])
             result["degradations"] = {"encoding_fallback_files": _encoding_fallbacks(conn, run["id"])}
+            result["pages"] = _pages(conn, run["id"], index.repo)
     finally:
         conn.close()
     result["freshness"] = freshness(index.repo, run["commit_sha"] if run else None)
@@ -127,6 +143,10 @@ def _render(res: dict[str, Any]):
                           highlight=False)
             console.print(f"[bold]Spend[/]   ${res['costs']['usd']:.4f} over {res['costs']['calls']} LLM call(s)",
                           highlight=False)
+            pg = res.get("pages") or {}
+            if pg.get("total"):
+                stale = f"; {pg['stale']} stale since the scan (re-run discover scan)" if pg["stale"] else ""
+                console.print(f"[bold]Wiki[/]    {pg['total']} pages{stale}", highlight=False)
             enc = res["degradations"]["encoding_fallback_files"]
             if enc:
                 console.print(f"[bold]Notes[/]   {enc} file(s) decoded with a legacy encoding", highlight=False)

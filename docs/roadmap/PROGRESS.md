@@ -193,3 +193,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k builders_business` → 8 passed (all links resolve to built pages; citations on disk; deterministic); real builds: fixture 63 pages, spring-petclinic 144 (7 entities, 2 interfaces) in 0.04 s, eShop 640 in 0.2 s; full `pytest -q` → 1432 passed, 3 skipped, 2 xfailed; ruff clean; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** audit #89 coarse screen→table attribution (every fixture screen reads all tables); include `entity_conditions` in DMN context; M3.5 persists pages after each scan.
+
+## 2026-10-09 — M3.5 — page build hook + FTS + idempotence
+- **Branch/commit:** rm/M3.5-page-build @ a07771f
+- **Changes:** `pages/build.py` (new: `build_pages`, `nearest_parent`, `stale_pages`, `pages` hook); `core/hooks.py` `HOOK_MODULES` + `is_registered`; `cli/commands/status.py` (cross-lane) page + stale counts; `tests/test_page_build.py` (6); `tests/cli/test_scan_v1.py` hook assertion includes the built-in `pages` hook.
+- **Decisions:** structural pages are rebuilt every scan (ADR-0002), so freshness is computed on read from `source_hashes` (sha256 of every cited file, stamped at build time) instead of being written back. A page that reappears drops its tombstone. Tombstone successor = nearest surviving ancestor (symbol → its file → modules → root → overview).
+- **Verify:** `pytest -q tests -k "page_build or idempotence"` → 6 passed (byte-identical rows across two `--full` scans; tombstone + note follow-through; staleness file → modules → overview); real scans: spring-petclinic 144 pages / 144 FTS rows, eShop 640 / 640, sample apps untouched; full `pytest -q` → 1438 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** none (golden uses the legacy run_pipeline path, which doesn't run post-scan hooks).
+- **Follow-ups:** `doctor --repair` FTS rebuild now has data to rebuild (add in a doctor touch-up); M3.6 parity tests can build on these fixtures.

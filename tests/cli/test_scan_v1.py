@@ -146,7 +146,8 @@ def test_post_scan_hooks_run_and_failures_degrade(repo: Path) -> None:
     assert res.exit_code == 0, res.output
     out = _result(res)
     assert calls and calls[0][1] == "completed"
-    assert {h["name"]: h["ok"] for h in out["hooks"]} == {"test-ok": True, "test-bad": False}
+    hooks_ok = {h["name"]: h["ok"] for h in out["hooks"]}
+    assert hooks_ok == {"pages": True, "test-ok": True, "test-bad": False}  # pages = built-in (M3.5)
     assert any(d["kind"] == "post_scan_hook" for d in out["degradations"])
     assert "discover doctor" in out["next"]
 

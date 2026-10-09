@@ -55,7 +55,7 @@
 - **Out of scope:** —
 
 ### M3.5 Page build hook + FTS + idempotence ★
-- **Status:** In progress (rm/M3.5-page-build, 2026-10-09)
+- **Status:** Done (a07771f)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M3.2, M3.3, M2.3
