@@ -99,7 +99,7 @@
 - **Out of scope:** provider consolidation (M1.10).
 
 ### M0.8 Secret hygiene ★
-- **Status:** Planned
+- **Status:** In progress (rm/M0.8-secret-hygiene, 2026-10-08)
 - **Size:** S
 - **Lane:** A
 - **Depends on:** M0.6
