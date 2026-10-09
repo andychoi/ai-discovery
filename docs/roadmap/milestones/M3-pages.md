@@ -32,7 +32,7 @@
 - **Out of scope:** prose.
 
 ### M3.3 Builders: screen, endpoint, entity/FSM, table, interface ★
-- **Status:** In progress (rm/M3.3-business-builders, 2026-10-09)
+- **Status:** Done (d16f258)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M3.1

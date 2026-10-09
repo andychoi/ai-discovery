@@ -185,3 +185,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k builders_code` → 9 passed (all citations resolve on disk; byte-identical rebuilds; caps; link consistency); built for real scans: spring-petclinic 111 pages / 275 citations in 0.04 s, eShop 601 pages / 1273 citations in 0.21 s; full `pytest -q` → 1424 passed, 3 skipped, 2 xfailed; ruff clean; `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** pages are not yet persisted by scans — the post-scan page-build hook is M3.5.
+
+## 2026-10-09 — M3.3 — business page builders
+- **Branch/commit:** rm/M3.3-business-builders @ d16f258
+- **Changes:** `pages/builders/business.py` (new: screens, endpoints, entities, tables, interfaces); `tests/test_builders_business.py` (8, incl. a synthetic FSM with guarded transitions and an external system).
+- **Decisions:** screen data comes from `screen_specs.spec_json` (the `screens`/`screen_mappings` tables are never written — audit #82). Entity pages reuse `generators/dmn_generator.py` and `ears_generator.py` per entity (cross-condition correlations from `entity_conditions.json` are not included yet) and render their own `stateDiagram-v2` with sanitized state ids. Table set = db_model tables ∪ FK endpoints ∪ screen tables ∪ SQL-table FSMs.
+- **Verify:** `pytest -q tests -k builders_business` → 8 passed (all links resolve to built pages; citations on disk; deterministic); real builds: fixture 63 pages, spring-petclinic 144 (7 entities, 2 interfaces) in 0.04 s, eShop 640 in 0.2 s; full `pytest -q` → 1432 passed, 3 skipped, 2 xfailed; ruff clean; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** audit #89 coarse screen→table attribution (every fixture screen reads all tables); include `entity_conditions` in DMN context; M3.5 persists pages after each scan.
