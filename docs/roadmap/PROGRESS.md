@@ -169,3 +169,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** none.
 - **Measured (baseline for M1.12/M6):** unresolved call edges — petclinic 1014/1278 (79%), eShop 2155/3297 (65%).
 - **Follow-ups:** README/CLAUDE.md still show `discover scan repo -p …` (M2.7 regenerates the CLI reference); `--source URL` (remote clone into state dir).
+
+## 2026-10-09 — M3.1 — page model, registry, notes
+- **Branch/commit:** rm/M3.1-page-model @ f005eda
+- **Changes:** `pages/{__init__,model,registry,notes}.py`, `pages/builders/__init__.py` (new, empty package); `tests/test_pages_model.py` (18).
+- **Decisions:** `facts_json` stores `{facts, sections}`; `body_md` is rendered from sections (Jinja templates come with M3.2). Links/citations are de-duplicated and sorted, and JSON is canonical (sorted keys), so identical inputs give identical rows — the basis for the M3.5 idempotence test. Renames are `page_tombstones` rows with a successor; `notes_for` gathers notes from every id that resolves to the page. Builders whose module name starts with `_` are not imported.
+- **Verify:** `pytest -q tests -k pages_model` → 18 passed; full `pytest -q` → 1415 passed, 3 skipped, 2 xfailed; ruff clean on `pages/`; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** none.
