@@ -18,7 +18,8 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 
 | Kind | Number | Item | Date |
 |---|---|---|---|
-| migration | — | — | — |
+| migration | 0001 | M1.4 (baseline) | 2026-10-09 |
+| migration | 0002 | reserved for M1.5 | 2026-10-09 |
 
 ---
 
@@ -113,3 +114,15 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k config` → 52 passed; full `pytest -q` → 1277 passed, 3 skipped, 2 xfailed; golden unchanged; ruff F821/F401 on config/ + cli.py clean except known ingest-docs NameError (M0.9); `roadmap_lint` ok.
 - **Bench/golden changes:** none.
 - **Follow-ups:** `.env.sample` still lists unread variables (M0.1). `doctor`/`status` (M2.5) should print `config_sources()`.
+
+## 2026-10-09 — housekeeping — owner's provider work committed
+- **Commit:** 5d42a72 `feat(providers): add aigw, omlx and openrouter providers` (owner's uncommitted work, reviewed for secrets — none — and committed at owner request before M1.4). `omlx` is in `_LOCAL_PROVIDERS` ($0); `aigw`/`openrouter` are metered at the conservative cloud rate.
+
+## 2026-10-09 — M1.4 — numbered migrations + run lock
+- **Branch/commit:** rm/M1.4-store-migrations-lock @ 57f5828
+- **Changes:** `store/{__init__,migrate}.py`, `store/migrations/m0001_baseline.py` (new); `db.py` (`init_db` runs `store.migrate`; `SCHEMA_VERSION` frozen at 15); `core/lock.py` (new `RunLock`, `LockHeld`); `pipeline.py` (`run_pipeline` = lock wrapper, body renamed `_run_pipeline_unlocked`, unchanged); `cli.py` scan → exit 4 on `LockHeld`; `tests/test_store_and_lock.py` (15); `tests/test_screen_phase_regression.py` now inspects `_run_pipeline_unlocked`.
+- **Decisions:** adopt existing DBs at 0001 instead of a hard break — baseline equals legacy v15, so one migration system covers old and new DBs. Migration modules are named `m<NNNN>_*.py` (importable). Lock staleness uses `ps -o lstart=` to detect pid reuse (POSIX); on platforms without `ps`, a live pid is always treated as the owner.
+- **Migration numbers:** 0001 used; 0002 reserved for M1.5.
+- **Verify:** `pytest -q tests -k "store or lock"` → 30 passed; real concurrent run on eShop: second scan exit 4 (`lock_held`), first exit 0, lock removed, DB at `0001 baseline`; full `pytest -q` → 1318 passed, 3 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** `tests/golden/snapshots/*.json` gain `"schema_migrations": 1` in `table_counts` — the new bookkeeping table; no other diff (checked with `git diff`).
+- **Follow-ups:** `doctor --repair` (M2.5) should offer to clear a foreign-host lock; pre-existing unused imports in `pipeline.py` (ruff F401) left for the stage extraction (M1.6/M1.7).

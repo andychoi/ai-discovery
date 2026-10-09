@@ -28,9 +28,10 @@ def _run_pipeline_funcdef() -> ast.FunctionDef:
     source = Path(pipeline_mod.__file__).read_text()
     tree = ast.parse(source)
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "run_pipeline":
+        # M1.4: run_pipeline is a lock wrapper; the phase body lives here.
+        if isinstance(node, ast.FunctionDef) and node.name == "_run_pipeline_unlocked":
             return node
-    raise AssertionError("run_pipeline not found in pipeline.py")
+    raise AssertionError("_run_pipeline_unlocked not found in pipeline.py")
 
 
 def test_llm_client_bound_before_first_use():

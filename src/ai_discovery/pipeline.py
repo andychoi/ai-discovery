@@ -373,6 +373,35 @@ def run_pipeline(
     skip_phases: list[str] | None = None,
     rescan: bool = False,
 ) -> str | None:
+    """Run the pipeline under the project's single-flight run lock (M1.4).
+
+    Raises ``core.lock.LockHeld`` (CLI: exit 4, reason ``lock_held``) when
+    another live scan of the same project is running. See
+    ``_run_pipeline_unlocked`` for behaviour and return values.
+    """
+    from .core.lock import RunLock
+
+    layout = ProjectLayout.legacy(output_dir, project_slug, docs_root).ensure()
+    with RunLock(layout.lock_path, purpose="scan"):
+        return _run_pipeline_unlocked(
+            repo=repo, branch=branch, project_slug=project_slug, output_dir=output_dir,
+            config=config, docs_root=docs_root, resume=resume, resume_from=resume_from,
+            skip_phases=skip_phases, rescan=rescan,
+        )
+
+
+def _run_pipeline_unlocked(
+    repo: str,
+    branch: str,
+    project_slug: str,
+    output_dir: Path,
+    config: DiscoveryConfig,
+    docs_root: Path = Path("./data"),
+    resume: bool = False,
+    resume_from: str | None = None,
+    skip_phases: list[str] | None = None,
+    rescan: bool = False,
+) -> str | None:
     """Run the full discovery pipeline in offline mode.
 
     Returns the final scan status ("completed" or "budget_exceeded"); None for

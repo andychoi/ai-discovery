@@ -292,6 +292,7 @@
     "review_claims": 0,
     "scan_runs": 1,
     "scenario_flows": 5,
+    "schema_migrations": 1,
     "schema_version": 1,
     "screen_mappings": 0,
     "screen_review_claims": 0,

@@ -122,18 +122,25 @@ def scan(
         base_url, _ = cfg.get_endpoint()
         console.print(f"  endpoint={base_url}  tier1={cfg.get_model('tier1')}")
 
-    status = run_pipeline(
-        repo=repo,
-        branch=branch,
-        project_slug=project_slug,
-        output_dir=output,
-        docs_root=docs_root,
-        config=cfg,
-        resume=resume,
-        resume_from=resume_from,
-        skip_phases=[p.strip() for p in skip_phases.split(",")] if skip_phases else [],
-        rescan=rescan,
-    )
+    from ai_discovery.core.lock import LockHeld
+
+    try:
+        status = run_pipeline(
+            repo=repo,
+            branch=branch,
+            project_slug=project_slug,
+            output_dir=output,
+            docs_root=docs_root,
+            config=cfg,
+            resume=resume,
+            resume_from=resume_from,
+            skip_phases=[p.strip() for p in skip_phases.split(",")] if skip_phases else [],
+            rescan=rescan,
+        )
+    except LockHeld as exc:
+        # M1.4: single-flight per project (exit 4, reason lock_held).
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=4) from None
     if status == "resume_refused":
         raise typer.Exit(2)
     if status == "budget_exceeded":

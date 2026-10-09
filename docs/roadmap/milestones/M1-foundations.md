@@ -35,13 +35,13 @@
 - **Out of scope:** provider internals (M1.10).
 
 ### M1.4 Store: numbered migrations + run lock ★
-- **Status:** In progress (rm/M1.4-store-migrations-lock, 2026-10-09)
+- **Status:** Done (57f5828)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M1.2
 - **Owns:** `src/ai_discovery/store/` (new), `src/ai_discovery/store/migrations/NNNN_*.py` (new), `src/ai_discovery/core/lock.py` (new), `src/ai_discovery/db.py` (shim)
 - **Acceptance:**
-  - New `.discovery/discovery.db` starts at migration 0001 (hard break: no in-place upgrade of old DBs; `doctor` detects old layout and explains).
+  - Every DB is at migration 0001 = baseline (legacy schema v15): new DBs are created by it, existing v15 DBs are adopted in place (no hard break needed). Legacy `SCHEMA_VERSION` is frozen; all later changes are numbered files.
   - Migrations are ordered files tracked in `schema_migrations`; empty DB migrates to head in a test; WAL + busy_timeout kept.
   - Single-flight run lock (exclusive create, pid + token; dead/recycled pid reclaimed; live owner never evicted on age); second writer exits 4 with reason `lock_held`.
 - **Verify:** `pytest -q tests -k "store or lock"`

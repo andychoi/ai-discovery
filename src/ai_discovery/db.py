@@ -18,6 +18,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Legacy inline-migration version — FROZEN at 15 (M1.4). New schema changes
+# are numbered files in store/migrations/ (applied by store.migrate()).
 SCHEMA_VERSION = 15
 
 # ---------------------------------------------------------------------------
@@ -425,6 +427,11 @@ def init_db(db_path: Path) -> None:
         (SCHEMA_VERSION, now_iso()),
     )
     conn.commit()
+    # M1.4: numbered migrations on top of the (frozen) legacy schema. Existing
+    # DBs are adopted at 0001 (baseline == legacy v15); later files apply here.
+    from .store import migrate
+
+    migrate(conn)
     conn.close()
 
 
