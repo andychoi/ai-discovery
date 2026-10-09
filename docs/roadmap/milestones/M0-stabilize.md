@@ -58,7 +58,7 @@
 - **Out of scope:** the `_parse_one` call-site in `pipeline.py` belongs to lane A — coordinate (single small edit, noted in PROGRESS.md).
 
 ### M0.5 Budget for all paid providers ★
-- **Status:** Planned
+- **Status:** In progress (rm/M0.5-budget-all-providers, 2026-10-08)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** —
