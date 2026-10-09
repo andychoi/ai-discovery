@@ -1,8 +1,8 @@
 # AI-Discovery Configuration
 # Customize discovery behavior, model selection, and optional features
 
-# Provider: bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic
-provider: ollama
+# Provider: aigw | omlx | openrouter | bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic
+provider: aigw
 
 # LLM cost limit (USD) — stops pipeline if exceeded
 budget_limit_usd: 50.0
@@ -13,18 +13,20 @@ max_concurrent: 10
 # Production mode: use tier3p (deep) instead of tier3d (standard) for doc generation
 prod: false
 
-# Ollama configuration
-ollama:
-  base_url: "http://localhost:11434"
-  tier1: "gemma4:e2b"
-  tier2: "gemma4:26b"
-  tier3d: "gemma4:26b"
-  tier3p: "gemma4:31b"
-  tier1_num_ctx: 4096
+# Local ai-gateway (OpenAI-compatible, fronts OMLX) — set AIGW_API_KEY in the
+# environment. Models are gateway aliases; the key must allowlist each one.
+aigw:
+  base_url: "http://localhost:11433/v1"
+  tier1: claude-haiku
+  tier2: claude-sonnet
+  tier3d: claude-sonnet
+  tier3p: claude-opus
 
 # RAG configuration
+# embedding_model: model for embedding_provider (empty = provider default)
 rag:
-  embedding_provider: ollama
+  embedding_provider: aigw
+  embedding_model: ""
   bedrock_model: "amazon.titan-embed-text-v2:0"
   ollama_model: mxbai-embed-large
   chunk_size: 1500

@@ -460,7 +460,9 @@ def embed_openai_compat(
         timeout = float(os.environ.get("OPENAI_COMPAT_EMBED_TIMEOUT", "120"))
         url = f"{base_url.rstrip('/')}/embeddings"
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
-        resp = httpx.post(url, json={"model": model, "input": text},
+        # Single-element list: OpenAI-spec allows a bare string, but ai-gateway
+        # only accepts the array form.
+        resp = httpx.post(url, json={"model": model, "input": [text]},
                           timeout=timeout, headers=headers)
         resp.raise_for_status()
         return resp.json()["data"][0]["embedding"]

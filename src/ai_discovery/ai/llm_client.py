@@ -2,7 +2,7 @@
 
 Adds Discovery-specific cost tracking and tier mapping on top of the shared
 multi-provider router (bedrock | ollama | mlx-gemma | mlx-qwen | openai |
-gemini | anthropic). Config comes from DiscoveryConfig (YAML > env >
+gemini | anthropic | aigw | omlx | openrouter). Config comes from DiscoveryConfig (YAML > env >
 defaults) and is registered with the router via ``llm_router.configure()``.
 
 The structured-output path (``invoke_structured``) calls the shared invoke
@@ -189,7 +189,7 @@ class LLMClient:
         """
         model = self._config.get_model(tier)
 
-        if self._config.provider in ("openai", "gemini"):
+        if llm_router._is_openai_compat(self._config.provider):
             from ai_discovery.shared.llm_router import max_tokens_field_for
             base_url, api_key = self._config.get_endpoint()
             try:
@@ -512,14 +512,15 @@ class LLMClient:
     def _embedding_provider(self) -> str:
         """Resolve which provider serves embeddings.
 
-        rag.embedding_provider drives the choice: bedrock / openai / gemini are
+        rag.embedding_provider drives the choice: bedrock and the
+        OpenAI-compatible providers (openai / gemini / aigw / omlx / openrouter) are
         honored directly. For ollama-like values, legacy behavior is preserved:
         when the active chat provider is itself ollama-like, embed via the
         active provider's endpoint (mlx servers host their own embedding
         models); otherwise honor the embedding provider as-is (e.g. chat on
         anthropic, embed on local ollama)."""
         ep = self._config.rag.embedding_provider
-        if ep in ("bedrock", "openai", "gemini"):
+        if ep == "bedrock" or llm_router._is_openai_compat(ep):
             return ep
         if self._config.provider in self._OLLAMA_LIKE:
             return self._config.provider

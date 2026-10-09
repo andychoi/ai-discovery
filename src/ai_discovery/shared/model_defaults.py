@@ -113,6 +113,45 @@ MODELS: dict[str, dict[str, str]] = {
         "expert":   "claude-opus-4-8",
         "heavy":    "claude-opus-4-8",
     },
+    # ── ai-gateway (local, :11433) — OpenAI-compatible front for OMLX ─────
+    # base_url includes /v1; invoke_openai_compat appends /chat/completions.
+    # Model IDs are *gateway aliases* (see ai-gateway MODEL_GUIDE.md), not
+    # upstream names — the virtual key's metadata.models allowlist must name
+    # each alias explicitly. Auth via AIGW_API_KEY (Bearer virtual key).
+    "aigw": {
+        "url":       "http://localhost:11433/v1",
+        "embedding": "pplx-embed",
+        "fast":      "claude-haiku",
+        "standard":  "claude-sonnet",
+        "expert":    "claude-opus",
+        "heavy":     "claude-opus",
+    },
+    # ── OMLX (local MLX host, :11434, OpenAI-compatible) ──────────────────
+    # Replaces Ollama on this port. base_url includes /v1. Auth via
+    # OMLX_API_KEY (Bearer). Model IDs as served by OMLX — the same names
+    # ai-gateway's embedder/semantic cache use.
+    "omlx": {
+        "url":       "http://localhost:11434/v1",
+        # 1024-dim — matches the vector(1024) schema.
+        "embedding": "Qwen3-Embedding-0.6B-4bit-DWQ",
+        "fast":      "Qwen3.5-9B-MTPLX-Optimized-Speed",
+        "standard":  "Qwen3.5-9B-MTPLX-Optimized-Speed",
+        "expert":    "Qwen3.5-9B-MTPLX-Optimized-Speed",
+        "heavy":     "Qwen3.5-9B-MTPLX-Optimized-Speed",
+    },
+    # ── OpenRouter (OpenAI-compatible chat completions + embeddings) ──────
+    # Auth via OPENROUTER_API_KEY. Model IDs are OpenRouter slugs
+    # (vendor/model) — verify against https://openrouter.ai/models.
+    "openrouter": {
+        "url":       "https://openrouter.ai/api/v1",
+        # 1024-dim. Alternatives (set rag.embedding_model):
+        # openai/text-embedding-3-small, liquid/lfm-2.5-embedding-350m:free.
+        "embedding": "perplexity/pplx-embed-v1-0.6b",
+        "fast":      "anthropic/claude-haiku-4.5",
+        "standard":  "anthropic/claude-sonnet-4.6",
+        "expert":    "anthropic/claude-opus-4.6",
+        "heavy":     "anthropic/claude-opus-4.6",
+    },
     # ── ai-mlx-server (Qwen3.5 variant) ──────────────────────────────────
     # Same server (:11435), different tier → model map. Selectable as a
     # sibling of mlx-gemma for benchmarking vs. gemma4 or when Qwen's
@@ -139,7 +178,8 @@ for _provider, _models in MODELS.items():
     if "expert" in _models:
         _models.setdefault("deep", _models["expert"])
 
-DEFAULT_PROVIDER = "ollama"
+# Ollama is not used locally: OMLX serves :11434 and ai-gateway (:11433) fronts it.
+DEFAULT_PROVIDER = "aigw"
 
 
 # ── Cost rates ($ per 1M tokens: input, output) ───────────────────────────────
@@ -147,9 +187,11 @@ DEFAULT_PROVIDER = "ollama"
 # substring, most specific fragment first. Update alongside MODELS when
 # provider pricing changes.
 
-_LOCAL_PROVIDERS = frozenset({"ollama", "mlx-gemma", "mlx-qwen"})
+_LOCAL_PROVIDERS = frozenset({"ollama", "mlx-gemma", "mlx-qwen", "omlx"})
 
 MODEL_RATES: tuple[tuple[str, float, float], ...] = (
+    # OpenRouter free variants (vendor/model:free)
+    (":free",  0.0, 0.0),
     # Anthropic Claude — matches direct aliases AND Bedrock-prefixed IDs
     # (us.anthropic.claude-…). Opus 4.x $5/$25, Sonnet 4.6 $3/$15,
     # Haiku 4.5 $1/$5.
@@ -164,6 +206,7 @@ MODEL_RATES: tuple[tuple[str, float, float], ...] = (
     # catches the pro family). gemini-3.x flash rates approximated with the
     # 2.5-flash tier — verify against current pricing when it matters.
     ("gemini-embedding", 0.15, 0.0),
+    ("pplx-embed",       0.004, 0.0),
     ("flash-lite", 0.10, 0.40),
     ("flash",      0.30, 2.50),
     ("gemini",     1.25, 10.0),

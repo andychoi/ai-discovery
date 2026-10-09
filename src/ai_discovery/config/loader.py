@@ -20,8 +20,9 @@ from pydantic import ConfigDict, TypeAdapter, ValidationError
 
 from ..core.paths import STATE_DIRNAME, find_project
 from . import (
-    AdvisorConfig, AnthropicConfig, BedrockConfig, DiscoveryConfig, GeminiConfig,
-    MLXGemmaConfig, MLXQwenConfig, OllamaConfig, OpenAIConfig, ProcessMiningConfig,
+    AdvisorConfig, AIGWConfig, AnthropicConfig, BedrockConfig, DiscoveryConfig, GeminiConfig,
+    MLXGemmaConfig, MLXQwenConfig, OllamaConfig, OMLXConfig, OpenAIConfig, OpenRouterConfig,
+    ProcessMiningConfig,
     RagConfig, _apply_env_overrides,
 )
 
@@ -38,7 +39,7 @@ REMOVED_KEYS: dict[str, str] = {
 
 _SECTIONS = (
     BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig, OpenAIConfig,
-    GeminiConfig, AnthropicConfig, RagConfig, ProcessMiningConfig, AdvisorConfig,
+    GeminiConfig, AnthropicConfig, AIGWConfig, OMLXConfig, OpenRouterConfig, RagConfig, ProcessMiningConfig, AdvisorConfig,
     DiscoveryConfig,
 )
 for _cls in _SECTIONS:

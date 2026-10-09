@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from ai_discovery.config import (
     BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig,
-    OpenAIConfig, GeminiConfig, AnthropicConfig,
+    OpenAIConfig, GeminiConfig, AnthropicConfig, AIGWConfig, OMLXConfig, OpenRouterConfig,
     RagConfig, ProcessMiningConfig, AdvisorConfig
     )
 
 
-def render_template(provider: str = "ollama") -> str:
+def render_template(provider: str = "aigw") -> str:
     """YAML config template for *provider*, with comments, from the dataclass defaults."""
     # Build template as list of (key, value) tuples to preserve ordering
     # and allow duplicate blank-line entries.
@@ -22,7 +22,7 @@ def render_template(provider: str = "ollama") -> str:
         ("# AI-Discovery Configuration", None),
         ("# Customize discovery behavior, model selection, and optional features", None),
         ("", None),
-        ("# Provider: bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic", None),
+        ("# Provider: aigw | omlx | openrouter | bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic", None),
         ("provider", provider),
         ("", None),
         ("# LLM cost limit (USD) — stops pipeline if exceeded", None),
@@ -89,6 +89,31 @@ def render_template(provider: str = "ollama") -> str:
             ("anthropic", {"base_url": ant.base_url, "tier1": ant.tier1,
                            "tier2": ant.tier2, "tier3d": ant.tier3d, "tier3p": ant.tier3p}),
         ])
+    elif provider == "aigw":
+        gw = AIGWConfig()
+        template.extend([
+            ("", None),
+            ("# Local ai-gateway (OpenAI-compatible, fronts OMLX) — set AIGW_API_KEY in the", None),
+            ("# environment. Models are gateway aliases; the key must allowlist each one.", None),
+            ("aigw", {"base_url": gw.base_url, "tier1": gw.tier1,
+                      "tier2": gw.tier2, "tier3d": gw.tier3d, "tier3p": gw.tier3p}),
+        ])
+    elif provider == "omlx":
+        omlx = OMLXConfig()
+        template.extend([
+            ("", None),
+            ("# Local OMLX host (OpenAI-compatible) — set OMLX_API_KEY in the environment", None),
+            ("omlx", {"base_url": omlx.base_url, "tier1": omlx.tier1,
+                      "tier2": omlx.tier2, "tier3d": omlx.tier3d, "tier3p": omlx.tier3p}),
+        ])
+    elif provider == "openrouter":
+        orc = OpenRouterConfig()
+        template.extend([
+            ("", None),
+            ("# OpenRouter (OpenAI-compatible) — set OPENROUTER_API_KEY in the environment", None),
+            ("openrouter", {"base_url": orc.base_url, "tier1": orc.tier1,
+                            "tier2": orc.tier2, "tier3d": orc.tier3d, "tier3p": orc.tier3p}),
+        ])
     else:  # ollama
         ollama = OllamaConfig()
         template.extend([
@@ -104,7 +129,9 @@ def render_template(provider: str = "ollama") -> str:
     template.extend([
         ("", None),
         ("# RAG configuration", None),
-        ("rag", {"embedding_provider": rag.embedding_provider, "bedrock_model": rag.bedrock_model,
+        ("# embedding_model: model for embedding_provider (empty = provider default)", None),
+        ("rag", {"embedding_provider": rag.embedding_provider,
+                 "embedding_model": rag.embedding_model, "bedrock_model": rag.bedrock_model,
                  "ollama_model": rag.ollama_model, "chunk_size": rag.chunk_size,
                  "chunk_overlap": rag.chunk_overlap, "top_k": rag.top_k}),
     ])

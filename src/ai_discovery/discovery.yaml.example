@@ -1,7 +1,7 @@
 # AI-Discovery Configuration
 # Customize discovery behavior, model selection, and optional features
 
-# Provider: bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic
+# Provider: aigw | omlx | openrouter | bedrock | ollama | mlx-gemma | mlx-qwen | openai | gemini | anthropic
 provider: bedrock
 
 # LLM cost limit (USD) — stops pipeline if exceeded
@@ -22,8 +22,10 @@ bedrock:
   tier3p: us.anthropic.claude-opus-4-6
 
 # RAG configuration
+# embedding_model: model for embedding_provider (empty = provider default)
 rag:
-  embedding_provider: ollama
+  embedding_provider: aigw
+  embedding_model: ""
   bedrock_model: "amazon.titan-embed-text-v2:0"
   ollama_model: mxbai-embed-large
   chunk_size: 1500

@@ -186,6 +186,7 @@ def test_embedding_provider_bedrock(monkeypatch):
 
 def test_embedding_active_ollama_like_provider():
     cfg = DiscoveryConfig(provider="ollama")
+    cfg.rag.embedding_provider = "ollama"
     client = LLMClient(cfg)
     with patch("ai_discovery.shared.llm_router.embed_ollama",
                return_value=[0.2]) as mock_embed:

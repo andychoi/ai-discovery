@@ -12,12 +12,14 @@ from ai_discovery.config.loader import ConfigError, config_sources, load_config,
 from ai_discovery.config.template import render_template
 
 ROOT = Path(__file__).resolve().parent.parent
-PROVIDERS = ["bedrock", "ollama", "mlx-gemma", "mlx-qwen", "openai", "gemini", "anthropic"]
+PROVIDERS = ["bedrock", "ollama", "mlx-gemma", "mlx-qwen", "openai", "gemini", "anthropic",
+             "aigw", "omlx", "openrouter"]
 
 
 @pytest.fixture
 def no_env(monkeypatch):
-    for var in ("DISCOVERY_LLM_PROVIDER", "OLLAMA_URL", "OPENAI_API_KEY", "DISCOVERY_TIER3D_MODEL"):
+    for var in ("DISCOVERY_LLM_PROVIDER", "DISCOVERY_LLM_API_KEY", "DISCOVERY_LLM_MODEL",
+                "OLLAMA_URL", "OPENAI_API_KEY", "DISCOVERY_TIER3D_MODEL"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -44,7 +46,7 @@ def test_precedence_user_project_env(tmp_path: Path, monkeypatch, no_env) -> Non
 
 def test_defaults_when_no_files(tmp_path: Path, no_env) -> None:
     cfg = load_config(cwd=tmp_path)
-    assert cfg.provider == "ollama" and config_sources(cfg) == []
+    assert cfg.provider == "aigw" and config_sources(cfg) == []
 
 
 def test_cli_flags_override_config(tmp_path: Path, no_env) -> None:
@@ -132,17 +134,39 @@ def test_cli_reports_bad_config_with_exit_2(tmp_path: Path) -> None:
 # ── one template ──────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("provider", PROVIDERS)
-def test_every_template_loads_cleanly(provider: str, tmp_path: Path) -> None:
+def test_every_template_loads_cleanly(provider: str, tmp_path: Path, no_env) -> None:
     f = _write(tmp_path / "c.yaml", render_template(provider))
     assert load_config(f, include_user=False).provider == provider
     assert "api_key: \"sk" not in f.read_text()
 
 
 @pytest.mark.parametrize("path,provider", [
-    (ROOT / "discovery.yaml", "ollama"),
+    (ROOT / "discovery.yaml", "aigw"),
     (ROOT / "src" / "ai_discovery" / "discovery.yaml.example", "bedrock"),
 ])
 def test_checked_in_templates_are_generated(path: Path, provider: str) -> None:
     assert path.read_text(encoding="utf-8") == render_template(provider), (
         f"{path.name} drifted from config/template.py; regenerate it with render_template({provider!r})"
     )
+
+
+# ── DISCOVERY_LLM_API_KEY / DISCOVERY_LLM_MODEL ───────────────────────────
+
+
+def test_generic_llm_env_targets_active_provider(tmp_path: Path, monkeypatch, no_env) -> None:
+    monkeypatch.setenv("DISCOVERY_LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "provider-specific")
+    monkeypatch.setenv("DISCOVERY_LLM_API_KEY", "generic-key")
+    monkeypatch.setenv("DISCOVERY_LLM_MODEL", "vendor/one-model")
+    cfg = load_config(cwd=tmp_path, include_user=False)
+    assert cfg.get_endpoint()[1] == "generic-key"
+    assert {cfg.get_model(t) for t in ("tier1", "tier2", "tier3", "screen")} == {"vendor/one-model"}
+    assert cfg.aigw.api_key == "" and cfg.aigw.tier1 != "vendor/one-model"
+
+
+def test_generic_llm_env_key_ignored_for_keyless_provider(tmp_path: Path, monkeypatch, no_env) -> None:
+    monkeypatch.setenv("DISCOVERY_LLM_PROVIDER", "bedrock")
+    monkeypatch.setenv("DISCOVERY_LLM_API_KEY", "generic-key")
+    monkeypatch.setenv("DISCOVERY_LLM_MODEL", "us.anthropic.some-model")
+    cfg = load_config(cwd=tmp_path, include_user=False)
+    assert cfg.get_model("tier1") == "us.anthropic.some-model"

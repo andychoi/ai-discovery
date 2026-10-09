@@ -134,6 +134,12 @@ _OPENAI_COMPAT_PROVIDERS: dict[str, tuple[str, str, str, str, str]] = {
     "gemini": ("gemini.url", "gemini_model", "GEMINI_API_KEY",
                "https://generativelanguage.googleapis.com/v1beta/openai",
                "max_tokens"),
+    "aigw": ("aigw.url", "aigw_model", "AIGW_API_KEY",
+             "http://localhost:11433/v1", "max_tokens"),
+    "omlx": ("omlx.url", "omlx_model", "OMLX_API_KEY",
+             "http://localhost:11434/v1", "max_tokens"),
+    "openrouter": ("openrouter.url", "openrouter_model", "OPENROUTER_API_KEY",
+                   "https://openrouter.ai/api/v1", "max_tokens"),
 }
 
 
@@ -209,6 +215,9 @@ _ENV_MAP: dict[str, str] = {
     "tier.expert.gemini_model":       "LLM_EXPERT_GEMINI_MODEL",
     "tier.heavy.gemini_model":        "LLM_HEAVY_GEMINI_MODEL",
     "anthropic.url":                  "ANTHROPIC_BASE_URL",
+    "aigw.url":                       "AIGW_BASE_URL",
+    "omlx.url":                       "OMLX_BASE_URL",
+    "openrouter.url":                 "OPENROUTER_BASE_URL",
     "tier.fast.anthropic_model":      "LLM_FAST_ANTHROPIC_MODEL",
     "tier.standard.anthropic_model":  "LLM_STANDARD_ANTHROPIC_MODEL",
     "tier.expert.anthropic_model":    "LLM_EXPERT_ANTHROPIC_MODEL",
@@ -265,6 +274,9 @@ def _flatten_discovery_config(cfg: "DiscoveryConfig") -> dict[str, str]:
         "openai": cfg.openai,
         "gemini": cfg.gemini,
         "anthropic": cfg.anthropic,
+        "aigw": cfg.aigw,
+        "omlx": cfg.omlx,
+        "openrouter": cfg.openrouter,
     }
     for name, pc in provider_cfgs.items():
         suffix = f"{name}_model"
@@ -283,6 +295,8 @@ def _flatten_discovery_config(cfg: "DiscoveryConfig") -> dict[str, str]:
                 o[f"{name}.api_key"] = api_key
     o["tier.embedding.bedrock_model"] = cfg.rag.bedrock_model
     o["tier.embedding.ollama_model"] = cfg.rag.ollama_model
+    if cfg.rag.embedding_model:
+        o[f"tier.embedding.{_model_suffix(cfg.rag.embedding_provider)}"] = cfg.rag.embedding_model
     return o
 
 

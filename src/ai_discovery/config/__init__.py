@@ -27,6 +27,9 @@ _MQ = MODELS.get("mlx-qwen", {})
 _OAI = MODELS.get("openai", {})
 _GEM = MODELS.get("gemini", {})
 _ANT = MODELS.get("anthropic", {})
+_GW = MODELS.get("aigw", {})
+_OMLX = MODELS.get("omlx", {})
+_OR = MODELS.get("openrouter", {})
 
 # ── Provider configs ─────────────────────────────────────────────────────────
 
@@ -130,6 +133,40 @@ class AnthropicConfig:
     tier3p: str = _ANT.get("expert", "claude-opus-4-8")
 
 
+@dataclass
+class AIGWConfig:
+    """Local ai-gateway (:11433, OpenAI-compatible, fronts OMLX).
+    Model IDs are gateway aliases. Auth via api_key or AIGW_API_KEY env."""
+    base_url: str = _GW.get("url", "http://localhost:11433/v1")
+    api_key: str = ""
+    tier1: str = _GW.get("fast", "claude-haiku")
+    tier2: str = _GW.get("standard", "claude-sonnet")
+    tier3d: str = _GW.get("standard", "claude-sonnet")
+    tier3p: str = _GW.get("expert", "claude-opus")
+
+
+@dataclass
+class OMLXConfig:
+    """Local OMLX host (:11434, OpenAI-compatible). Auth via api_key or OMLX_API_KEY env."""
+    base_url: str = _OMLX.get("url", "http://localhost:11434/v1")
+    api_key: str = ""
+    tier1: str = _OMLX.get("fast", "Qwen3.5-9B-MTPLX-Optimized-Speed")
+    tier2: str = _OMLX.get("standard", "Qwen3.5-9B-MTPLX-Optimized-Speed")
+    tier3d: str = _OMLX.get("standard", "Qwen3.5-9B-MTPLX-Optimized-Speed")
+    tier3p: str = _OMLX.get("expert", "Qwen3.5-9B-MTPLX-Optimized-Speed")
+
+
+@dataclass
+class OpenRouterConfig:
+    """OpenRouter (OpenAI-compatible). Auth via api_key or OPENROUTER_API_KEY env."""
+    base_url: str = _OR.get("url", "https://openrouter.ai/api/v1")
+    api_key: str = ""
+    tier1: str = _OR.get("fast", "anthropic/claude-haiku-4.5")
+    tier2: str = _OR.get("standard", "anthropic/claude-sonnet-4.6")
+    tier3d: str = _OR.get("standard", "anthropic/claude-sonnet-4.6")
+    tier3p: str = _OR.get("expert", "anthropic/claude-opus-4.6")
+
+
 # ── RAG config ───────────────────────────────────────────────────────────────
 
 
@@ -138,6 +175,8 @@ class RagConfig:
     embedding_provider: str = DEFAULT_PROVIDER
     bedrock_model: str = _B["embedding"]
     ollama_model: str = _O["embedding"]
+    # Embedding model for embedding_provider; "" = that provider's default.
+    embedding_model: str = ""
     chunk_size: int = 1500
     chunk_overlap: int = 200
     top_k: int = 5
@@ -210,6 +249,9 @@ class DiscoveryConfig:
     openai: OpenAIConfig = field(default_factory=OpenAIConfig)
     gemini: GeminiConfig = field(default_factory=GeminiConfig)
     anthropic: AnthropicConfig = field(default_factory=AnthropicConfig)
+    aigw: AIGWConfig = field(default_factory=AIGWConfig)
+    omlx: OMLXConfig = field(default_factory=OMLXConfig)
+    openrouter: OpenRouterConfig = field(default_factory=OpenRouterConfig)
     rag: RagConfig = field(default_factory=RagConfig)
     process_mining: ProcessMiningConfig = field(default_factory=ProcessMiningConfig)
     advisor: AdvisorConfig = field(default_factory=AdvisorConfig)
@@ -238,6 +280,12 @@ class DiscoveryConfig:
             return getattr(self.gemini, key)
         if self.provider == "anthropic":
             return getattr(self.anthropic, key)
+        if self.provider == "aigw":
+            return getattr(self.aigw, key)
+        if self.provider == "omlx":
+            return getattr(self.omlx, key)
+        if self.provider == "openrouter":
+            return getattr(self.openrouter, key)
         return getattr(self.ollama, key)
 
     def get_endpoint(self) -> tuple[str, str]:
@@ -255,6 +303,12 @@ class DiscoveryConfig:
             return self.gemini.base_url, self.gemini.api_key
         if self.provider == "anthropic":
             return self.anthropic.base_url, self.anthropic.api_key
+        if self.provider == "aigw":
+            return self.aigw.base_url, self.aigw.api_key
+        if self.provider == "omlx":
+            return self.omlx.base_url, self.omlx.api_key
+        if self.provider == "openrouter":
+            return self.openrouter.base_url, self.openrouter.api_key
         return self.ollama.base_url, ""
 
     # ── factory ───────────────────────────────────────────────────────────
@@ -318,6 +372,24 @@ def _apply_env_overrides(cfg: "DiscoveryConfig", yaml_has_bedrock: bool) -> "Dis
     env_anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if env_anthropic_key:
         cfg.anthropic.api_key = env_anthropic_key
+    env_aigw_key = os.environ.get("AIGW_API_KEY")
+    if env_aigw_key:
+        cfg.aigw.api_key = env_aigw_key
+    env_aigw_url = os.environ.get("AIGW_BASE_URL")
+    if env_aigw_url:
+        cfg.aigw.base_url = env_aigw_url
+    env_omlx_key = os.environ.get("OMLX_API_KEY")
+    if env_omlx_key:
+        cfg.omlx.api_key = env_omlx_key
+    env_omlx_url = os.environ.get("OMLX_BASE_URL")
+    if env_omlx_url:
+        cfg.omlx.base_url = env_omlx_url
+    env_openrouter_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API")
+    if env_openrouter_key:
+        cfg.openrouter.api_key = env_openrouter_key
+    env_openrouter_url = os.environ.get("OPENROUTER_BASE_URL")
+    if env_openrouter_url:
+        cfg.openrouter.base_url = env_openrouter_url
 
     env_region = os.environ.get("AWS_REGION_NAME") or os.environ.get("AWS_DEFAULT_REGION")
     if env_region:
@@ -340,6 +412,18 @@ def _apply_env_overrides(cfg: "DiscoveryConfig", yaml_has_bedrock: bool) -> "Dis
     if env_tier3p:
         cfg.bedrock.tier3p = env_tier3p
 
+    # Provider-agnostic overrides for the *active* provider (applied after the
+    # provider-specific vars above, so they win). DISCOVERY_LLM_MODEL pins one
+    # model for every tier.
+    active = getattr(cfg, cfg.provider.replace("-", "_"), None)
+    env_llm_key = os.environ.get("DISCOVERY_LLM_API_KEY")
+    if env_llm_key and active is not None and hasattr(active, "api_key"):
+        active.api_key = env_llm_key
+    env_llm_model = os.environ.get("DISCOVERY_LLM_MODEL")
+    if env_llm_model and active is not None:
+        for tier in ("tier1", "tier2", "tier3d", "tier3p"):
+            setattr(active, tier, env_llm_model)
+
     # RAG embedding overrides
     env_embed_provider = os.environ.get("DISCOVERY_EMBEDDING_PROVIDER")
     if env_embed_provider:
@@ -347,5 +431,6 @@ def _apply_env_overrides(cfg: "DiscoveryConfig", yaml_has_bedrock: bool) -> "Dis
     env_embed_model = os.environ.get("DISCOVERY_EMBEDDING_MODEL")
     if env_embed_model:
         cfg.rag.bedrock_model = env_embed_model
+        cfg.rag.embedding_model = env_embed_model
 
     return cfg

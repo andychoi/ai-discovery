@@ -46,8 +46,8 @@ def init(
         help="Output path for generated config template."
     ),
     provider: str = typer.Option(
-        "ollama", "--provider",
-        help="Default LLM provider (bedrock|ollama|mlx-gemma|mlx-qwen|openai|gemini|anthropic)."
+        "aigw", "--provider",
+        help="Default LLM provider (aigw|omlx|openrouter|bedrock|ollama|mlx-gemma|mlx-qwen|openai|gemini|anthropic)."
     ),
 ) -> None:
     """Generate a discovery.yaml config template.

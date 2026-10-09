@@ -384,7 +384,7 @@ def test_rates_for_model_unknown_cloud_uses_conservative_default():
 # ── llm_router: resolution + dispatch ────────────────────────────────────────
 
 
-@pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic"])
+@pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic", "aigw", "omlx", "openrouter"])
 def test_resolve_tier_target_new_providers(provider):
     llm_router.save_config({"provider": provider})
     p, model, base_url = llm_router.resolve_tier_target("fast")
@@ -393,7 +393,7 @@ def test_resolve_tier_target_new_providers(provider):
     assert base_url == MODELS[provider]["url"]
 
 
-@pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic"])
+@pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic", "aigw", "omlx", "openrouter"])
 def test_resolve_model_id_new_providers(provider):
     llm_router.save_config({"provider": provider})
     assert llm_router.resolve_model_id("standard") == MODELS[provider]["standard"]
@@ -481,7 +481,7 @@ def test_discovery_config_has_provider_sections():
     assert cfg.anthropic.tier3p == MODELS["anthropic"]["expert"]
 
 
-@pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic"])
+@pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic", "aigw", "omlx", "openrouter"])
 def test_discovery_config_get_model(provider):
     cfg = DiscoveryConfig()
     cfg.provider = provider
@@ -489,7 +489,7 @@ def test_discovery_config_get_model(provider):
     assert cfg.get_model("tier2") == MODELS[provider]["standard"]
 
 
-@pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic"])
+@pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic", "aigw", "omlx", "openrouter"])
 def test_discovery_config_get_endpoint(provider):
     cfg = DiscoveryConfig()
     cfg.provider = provider
@@ -534,3 +534,85 @@ def test_config_load_yaml_provider_sections(tmp_path, monkeypatch):
     assert cfg.provider == "gemini"
     assert cfg.gemini.tier2 == "gemini-custom"
     assert cfg.anthropic.tier1 == "claude-custom"
+
+
+# ── aigw (local ai-gateway) + openrouter ─────────────────────────────────────
+
+
+@pytest.mark.parametrize("provider,url,key_env", [
+    ("aigw", "http://localhost:11433/v1", "AIGW_API_KEY"),
+    ("omlx", "http://localhost:11434/v1", "OMLX_API_KEY"),
+    ("openrouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+])
+def test_invoke_llm_routes_gateway_providers(monkeypatch, provider, url, key_env):
+    calls = {}
+
+    def fake_invoke(model, prompt, max_tokens=4096, base_url="", api_key="",
+                    max_tokens_field="max_completion_tokens"):
+        calls.update(model=model, base_url=base_url, api_key=api_key,
+                     max_tokens_field=max_tokens_field)
+        return "ok", 1, 2
+
+    monkeypatch.setattr(llm_router, "invoke_openai_compat", fake_invoke)
+    monkeypatch.setenv(key_env, "sk-virtual")
+    llm_router.save_config({"provider": provider})
+    assert llm_router.invoke_llm("fast", "Hi") == "ok"
+    assert calls == {"model": MODELS[provider]["fast"], "base_url": url,
+                     "api_key": "sk-virtual", "max_tokens_field": "max_tokens"}
+
+
+def test_aigw_is_default_provider_with_env_overrides(monkeypatch):
+    for var in ("DISCOVERY_LLM_PROVIDER", "DISCOVERY_LLM_API_KEY", "DISCOVERY_LLM_MODEL",
+                "AIGW_BASE_URL", "AIGW_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    cfg = DiscoveryConfig()
+    assert cfg.provider == "aigw"
+    assert cfg.rag.embedding_provider == "aigw"
+    monkeypatch.setenv("AIGW_BASE_URL", "http://gw.local:11433/v1")
+    monkeypatch.setenv("AIGW_API_KEY", "sk-virtual")
+    from ai_discovery.config import _apply_env_overrides
+    _apply_env_overrides(cfg, yaml_has_bedrock=False)
+    assert cfg.get_endpoint() == ("http://gw.local:11433/v1", "sk-virtual")
+
+
+def test_get_embedding_aigw_routes(monkeypatch):
+    seen = {}
+
+    def fake_embed(model, text, base_url="", api_key=""):
+        seen.update(model=model, base_url=base_url)
+        return [0.25]
+
+    monkeypatch.setattr(llm_router, "embed_openai_compat", fake_embed)
+    llm_router.save_config({"provider": "aigw"})
+    assert llm_router.get_embedding("hello") == [0.25]
+    assert seen == {"model": MODELS["aigw"]["embedding"],
+                    "base_url": MODELS["aigw"]["url"]}
+
+
+def test_omlx_is_free_local():
+    assert rates_for_model(MODELS["omlx"]["fast"], provider="omlx") == (0.0, 0.0)
+
+
+@pytest.mark.parametrize("key_env", ["OPENROUTER_API_KEY", "OPENROUTER_API"])
+def test_openrouter_embedding_model_and_key(monkeypatch, key_env):
+    """Chat on aigw, embed on OpenRouter with a chosen model + its own key."""
+    from ai_discovery.config import _apply_env_overrides
+    from ai_discovery.ai.llm_client import LLMClient
+    seen = {}
+
+    def fake_embed(model, text, base_url="", api_key=""):
+        seen.update(model=model, base_url=base_url, api_key=api_key)
+        return [0.1]
+
+    monkeypatch.setattr(llm_router, "embed_openai_compat", fake_embed)
+    monkeypatch.setenv(key_env, "or-key")
+    monkeypatch.setenv("DISCOVERY_EMBEDDING_PROVIDER", "openrouter")
+    monkeypatch.setenv("DISCOVERY_EMBEDDING_MODEL", "liquid/lfm-2.5-embedding-350m:free")
+    cfg = _apply_env_overrides(DiscoveryConfig(provider="aigw"), yaml_has_bedrock=False)
+    assert LLMClient(cfg).get_embedding("hello") == [0.1]
+    assert seen == {"model": "liquid/lfm-2.5-embedding-350m:free",
+                    "base_url": "https://openrouter.ai/api/v1", "api_key": "or-key"}
+
+
+def test_openrouter_free_models_cost_nothing():
+    assert rates_for_model("liquid/lfm-2.5-embedding-350m:free", provider="openrouter") == (0.0, 0.0)
