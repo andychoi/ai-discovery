@@ -151,7 +151,7 @@
 - **Out of scope:** CI gating (M6.13).
 
 ### M0.12 Baseline: ai-discovery vs repowise
-- **Status:** Planned
+- **Status:** In progress (rm/M0.12-baseline, 2026-10-11)
 - **Size:** M
 - **Lane:** Q
 - **Depends on:** M0.11
