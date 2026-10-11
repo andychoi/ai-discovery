@@ -1,11 +1,10 @@
 # AI-Discovery Usage Examples
 
-Three ways to use ai-discovery:
+Ways to use ai-discovery:
 
 1. **Docker Compose** (no local setup required)
 2. **Local CLI** (Python 3.10+ with `pip install -e .`)
-3. **Local CLI without pip** (use `../run-local.sh` helper)
-4. **Configuration** (custom YAML)
+3. **Configuration** (custom YAML)
 
 ## Example 1: Scan Local Repository
 

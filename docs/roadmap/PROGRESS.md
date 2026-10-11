@@ -234,3 +234,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** none.
 - **Follow-ups:** CI workflow is untested on GitHub (written locally; first push will tell) and Windows is not covered; the click-through script lives only in the session scratchpad — a Playwright-style UI test would need a new dev dependency (decide in M4.6); search ranking is still lexical (vector/hybrid is M2.7/M5.1).
 
+## 2026-10-11 — M0.1 — repo hygiene
+- **Branch/commit:** rm/M0.1-hygiene @ 05032f5
+- **Changes:** `git rm -r --cached ai_discovery.egg-info`; moved `PM4PY_QUICKSTART.txt`, `SESSION_SUMMARY.md`, `demo.sh`, `DEMO_QUICKSTART.txt`, `run-local.sh` → `docs/archived/root/` (+ README explaining why), `docs/integrations/PM4PY_*` → `docs/archived/integrations/`, `docs/demos/README.md` (the `demo.sh` walkthrough) → `docs/archived/demos/`; README, CLAUDE.md, `docs/INDEX.md`, `examples/README.md` links and claims; `shared/README.md` rewritten; `.env.sample` completed.
+- **Decisions:** archived rather than deleted (history stays greppable). `run-local.sh` archived instead of fixed: it ran `python -m ai_discovery.cli`, which has no `__main__`, and editable install covers the use case. Output trees now show what writers produce (`DMN/entity-decisions.md`, `EARS/entity-ears.md`, `INTERFACES/`) and point to the wiki/M5.2 for table, entity and impact views (SDLC file tree is dropped per the owner's decision). `.env.sample` was already limited to variables the code reads; added the remaining provider ones (OpenAI/Gemini/Ollama) and `DISCOVER_SERVE_TOKEN`. Audit #45 (obsolete `process_mining` keys in `discovery.yaml`) was already resolved — the remaining keys are valid.
+- **Verify:** `git ls-files | grep -c egg-info` → 0; no remaining references to the moved files outside `docs/archived`/`docs/roadmap` except the two "archived at" pointers; full `pytest -q` → 1470 passed, 4 skipped, 2 xfailed; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** audit #74 (two overlapping profiling guides under `docs/guides/`) is outside this item's owned files — fold into the next docs touch; pm4py is still mentioned in older guides/specs (historical context, left as is).
+

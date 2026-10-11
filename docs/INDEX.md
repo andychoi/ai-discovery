@@ -124,9 +124,7 @@ Point-in-time reviews, gap assessments, and implementation closures (chronologic
 
 Advanced integrations and optional features:
 
-- **`integrations/PM4PY_INDEX.md`** — Process mining integration overview
-- **`integrations/PM4PY_IMPLEMENTATION_COMPLETE.md`** — Full implementation details
-- **`integrations/PM4PY_INTEGRATION_WIRED.md`** — Integration architecture
+- pm4py process mining was removed on 2026-06-06; its docs are archived under `archived/integrations/`.
 
 ---
 
@@ -142,7 +140,7 @@ Production deployment and operational guides:
 
 Demo applications and example usage:
 
-- **`demos/README.md`** — Running demos, test setup, example outputs
+- **`../examples/README.md`** — Example invocations (the old `demo.sh` walkthrough is archived under `archived/demos/`)
 
 ---
 

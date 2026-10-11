@@ -96,11 +96,12 @@ docs/
 │   ├── customer-edit.md
 │   └── ...
 ├── ASIS/, ASD/, ASSC/         # EXISTING: Domain-centric docs
-├── PF/, BPMN/, DMN/           # EXISTING: Process/visual artifacts
-├── database/                   # EXISTING: Table schemas
-├── batch-jobs/                 # EXISTING: Batch job specs
-└── interfaces/                 # EXISTING: External interface specs
+├── PF/, BPMN/, DMN/, EARS/     # EXISTING: Process/visual artifacts (DMN/EARS: one combined file each)
+└── INTERFACES/                 # EXISTING: External dependency catalog
 ```
+
+> No writer produces `database/`, `batch-jobs/` or per-entity `IMPACT/` files. Table, endpoint and entity
+> views live in the v1 wiki (`discover serve`, M3.3/M4.3); impact is roadmap item M5.2.
 
 Screen specs **link out** to supporting docs. Screens do NOT replace domain docs.
 
@@ -222,8 +223,8 @@ Five custom skills accelerate development. The first three help build the discov
 
 **What it does**: Read-only consistency check across the output tree:
 1. Prompt user for discovery output path (or project slug)
-2. Build the link graph from `links_to` frontmatter across ASIS / ASD / ASSC / PF / BPMN / DMN / EARS / IMPACT
-3. Check coverage: every endpoint in PF, every entity in EARS + IMPACT, every UC linked to a PF, every gateway in DMN
+2. Build the link graph from `links_to` frontmatter across ASIS / ASD / ASSC / PF / BPMN / DMN / EARS
+3. Check coverage: every endpoint in PF, every entity in EARS, every UC linked to a PF, every gateway in DMN
 4. Flag domain-pattern absences (logout, refund, password-reset for e-commerce; etc.) — distinguishing **code gaps** from **discovery failures** via source grep
 5. Emit `consistency-report.md`; never edits artifacts in place
 

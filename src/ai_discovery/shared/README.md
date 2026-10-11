@@ -1,38 +1,14 @@
-# Shared
+# `ai_discovery.shared`
 
-Shared Python library used by DocHub, Agent Engine, and Discovery. Provides database abstraction, LLM routing, and logging utilities.
+LLM plumbing vendored from DocHub and trimmed to what the Discovery CLI uses.
+No database code lives here. These modules are scheduled to fold into the
+`llm/` package (roadmap items M1.10/M1.11, lane B), after which this package goes away.
 
-## Modules
+| Module | Purpose | Main users |
+|---|---|---|
+| `llm_invoke.py` | Low-level provider calls (Bedrock Messages/Converse, Ollama, OpenAI-compatible) with retries and token counts; no config or DB dependencies | `llm_router.py`, `ai/llm_client.py` |
+| `llm_router.py` | Provider/model resolution (runtime override → `DiscoveryConfig` → env → `model_defaults`) and a usage-logger hook for cost tracking | `ai/llm_client.py`, `pipeline.py`, `config/` |
+| `model_defaults.py` | Single source of default model IDs per tier (fast / standard / expert / heavy / embedding) and provider | `config/`, `llm_router.py` |
+| `json_extract.py` | Tolerant JSON extraction from LLM free text (fenced or prose-wrapped) — fallback when tool-use / structured output is unavailable | `ai/llm_client.py`, `ai/screen_spec_generator.py` |
 
-| Module | Purpose |
-|--------|---------|
-| `sdlc_db.py` | Main database interface (documents, audits, edges, requirements, decisions) |
-| `db_writer.py` | Async write operations with backend-aware routing (PG pool or SQLite) |
-| `log_writer.py` | Activity logging (fire-and-forget, backend-aware) |
-| `llm_invoke.py` | LLM invocation with retries and token tracking |
-| `llm_router.py` | Multi-provider LLM routing (model selection, cost tiers) |
-| `model_defaults.py` | Default model configurations |
-
-## Database Layer (`db/`)
-
-| Module | Purpose |
-|--------|---------|
-| `connection.py` | psycopg 3 connection pool + SQLite-to-PG SQL translation (`_ConnWrapper`) |
-| `compat.py` | Backend-aware SQL helpers (`use_pg()`, `param_style()`, `fts_search()`) |
-| `graph_cypher.py` | Apache AGE graph operations (Cypher queries, graph sync) |
-| `pg_schema.sql` | PostgreSQL schema definition |
-
-## Migrations
-
-- **PostgreSQL:** Alembic (`migrations/alembic/versions/`)
-- **SQLite:** Numbered scripts (`migrations/sqlite/`)
-
-Configuration in `alembic.ini`.
-
-## Usage
-
-This is a library, not a standalone service. It is added to `PYTHONPATH` by consuming services:
-
-```bash
-PYTHONPATH=shared:dochub python -m pytest dochub/tests/ -v
-```
+Import as `from ai_discovery.shared import llm_router` (it is a normal subpackage, not a `PYTHONPATH` library).

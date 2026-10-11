@@ -7,7 +7,7 @@
 > Status of each item lives HERE. See `docs/roadmap/README.md` for the protocol.
 
 ### M0.1 Repo hygiene
-- **Status:** In progress (rm/M0.1-hygiene, 2026-10-11)
+- **Status:** Done (05032f5)
 - **Size:** S
 - **Lane:** A
 - **Depends on:** —

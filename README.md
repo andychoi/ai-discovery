@@ -141,13 +141,15 @@ Real-world codebases need more than a one-shot scan. Recommended workflow for pr
 
 ```
 ┌─────────────────────┐    ┌───────────────────────┐    ┌────────────────────────┐
-│ 1. Batch pipeline   │ →  │ 2. /discover-triage   │ →  │ 3. /discover-consistency│
+│ 1. Batch pipeline   │ →  │ 2. /discover-triage*  │ →  │ 3. /discover-consistency*│
 │    discover scan    │    │    (low-conf rows)    │    │    (cross-doc + gaps)  │
 └─────────────────────┘    └───────────────────────┘    └────────────────────────┘
    deterministic            reactive, bounded             reactive, bounded
    tables + LLM prose       agent verifies vs source       agent checks links
    per-row confidence       emits triage-report.md         emits consistency-report.md
 ```
+
+\* Steps 2 and 3 are **planned skills, not in the repo yet** (roadmap item M5.4). Until then, triage by hand with `discover query` and the source.
 
 ### Step 1 — Batch pipeline (deterministic)
 
@@ -166,10 +168,11 @@ data/output-myapp/
 ├── ASSC/{domain}.md           # Schema (entities, FKs, constraints)
 ├── PF/{domain}-{scenario}.md  # Process flows, grouped by domain
 ├── BPMN/{actor}.md            # BPMN per business actor lane
-├── DMN/{entity}.md            # Decision tables per entity
-├── EARS/{entity}.md           # EARS requirements per entity
-└── IMPACT/{entity}.md         # Blast-radius docs per entity
+├── DMN/entity-decisions.md    # Decision tables, all entities in one file
+└── EARS/entity-ears.md        # EARS requirements, all entities in one file
 ```
+
+Per-entity DMN/EARS views and blast-radius (impact) pages are roadmap items (wiki entity pages, M3.3; impact, M5.2); today `discover impact <Entity>` prints to stdout and writes no file.
 
 Each row in API and schema tables links back to source via `file:line`, so trust signals are at the row level, not just the doc level.
 
@@ -178,7 +181,7 @@ Each row in API and schema tables links back to source via `file:line`, so trust
 After the scan, run the triage skill on rows the pipeline flagged as low-confidence. The skill:
 
 1. Prompts you for the source repo path and discovery output path.
-2. Pulls flagged rows via `discover query` (rows with `confidence < 0.65` and `criticality = high`).
+2. Pulls flagged rows via `discover query` (rows with `confidence < 0.65`).
 3. For each flagged row, reads source at the cited `file:line`, verifies the claim, and proposes accept / correct / human-review.
 4. Emits `triage-report.md`. You confirm before any artifact is updated.
 
@@ -188,7 +191,7 @@ Cost-bounded: an agent runs only over flagged rows (typically ~5–15% of all ro
 
 Once individual rows are triaged, run the consistency skill across the full output. The skill:
 
-1. Builds the link graph from `links_to` frontmatter across ASIS / ASD / ASSC / PF / BPMN / DMN / EARS / IMPACT.
+1. Builds the link graph from `links_to` frontmatter across ASIS / ASD / ASSC / PF / BPMN / DMN / EARS.
 2. Verifies every endpoint in ASIS appears in a PF doc, every entity in ASSC appears in EARS, every PF scenario references an ASD use case, etc.
 3. For domain-tagged repos (e.g., `tags=[ecommerce]`), flags missing flows expected for that domain (logout, password-reset, refund, payment-webhook) — and **distinguishes code gaps from doc gaps**: if there's no source evidence, it's a code gap to track, not a discovery failure.
 4. Emits `consistency-report.md`. Read-only; no in-place edits.
@@ -212,19 +215,25 @@ For details, see [`docs/assessments/03-discovery-output-quality-assessment.md`](
 Copy `.env.sample` → `.env` and set your credentials:
 
 ```bash
-# AWS Bedrock (primary)
-AWS_REGION=us-east-1
+# Local ai-gateway (default provider)
+DISCOVERY_LLM_PROVIDER=aigw
+AIGW_BASE_URL=http://localhost:11433/v1
+AIGW_API_KEY=...
+
+# Or AWS Bedrock
+DISCOVERY_LLM_PROVIDER=bedrock
+AWS_REGION_NAME=us-west-2
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
-DISCOVERY_LLM_PROVIDER=bedrock
 
-# Or use local Ollama
+# Or local Ollama
 DISCOVERY_LLM_PROVIDER=ollama
 OLLAMA_URL=http://localhost:11434
-
-# Budget limit
-DISCOVERY_BUDGET_LIMIT_USD=50.0
 ```
+
+None of these are needed for a keyless (structure-only) scan: `discover init --yes --no-prose && discover scan`.
+
+The spend limit is a config setting, not an environment variable: `budget_limit_usd` in `discovery.yaml` / `.discovery/config.yaml` (default 50.0).
 
 **All options:** See [`.env.sample`](.env.sample)
 
@@ -566,11 +575,10 @@ docs/
 │   ├── customer-edit.md
 │   └── customer-detail.md
 ├── screen-index.md              # Menu tree with links
-├── database/                    # Existing table schemas
-├── backend-specs/               # Existing service specs
-├── batch-jobs/                  # Existing ETL specs
-└── interfaces/                  # External system specs
+└── INTERFACES/                  # External dependency catalog
 ```
+
+Table, batch-job and backend-service pages are not written as files here; the v1 wiki (`discover serve`) has table, endpoint and entity pages.
 
 #### 4. Detect Drift
 
@@ -717,24 +725,9 @@ pytest
 discover scan /path/to/repo -p myproject
 ```
 
-### Local Development (Without pip install)
+### Local Development
 
-If you prefer to test without installing, use the `run-local.sh` helper script:
-
-```bash
-# Run CLI without pip install
-./run-local.sh discover scan /path/to/repo -p myproject
-./run-local.sh discover --help
-
-# Run tests
-./run-local.sh pytest tests/
-./run-local.sh pytest tests/test_call_graph.py -v
-
-# Run Python directly
-./run-local.sh python -c "from ai_discovery.cli import app; print('OK')"
-```
-
-The script automatically sets `PYTHONPATH=./src` so imports work correctly.
+Install in editable mode (`pip install -e ".[dev]"`) and run `discover` / `pytest` from the venv. The old `run-local.sh` helper is archived (`docs/archived/root/`).
 
 ### PyPI (Coming Soon)
 
@@ -772,9 +765,8 @@ data/output-<project-slug>/
 ├── ASSC/{domain}.md                 # Schema (entities, FKs, constraints)
 ├── PF/{domain}-{scenario}.md        # Process flows, domain-grouped filenames
 ├── BPMN/{actor}.md                  # BPMN per business-actor lane (Phase 15)
-├── DMN/{entity}.md                  # DMN decision tables per entity (Phase 15)
-├── EARS/{entity}.md                 # EARS requirements per entity (Phase 15)
-├── IMPACT/{entity}.md               # Per-entity blast-radius docs
+├── DMN/entity-decisions.md          # DMN decision tables, all entities (Phase 15)
+├── EARS/entity-ears.md              # EARS requirements, all entities (Phase 15)
 └── ONBOARD/{slug}-onboard-{domain}.md  # Per-domain tour guides (pedagogical path through the call graph)
 ```
 
@@ -829,12 +821,7 @@ pytest --cov                        # Coverage report
 1. Read [`CLAUDE.md`](CLAUDE.md) for development principles
 2. Check [`docs/INDEX.md`](docs/INDEX.md) for architecture overview
 3. Follow [`docs/guides/`](docs/guides/) for your area of work
-4. Use the custom skills:
-   - `/parser-extension` — Add language support
-   - `/call-graph-debug` — Debug call resolution
-   - `/pipeline-analyze` — Optimize performance/cost
-   - `/discover-triage` — Verify low-confidence rows in scan output
-   - `/discover-consistency` — Cross-artifact consistency check
+4. For roadmap work, start at [`docs/roadmap/README.md`](docs/roadmap/README.md) and use the `/roadmap-next` skill (the only skill in the repo today). The other skills CLAUDE.md describes (`/parser-extension`, `/call-graph-debug`, `/pipeline-analyze`, `/discover-triage`, `/discover-consistency`) are not in the repo yet; triage/consistency are scheduled in M5.4.
 
 ## Package Structure
 

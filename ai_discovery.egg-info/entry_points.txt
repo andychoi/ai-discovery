@@ -1,2 +1,0 @@
-[console_scripts]
-discover = ai_discovery.cli:app
