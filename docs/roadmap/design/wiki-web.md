@@ -47,7 +47,8 @@ All responses use the `Answer` envelope from `design/architecture-v1.md` §6:
 | `GET /api/v1/pages` | `type`, `prefix`, `limit`, `offset` | `{items:[{page_id,type,title,confidence,freshness}]}` + `totals.items` |
 | `GET /api/v1/pages/{page_id}` | — | `{page_id,type,title,body_md,facts,links,backlinks,citations,confidence,freshness,stamp,notes:[…]}`; a tombstone gives `status:"not_found"` + `data.successor` |
 | `GET /api/v1/tree` | — | nav tree `{type:[{page_id,title,children}]}` |
-| `GET /api/v1/search` | `q`, `kinds`, `limit` | `{hits:[{page_id,title,type,snippet,score,source:"fts"\|"vec"\|"both"}]}` |
+| `GET /api/v1/search` | `q`, `kinds`, `limit` | `{hits:[{page_id,title,type,snippet,score,source:"fts"\|"vec"\|"both"}]}`; `snippet` is plain text (markdown syntax stripped) with matches wrapped in `[` `]` — the only brackets left |
+| `GET /api/v1/source` | `path`, `start`, `end`, `context` | `{path,start,end,first_line,lines,total_lines}` — only files cited by some page of the current scan, inside the repo; anything else is `not_found` (added in M4.3 for the citation source view) |
 | `GET /api/v1/graph/neighborhood` | `node`, `depth≤2`, `kinds`, `limit≤500` | `{nodes:[{id,label,type,file,line}], edges:[{src,dst,edge_kind,origin,confidence,evidence_kind}]}` + `totals.nodes/edges` |
 | `GET /api/v1/graph/path` | `from`, `to`, `max_depth≤6` | `{paths:[[node_id…]]}` |
 | `GET /api/v1/impact` | `target`, `depth`, `include` | as MCP `get_impact` output |

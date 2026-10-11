@@ -109,6 +109,11 @@ def test_tree_nests_files_under_modules(client) -> None:
 def test_search(client) -> None:
     hits = _get(client, "/api/v1/search?q=orders")["data"]["hits"]
     assert "table:orders" in {h["page_id"] for h in hits}
+    # snippets are plain text: markdown syntax stripped, brackets only mark matches
+    snippets = [h["snippet"] for h in hits if h["snippet"]]
+    assert snippets and all("](" not in s and "**" not in s and "|" not in s for s in snippets)
+    assert any("[orders]" in s.lower() or "[order" in s.lower() for s in snippets)
+    assert all(s.count("[") == s.count("]") for s in snippets)
     tables_only = _get(client, "/api/v1/search?q=orders&kinds=table")["data"]["hits"]
     assert tables_only and all(h["type"] == "table" for h in tables_only)
     # FTS syntax in user input is neutralised, not an error
@@ -210,3 +215,14 @@ def test_spa_routes_and_path_traversal(layout, tmp_path: Path) -> None:
 def test_placeholder_without_spa(layout, tmp_path: Path) -> None:
     c = TestClient(create_app(layout, static_dir=tmp_path / "missing"))
     assert "not built yet" in c.get("/").text and c.get("/api/openapi.json").status_code == 200
+
+
+def test_source_view_only_serves_cited_files(client, layout) -> None:
+    page = _get(client, "/api/v1/pages/table:orders")["data"]
+    cite = page["citations"][0]
+    body = _get(client, f"/api/v1/source?path={cite['path']}&start={cite['line_start']}&end={cite['line_end']}")["data"]
+    assert body["lines"] and body["first_line"] <= cite["line_start"] and body["end"] == cite["line_end"]
+    # a real file that no page cites, and traversal attempts, are refused
+    (layout.repo / "uncited.txt").write_text("secret\n")
+    for evil in ("uncited.txt", "../../etc/passwd", "/etc/passwd", f"{cite['path']}/../../uncited.txt"):
+        assert _get(client, f"/api/v1/source?path={evil}", "not_found")["data"] == {"path": evil}

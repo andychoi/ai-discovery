@@ -124,6 +124,24 @@ def _json(raw, default):
 
 # ── router ────────────────────────────────────────────────────────────────
 
+_MD_LINK_TARGET = re.compile(r"\]\([^)\s…]*(?:\)|(?=…)|$)")  # also a target cut off by the snippet
+_MD_NOISE = re.compile(r"(\*\*|__|`|^#+\s|\s#+\s|-{3,}|[|\[\]])", re.MULTILINE)
+
+
+def _plain_snippet(raw: Optional[str]) -> str:
+    """FTS snippet → plain text with matches in ``[...]``.
+
+    Bodies are markdown, so the raw snippet is full of ``[text](page:id)``,
+    ``**``, backticks and table pipes; those are stripped first, so the only
+    brackets left in the result are the match markers (FTS emits \\x02/\\x03).
+    """
+    if not raw:
+        return ""
+    text = _MD_NOISE.sub(" ", _MD_LINK_TARGET.sub("", raw))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.replace("\x02", "[").replace("\x03", "]")
+
+
 def build_router() -> APIRouter:
     r = APIRouter()
 
@@ -285,12 +303,12 @@ def build_router() -> APIRouter:
                     "SELECT 1 FROM sqlite_master WHERE name = 'pages_fts'").fetchone():
                 match = " ".join(f'"{t}"*' for t in tokens)  # quoted: user input can't inject FTS syntax
                 rows = conn.execute(
-                    "SELECT f.page_id, p.title, p.type, snippet(pages_fts, 3, '[', ']', '…', 12) AS snip, "
+                    "SELECT f.page_id, p.title, p.type, snippet(pages_fts, 3, char(2), char(3), '…', 12) AS snip, "
                     "bm25(pages_fts) AS score FROM pages_fts f JOIN pages p ON p.page_id = f.page_id "
                     f"AND p.scan_id = f.scan_id WHERE pages_fts MATCH ? AND f.scan_id = ?{type_clause} "
                     "ORDER BY score LIMIT ?", [match, sid, *types, limit]).fetchall()
                 hits = [{"page_id": row["page_id"], "title": row["title"], "type": row["type"],
-                         "snippet": row["snip"], "score": round(-row["score"], 4), "source": "fts"} for row in rows]
+                         "snippet": _plain_snippet(row["snip"]), "score": round(-row["score"], 4), "source": "fts"} for row in rows]
             else:
                 like = "%" + "%".join(tokens) + "%"
                 rows = conn.execute(f"SELECT page_id, title, type FROM pages p WHERE scan_id = ?{type_clause} "
@@ -299,6 +317,38 @@ def build_router() -> APIRouter:
                 hits = [{"page_id": row["page_id"], "title": row["title"], "type": row["type"], "snippet": "",
                          "score": 0, "source": "like"} for row in rows]
             return _answer({"hits": hits}, totals={"hits": len(hits)}, truncated=len(hits) == limit, meta=meta)
+
+    @r.get("/source")
+    def source(request: Request, path: str = Query(..., min_length=1, max_length=1024),
+               start: int = Query(1, ge=1), end: Optional[int] = Query(None, ge=1),
+               context: int = Query(3, ge=0, le=50)):
+        """Lines of a file the current scan's pages cite (M4.3 source view).
+
+        Only paths that appear in some page citation are readable, and they are
+        resolved inside the repo — arbitrary files can never be fetched.
+        """
+        layout = _ctx(request)
+        with _ro(layout) as conn:
+            if conn is None or (sid := _current_scan(conn)) is None:
+                return _not_indexed(request)
+            meta = _meta(request, conn, sid)
+            needle = json.dumps(path)[1:-1]
+            cited = conn.execute(
+                "SELECT 1 FROM pages WHERE scan_id = ? AND instr(citations_json, ?) > 0 LIMIT 1",
+                (sid, f'"path":"{needle}"')).fetchone()
+            repo = layout.repo.resolve() if layout.repo else None
+            target = (repo / path).resolve() if repo else None
+            if not cited or repo is None or target is None or repo not in target.parents or not target.is_file():
+                return _answer({"path": path}, status="not_found", meta=meta)
+            from ..core.encoding import read_source
+
+            lines = read_source(target).text.splitlines()
+            last = min(len(lines), end or start)
+            first = max(1, start - context)
+            stop = min(len(lines), last + context)
+            data = {"path": path, "start": start, "end": last, "first_line": first,
+                    "lines": lines[first - 1:stop], "total_lines": len(lines)}
+            return _answer(data, meta=meta)
 
     # ── call graph ────────────────────────────────────────────────────────
 

@@ -30,7 +30,7 @@
 - **Out of scope:** feature pages.
 
 ### M4.3 SPA shell, nav tree, page reader, search ★
-- **Status:** In progress (rm/M4.3-spa-reader, 2026-10-09)
+- **Status:** Done (40b5f3e)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M4.1, M4.2
