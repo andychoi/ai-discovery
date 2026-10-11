@@ -86,7 +86,7 @@
 - **Out of scope:** stage extraction (M1.6+).
 
 ### M0.7 LLM output integrity
-- **Status:** Planned
+- **Status:** In progress (rm/M0.7-llm-integrity, 2026-10-11)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** —
