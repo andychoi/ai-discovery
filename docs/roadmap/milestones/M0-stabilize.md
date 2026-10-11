@@ -138,7 +138,7 @@
 - **Out of scope:** structural wiki pages (M3).
 
 ### M0.11 Benchmark harness
-- **Status:** Planned
+- **Status:** Done (a9acafe)
 - **Size:** M
 - **Lane:** Q
 - **Depends on:** —
