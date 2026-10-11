@@ -21,6 +21,19 @@ _SUMMARIZE_TYPES = frozenset({"class", "method", "endpoint", "function", "batch_
 # Node types that get structural-only summary (no LLM call)
 _SKIP_TYPES = frozenset({"dto", "enum", "constant", "import"})
 
+# Bump whenever _build_prompt / _build_batch_prompt / _BATCH_SUMMARY_SCHEMA
+# change meaning: summaries are only reused across scans when they were made
+# with the same prompt version AND the same Tier-1 model (audit #27).
+TIER1_PROMPT_VERSION = "2"
+# How the version is recorded: the node_summaries.tier column holds
+# "tier1@p<version>" (no schema change; see stored_tier_label).
+FAILED_PURPOSE = "Summarization failed"
+
+
+def stored_tier_label(tier: str = "tier1") -> str:
+    return f"{tier}@p{TIER1_PROMPT_VERSION}" if tier == "tier1" else tier
+
+
 # Directory names that indicate test code.
 _TEST_DIR_NAMES = frozenset({"tests", "test", "__tests__"})
 
@@ -140,19 +153,32 @@ def _build_batch_prompt(chunks: list[CodeChunk]) -> str:
     return header + "\n" + "\n\n".join(sections)
 
 
-def _failed_summary(qualified_name: str) -> dict:
+def _failed_summary(qualified_name: str, reason: str = "error", *, tokens_in: int = 0,
+                    tokens_out: int = 0, model: str = "") -> dict:
+    """A placeholder for a chunk Tier 1 could not summarize.
+
+    ``failed`` makes ``persist_summaries`` skip it, so the node has no stored
+    summary: a resumed phase 11 retries it (resume guard), the next scan
+    re-summarizes it, and ``reuse_prior_summaries`` never copies it (audit #25). Tokens a failed call still paid are kept for cost.
+    """
     return {
-        "purpose": "Summarization failed",
+        "purpose": FAILED_PURPOSE,
         "business_rules": "",
         "io_summary": "",
         "tech_debt_signals": "",
-        "tokens_in": 0,
-        "tokens_out": 0,
-        "model": "",
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "model": model,
         "tier": "tier1",
         "qualified_name": qualified_name,
         "raw_response": "",
+        "failed": True,
+        "failure": reason,
     }
+
+
+def is_failed_summary(summary: dict) -> bool:
+    return bool(summary.get("failed")) or summary.get("purpose") == FAILED_PURPOSE
 
 
 def summarize_batch(
@@ -308,12 +334,23 @@ def summarize_chunk(
 
     prompt = _build_prompt(chunk, rag_context)
     response = llm_client.invoke("tier1", prompt, max_tokens=1024)
+    tokens_in, tokens_out = response.tokens_in, response.tokens_out
+    if getattr(response, "truncated", False) is True:
+        # Cut-off JSON is not a summary. One retry with more room; if that is
+        # truncated too, report a failure (not persisted, retried on resume).
+        response = llm_client.invoke("tier1", prompt, max_tokens=2048)
+        tokens_in += response.tokens_in
+        tokens_out += response.tokens_out
+        if getattr(response, "truncated", False) is True:
+            logger.warning("Tier-1 output truncated twice for %s — not storing it", chunk.qualified_name)
+            return _failed_summary(chunk.qualified_name, "truncated", tokens_in=tokens_in,
+                                   tokens_out=tokens_out, model=response.model)
 
     parsed = _parse_response(response.text)
     return {
         **parsed,
-        "tokens_in": response.tokens_in,
-        "tokens_out": response.tokens_out,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
         "model": response.model,
         "tier": response.tier,
         "qualified_name": chunk.qualified_name,
@@ -372,12 +409,13 @@ def summarize_chunks(
         try:
             conn = get_conn(db_path)
             try:
+                # Placeholder rows written by older versions are not "done".
                 rows = conn.execute(
                     """SELECT cn.qualified_name
                          FROM node_summaries ns
                          JOIN code_nodes cn ON cn.id = ns.node_id
-                        WHERE cn.scan_id = ?""",
-                    (scan_id,),
+                        WHERE cn.scan_id = ? AND ns.purpose IS NOT ?""",
+                    (scan_id, FAILED_PURPOSE),
                 ).fetchall()
                 existing_qnames = {r["qualified_name"] for r in rows}
             finally:
@@ -400,8 +438,8 @@ def summarize_chunks(
                     """SELECT ns.*, cn.qualified_name
                          FROM node_summaries ns
                          JOIN code_nodes cn ON cn.id = ns.node_id
-                        WHERE cn.scan_id = ?""",
-                    (scan_id,),
+                        WHERE cn.scan_id = ? AND ns.purpose IS NOT ?""",
+                    (scan_id, FAILED_PURPOSE),
                 ).fetchall()
                 return [
                     {
@@ -501,18 +539,7 @@ def summarize_chunks(
                 results.append(summary)
             except Exception:
                 logger.exception("Failed to summarize chunk %s", chunk.qualified_name)
-                results.append({
-                    "purpose": "Summarization failed",
-                    "business_rules": "",
-                    "io_summary": "",
-                    "tech_debt_signals": "",
-                    "tokens_in": 0,
-                    "tokens_out": 0,
-                    "model": "",
-                    "tier": "tier1",
-                    "qualified_name": chunk.qualified_name,
-                    "raw_response": "",
-                })
+                results.append(_failed_summary(chunk.qualified_name))
             completed += 1
             if on_progress is not None:
                 on_progress(completed, total)
@@ -528,10 +555,11 @@ def summarize_chunks(
     return results
 
 
-def reuse_prior_summaries(db_path: Path, scan_id: int) -> int:
+def reuse_prior_summaries(db_path: Path, scan_id: int, *, model: str) -> int:
     """A-2 incremental re-scan: copy Tier-1 summaries from the most recent
     prior scan for nodes whose (qualified_name, file_path, file_hash) are
-    unchanged. Returns the number of summaries copied.
+    unchanged AND that were made by the same Tier-1 *model* with the current
+    prompt version (``TIER1_PROMPT_VERSION``). Returns the number copied.
 
     Runs before summarize_chunks: the copied rows make the existing same-scan
     resume guard skip those nodes, so only changed/new files pay an LLM call.
@@ -542,6 +570,7 @@ def reuse_prior_summaries(db_path: Path, scan_id: int) -> int:
       copying the prior counts would double-bill the aggregate ledger.
     - INSERT OR IGNORE: an existing summary for the node (same-scan resume)
       is never clobbered.
+    - Failure placeholders (older versions persisted them) are never copied.
     """
     conn = get_conn(db_path)
     try:
@@ -571,8 +600,9 @@ def reuse_prior_summaries(db_path: Path, scan_id: int) -> int:
                   AND prev.file_hash != ''
                   AND prev.scan_id = ?
                  JOIN node_summaries ns ON ns.node_id = prev.id
-                WHERE new.scan_id = ?""",
-            (now_iso(), prev_scan, scan_id),
+                WHERE new.scan_id = ?
+                  AND ns.tier = ? AND ns.model_used = ? AND ns.purpose IS NOT ?""",
+            (now_iso(), prev_scan, scan_id, stored_tier_label("tier1"), model, FAILED_PURPOSE),
         )
         conn.commit()
         copied = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
@@ -590,18 +620,24 @@ def persist_summaries(
     summaries: list[dict],
     scan_id: int,
     db_path: Path,
-) -> None:
-    """Write summaries to node_summaries table.
+) -> int:
+    """Write summaries to node_summaries table; returns how many failed ones were skipped.
 
     Maps qualified_name to node_id via code_nodes table.
-    Summaries without a matching code_node are logged and skipped.
+    Summaries without a matching code_node are logged and skipped. Failure
+    placeholders are never stored, so a resume retries those nodes.
     """
+    failed = [s for s in summaries if is_failed_summary(s)]
+    summaries = [s for s in summaries if not is_failed_summary(s)]
+    if failed:
+        logger.warning("%d Tier-1 summaries failed and were not stored; the next scan (or a "
+                       "resume of phase 11) re-summarizes them", len(failed))
     conn = get_conn(db_path)
     try:
         # Batch SELECT to resolve all qualified_names -> node ids in one query (fixes N+1)
         qnames = [s.get("qualified_name", "") for s in summaries if s.get("qualified_name")]
         if not qnames:
-            return
+            return len(failed)
 
         placeholders = ",".join("?" * len(qnames))
         rows = conn.execute(
@@ -624,7 +660,7 @@ def persist_summaries(
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     node_id,
-                    s.get("tier", "tier1"),
+                    stored_tier_label(s.get("tier", "tier1")),
                     s.get("model", ""),
                     s.get("purpose", ""),
                     s.get("business_rules", ""),
@@ -637,5 +673,6 @@ def persist_summaries(
                 ),
             )
         conn.commit()
+        return len(failed)
     finally:
         conn.close()

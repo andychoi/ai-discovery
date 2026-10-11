@@ -352,3 +352,100 @@ def test_summarize_chunks_batching_respects_budget_stop():
     )
     # stopped after the first completed batch — not all 6 summarized
     assert 0 < len(results) <= 3
+
+
+# ---------------------------------------------------------------------------
+# Output integrity (M0.7): truncation, failed placeholders
+# ---------------------------------------------------------------------------
+
+from ai_discovery.ai.llm_client import LLMResponse  # noqa: E402
+from ai_discovery.ai.summarizer import (  # noqa: E402
+    FAILED_PURPOSE,
+    is_failed_summary,
+    persist_summaries,
+    stored_tier_label,
+)
+
+_GOOD = json.dumps({"purpose": "Greets", "business_rules": "None detected",
+                    "io_summary": "None", "tech_debt_signals": "None detected"})
+
+
+def _resp(text: str, truncated: bool = False, tokens_out: int = 20) -> LLMResponse:
+    return LLMResponse(text=text, tokens_in=10, tokens_out=tokens_out, model="m1", tier="tier1",
+                       truncated=truncated)
+
+
+def test_truncated_output_is_retried_with_more_room() -> None:
+    client = MagicMock()
+    client.invoke.side_effect = [_resp('{"purpose": "Gre', True, 1000), _resp(_GOOD)]
+    out = summarize_chunk(_make_chunk(), client)
+    assert out["purpose"] == "Greets" and not is_failed_summary(out)
+    assert [c.kwargs["max_tokens"] for c in client.invoke.call_args_list] == [1024, 2048]
+    assert out["tokens_out"] == 1020  # both calls were paid for
+
+
+def test_twice_truncated_output_is_a_failure_not_a_summary() -> None:
+    client = MagicMock()
+    client.invoke.side_effect = [_resp("{", True, 1000), _resp("{", True, 2000)]
+    out = summarize_chunk(_make_chunk(), client)
+    assert is_failed_summary(out) and out["failure"] == "truncated" and out["tokens_out"] == 3000
+
+
+def _db_with_node(tmp_path, qname: str = "mod.hello"):
+    import sqlite3
+
+    from ai_discovery.db import init_db
+
+    db = tmp_path / "d.db"
+    init_db(db)
+    conn = sqlite3.connect(str(db))
+    conn.execute("INSERT INTO scan_runs (id, started_at, status) VALUES (1, '2026-01-01', 'running')")
+    conn.execute("INSERT INTO code_nodes (scan_id, file_path, language, node_type, name, qualified_name) "
+                 "VALUES (1, 'mod.py', 'python', 'function', 'hello', ?)", (qname,))
+    conn.commit()
+    conn.close()
+    return db
+
+
+def _stored(db):
+    import sqlite3
+
+    conn = sqlite3.connect(str(db))
+    try:
+        return conn.execute("SELECT tier, purpose FROM node_summaries").fetchall()
+    finally:
+        conn.close()
+
+
+def test_failed_summaries_are_not_persisted_and_are_retried(tmp_path) -> None:
+    db = _db_with_node(tmp_path)
+    failing = MagicMock()
+    failing.invoke.side_effect = RuntimeError("provider down")
+    results = summarize_chunks([_make_chunk()], failing, db, scan_id=1, skip_rag=True, max_concurrent=1)
+    assert is_failed_summary(results[0])
+    assert persist_summaries(results, 1, db) == 1 and _stored(db) == []
+
+    # resume: the node has no stored summary, so it is summarized again
+    working = MagicMock()
+    working.invoke.return_value = _resp(_GOOD)
+    results = summarize_chunks([_make_chunk()], working, db, scan_id=1, skip_rag=True, max_concurrent=1)
+    assert working.invoke.call_count == 1 and results[0]["purpose"] == "Greets"
+    assert persist_summaries(results, 1, db) == 0
+    assert _stored(db) == [(stored_tier_label("tier1"), "Greets")]
+
+
+def test_legacy_failed_rows_do_not_count_as_done(tmp_path) -> None:
+    import sqlite3
+
+    db = _db_with_node(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.execute("INSERT INTO node_summaries (node_id, tier, model_used, purpose, created_at) "
+                 "VALUES (1, 'tier1', '', ?, '2026-01-01')", (FAILED_PURPOSE,))
+    conn.commit()
+    conn.close()
+    client = MagicMock()
+    client.invoke.return_value = _resp(_GOOD)
+    results = summarize_chunks([_make_chunk()], client, db, scan_id=1, skip_rag=True, max_concurrent=1)
+    assert client.invoke.call_count == 1 and results[0]["purpose"] == "Greets"
+    persist_summaries(results, 1, db)  # INSERT OR REPLACE overwrites the placeholder
+    assert _stored(db) == [(stored_tier_label("tier1"), "Greets")]

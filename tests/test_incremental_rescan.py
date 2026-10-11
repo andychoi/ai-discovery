@@ -12,7 +12,12 @@ import sqlite3
 from unittest.mock import MagicMock
 
 from ai_discovery.db import init_db
-from ai_discovery.ai.summarizer import reuse_prior_summaries, summarize_chunks
+from ai_discovery.ai.summarizer import (
+    FAILED_PURPOSE,
+    reuse_prior_summaries,
+    stored_tier_label,
+    summarize_chunks,
+)
 from ai_discovery.graph.models import CodeNode
 from ai_discovery.pipeline import _stamp_file_hash
 
@@ -52,13 +57,17 @@ def _seed_scan(conn, scan_id: int, nodes: list[tuple[str, str, str]]) -> dict[st
     return ids
 
 
-def _seed_summary(conn, node_id: int, purpose: str = "Does things") -> None:
+MODEL = "haiku-test"
+
+
+def _seed_summary(conn, node_id: int, purpose: str = "Does things", *, tier: str | None = None,
+                  model: str = MODEL) -> None:
     conn.execute(
         "INSERT INTO node_summaries (node_id, tier, model_used, purpose, business_rules, "
         "io_summary, tech_debt_signals, raw_response, tokens_in, tokens_out, created_at) "
-        "VALUES (?, 'tier1', 'haiku-test', ?, 'None detected', 'No I/O', 'None detected', "
+        "VALUES (?, ?, ?, ?, 'None detected', 'No I/O', 'None detected', "
         "'{}', 100, 50, '2026-01-01')",
-        (node_id, purpose),
+        (node_id, tier or stored_tier_label("tier1"), model, purpose),
     )
 
 
@@ -102,7 +111,7 @@ def test_reuse_copies_summaries_for_unchanged_nodes(tmp_path):
     new = _seed_scan(conn, 2, [("mod.f", "src/mod.py", "h1"), ("mod.g", "src/mod.py", "h1")])
     conn.commit(); conn.close()
 
-    n = reuse_prior_summaries(db, 2)
+    n = reuse_prior_summaries(db, 2, model=MODEL)
     assert n == 2
 
     conn = sqlite3.connect(str(db))
@@ -128,7 +137,7 @@ def test_reuse_skips_changed_and_new_files(tmp_path):
     ])
     conn.commit(); conn.close()
 
-    assert reuse_prior_summaries(db, 2) == 0
+    assert reuse_prior_summaries(db, 2, model=MODEL) == 0
     conn = sqlite3.connect(str(db))
     count = conn.execute(
         "SELECT COUNT(*) FROM node_summaries WHERE node_id IN (?, ?)",
@@ -143,7 +152,7 @@ def test_reuse_without_prior_scan_returns_zero(tmp_path):
     conn = sqlite3.connect(str(db))
     _seed_scan(conn, 1, [("mod.f", "src/mod.py", "h1")])
     conn.commit(); conn.close()
-    assert reuse_prior_summaries(db, 1) == 0
+    assert reuse_prior_summaries(db, 1, model=MODEL) == 0
 
 
 def test_reuse_ignores_blank_hashes(tmp_path):
@@ -155,7 +164,7 @@ def test_reuse_ignores_blank_hashes(tmp_path):
     _seed_summary(conn, old["mod.f"])
     _seed_scan(conn, 2, [("mod.f", "src/mod.py", "")])
     conn.commit(); conn.close()
-    assert reuse_prior_summaries(db, 2) == 0
+    assert reuse_prior_summaries(db, 2, model=MODEL) == 0
 
 
 def test_reuse_does_not_clobber_existing_summary(tmp_path):
@@ -167,7 +176,7 @@ def test_reuse_does_not_clobber_existing_summary(tmp_path):
     _seed_summary(conn, new["mod.f"], purpose="already here")
     conn.commit(); conn.close()
 
-    reuse_prior_summaries(db, 2)
+    reuse_prior_summaries(db, 2, model=MODEL)
     conn = sqlite3.connect(str(db))
     purpose = conn.execute(
         "SELECT purpose FROM node_summaries WHERE node_id = ?", (new["mod.f"],)
@@ -188,7 +197,7 @@ def test_reused_summaries_skip_llm_via_resume_guard(tmp_path):
     _seed_scan(conn, 2, [("mod.f", "src/mod.py", "h1")])
     conn.commit(); conn.close()
 
-    reuse_prior_summaries(db, 2)
+    reuse_prior_summaries(db, 2, model=MODEL)
     chunk = CodeChunk(
         text="def f(): pass", chunk_index=0, chunk_type="function",
         file_path="src/mod.py", language="python", qualified_name="mod.f",
@@ -198,3 +207,31 @@ def test_reused_summaries_skip_llm_via_resume_guard(tmp_path):
     assert client.invoke.call_count == 0
     assert client.invoke_structured.call_count == 0
     assert results and results[0]["qualified_name"] == "mod.f"
+
+
+# ---------------------------------------------------------------------------
+# Reuse key: model + prompt version; failed placeholders (M0.7)
+# ---------------------------------------------------------------------------
+
+def _one_prior(tmp_path, **seed):
+    db = tmp_path / "d.db"; init_db(db)
+    conn = sqlite3.connect(str(db))
+    old = _seed_scan(conn, 1, [("mod.f", "src/mod.py", "h1")])
+    _seed_summary(conn, old["mod.f"], **seed)
+    _seed_scan(conn, 2, [("mod.f", "src/mod.py", "h1")])
+    conn.commit(); conn.close()
+    return db
+
+
+def test_reuse_requires_same_model(tmp_path):
+    db = _one_prior(tmp_path, model="old-model")
+    assert reuse_prior_summaries(db, 2, model=MODEL) == 0
+
+
+def test_reuse_requires_current_prompt_version(tmp_path):
+    # rows written before prompt versions were recorded carry a bare "tier1"
+    assert reuse_prior_summaries(_one_prior(tmp_path, tier="tier1"), 2, model=MODEL) == 0
+
+
+def test_failed_placeholder_is_never_reused(tmp_path):
+    assert reuse_prior_summaries(_one_prior(tmp_path, purpose=FAILED_PURPOSE), 2, model=MODEL) == 0

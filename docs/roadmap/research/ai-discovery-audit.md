@@ -44,9 +44,9 @@ File paths are relative to `src/ai_discovery/` unless they start with a top-leve
 |---|---|---|---|---|
 | 23 | Budget enforced **only for Bedrock**; OpenAI, Gemini and Anthropic are unlimited | `pipeline.py:229-259` | S1 | M0.5 |
 | 24 | Budget stop exits 0 | `pipeline.py` / `cli.py` scan | S2 | M0.5 |
-| 25 | Failed Tier-1 summary placeholder ("Summarization failed") is persisted, treated as done on resume, and reused on the next scan | `ai/summarizer.py:143-155,368-392,453,531-586`; `pipeline.py:1226` | S1 | M0.7 |
-| 26 | `truncated` (≥95% of `max_tokens`) is computed but dropped | `shared/llm_router.py:460`, `ai/llm_client.py:137-157` | S2 | M0.7 |
-| 27 | Tier-1 reuse key lacks model and prompt version | `ai/summarizer.py:566-572` | S2 | M0.7 |
+| 25 | Failed Tier-1 summary placeholder ("Summarization failed") is persisted, treated as done on resume, and reused on the next scan | `ai/summarizer.py:143-155,368-392,453,531-586`; `pipeline.py:1226` | S1 | M0.7 — fixed a37eff1 |
+| 26 | `truncated` (≥95% of `max_tokens`) is computed but dropped | `shared/llm_router.py:460`, `ai/llm_client.py:137-157` | S2 | M0.7 — fixed a37eff1 |
+| 27 | Tier-1 reuse key lacks model and prompt version | `ai/summarizer.py:566-572` | S2 | M0.7 — fixed a37eff1 |
 | 28 | Tier-2 flows and Tier-3 rollups are never reused across scans | `ai/rollup.py:631-660`, `ai/flow_analyzer.py:547-584` | S2 | M3.7 |
 | 29 | Oversized non-class functions are sent to the LLM whole | `ai/chunker.py:94-127` | S3 | M3.7 |
 | 30 | Retry is substring-based, 3 tries, 0.5 s base; Retry-After ignored | `shared/llm_invoke.py:26-40,363` | S3 | M1.11 |

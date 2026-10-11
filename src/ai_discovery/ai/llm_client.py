@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,6 +49,9 @@ class LLMResponse:
     tokens_out: int
     model: str
     tier: str
+    # True when the output hit (≥95% of) max_tokens: the text is likely cut off
+    # and must not be treated as a complete answer (audit #26).
+    truncated: bool = False
 
 
 @dataclass
@@ -117,6 +121,8 @@ class LLMClient:
     def __init__(self, config: DiscoveryConfig):
         self._config = config
         self._costs: dict[str, dict] = {}
+        self._truncations: dict[str, int] = {}
+        self._truncations_lock = threading.Lock()
 
     _OLLAMA_LIKE = frozenset({"ollama", "mlx-gemma", "mlx-qwen"})
 
@@ -152,9 +158,15 @@ class LLMClient:
             num_ctx=self._tier1_num_ctx(tier),
         )
         self._track_cost(tier, meta["model_id"], meta["input_tokens"], meta["output_tokens"])
+        truncated = bool(meta.get("truncated", False))
+        if truncated:
+            with self._truncations_lock:
+                self._truncations[tier] = self._truncations.get(tier, 0) + 1
+            log.warning("%s output hit max_tokens=%d (%s) — treating it as truncated",
+                           tier, max_tokens, meta["model_id"])
         return LLMResponse(text=meta["text"], tokens_in=meta["input_tokens"],
                            tokens_out=meta["output_tokens"], model=meta["model_id"],
-                           tier=tier)
+                           tier=tier, truncated=truncated)
 
     def invoke_structured(
         self,
@@ -582,6 +594,11 @@ class LLMClient:
 
     def get_costs(self) -> dict[str, dict]:
         return dict(self._costs)
+
+    def truncation_counts(self) -> dict[str, int]:
+        """Per-tier count of plain invocations whose output hit max_tokens."""
+        with self._truncations_lock:
+            return dict(self._truncations)
 
     def total_cost_usd(self) -> float:
         return sum(t.get("est_usd", 0) for t in self._costs.values())

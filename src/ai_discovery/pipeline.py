@@ -1341,7 +1341,7 @@ def _run_pipeline_unlocked(
             console.print("[bold cyan]Tier 1: Summarizing code chunks...[/]")
             # A-2 incremental re-scan: copy summaries from the latest prior
             # scan for unchanged files; the resume guard below then skips them.
-            n_reused = reuse_prior_summaries(db_path, scan_id)
+            n_reused = reuse_prior_summaries(db_path, scan_id, model=config.get_model("tier1"))
             if n_reused:
                 console.print(
                     f"  Reused [green]{n_reused}[/] summaries from prior scan (unchanged files)"
@@ -1371,7 +1371,10 @@ def _run_pipeline_unlocked(
                     semantic_batching=config.semantic_batching,
                 )
 
-            persist_summaries(summaries, scan_id, db_path)
+            n_failed = persist_summaries(summaries, scan_id, db_path)
+            if n_failed:
+                console.print(f"  [yellow]{n_failed} summaries failed[/] (not stored; the next "
+                              "scan or a resume of this phase re-summarizes only those)")
             summaries_dict = {s["qualified_name"]: s for s in summaries}
             console.print(f"  Summaries: [green]{len(summaries)}[/] (cost so far: ${llm_client.total_cost_usd():.4f})")
 

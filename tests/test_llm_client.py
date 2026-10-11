@@ -236,3 +236,15 @@ def test_embeddings_batch_routes(monkeypatch):
     with patch("httpx.post", side_effect=fake_post):
         vecs = client.get_embeddings(["a", "b"])
     assert vecs == [[0.0], [1.0]]
+
+
+# ── truncation (M0.7, audit #26) ──────────────────────────────────────────
+
+def test_truncated_output_is_flagged_and_counted():
+    client = LLMClient(DiscoveryConfig(provider="bedrock"))
+    with patch(_BEDROCK_TARGET, return_value=('{"purpose": "cut of', 10, 1000)):
+        cut = client.invoke("tier1", "p", max_tokens=1024)  # 1000 ≥ 95% of 1024
+    with patch(_BEDROCK_TARGET, return_value=("{}", 10, 20)):
+        ok = client.invoke("tier1", "p", max_tokens=1024)
+    assert cut.truncated is True and ok.truncated is False
+    assert client.truncation_counts() == {"tier1": 1}
