@@ -18,6 +18,7 @@ console = Console()
 app = typer.Typer(name="discover", help="Brownfield codebase discovery & doc generation.")
 
 _VALID_INGEST_TARGETS = {"dochub", "gitea"}
+_VALID_PUSH_MODES = {"api", "gitea"}  # ingest-docs --push (ingest/runner.py)
 
 
 def _load_config(config: Optional[Path]) -> "DiscoveryConfig":
@@ -680,18 +681,30 @@ def detect_screens(
 
 
 
+def _default_spec_dirs(repo_path: Path) -> list[Path]:
+    """Where scans write screen specs: v1 layout first, then the legacy tree."""
+    from ai_discovery.core.paths import ProjectLayout
+
+    v1 = ProjectLayout.for_repo(repo_path)
+    legacy = ProjectLayout.legacy(Path("./data"), v1.slug, Path("./data"), for_read=True)
+    return [v1.docs_dir / "screens", legacy.docs_dir / "screens"]
+
+
 @app.command()
 def verify_drift(
     repo: str = typer.Argument(..., help="Path to repository."),
-    spec_dir: Path = typer.Option(
-        Path("./data/specs"), "--spec-dir", "-s",
-        help="Directory containing generated screen specs (.md files).",
+    spec_dir: Optional[Path] = typer.Option(
+        None, "--spec-dir", "-s",
+        help="Directory containing generated screen specs (.md files). "
+             "Default: the scan's screens dir (<repo>/.discovery/docs/screens, "
+             "else ./data/output-<repo-name>/screens).",
     ),
 ) -> None:
     """Check for drift between screen specs and source code.
 
     Reads source_hashes from spec frontmatter and compares against current files.
-    Exits with non-zero code if any drift is detected (suitable for CI).
+    Exits 1 if any drift is detected and 5 when there is nothing to check
+    (no spec dir, or no specs in it) — a CI gate must not pass vacuously.
     """
     from ai_discovery.drift_checker import check_drift
 
@@ -701,10 +714,16 @@ def verify_drift(
         console.print(f"[red]Repository not found: {repo_path}[/]")
         raise typer.Exit(code=1)
 
-    if not spec_dir.exists():
-        console.print(f"[yellow]Spec directory not found: {spec_dir}[/]")
-        console.print("  No specs to check. Run detect-screens and generate-screen-specs first.")
-        raise typer.Exit(code=0)
+    candidates = [spec_dir] if spec_dir is not None else _default_spec_dirs(repo_path)
+    found = next((d for d in candidates if d.is_dir()), None)
+    if found is None:
+        console.print(f"[red]Spec directory not found:[/] {', '.join(str(d) for d in candidates)}")
+        console.print("  Nothing to check — run `discover scan` first, or pass --spec-dir.")
+        raise typer.Exit(code=5)
+    spec_dir = found
+    if not any(spec_dir.glob("*.md")):
+        console.print(f"[red]No specs (*.md) in {spec_dir}[/] — nothing to check.")
+        raise typer.Exit(code=5)
 
     console.print(f"[bold green]discover verify-drift[/] repo={repo}")
     console.print(f"  specs={spec_dir}")

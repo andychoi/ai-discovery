@@ -2,9 +2,9 @@
 
 Each of the 13 commands gets `--help` plus one real path that needs no network,
 LLM or prior scan. These document *current* behaviour so later changes are
-deliberate. Known bugs are asserted as the *correct* behaviour under
-``xfail(strict=True)``: when M0.9 fixes them the test XPASSes, fails strict,
-and the marker must be removed.
+deliberate. Known bugs were asserted as the *correct* behaviour under
+``xfail(strict=True)``; M0.9 fixed the two pinned here (ingest-docs NameError,
+verify-drift exit code) and removed their markers.
 
 The v1 CLI (M2) replaces this file.
 """
@@ -112,7 +112,6 @@ def test_test_llm_with_all_probes_skipped() -> None:
     assert result.exit_code == 0, result.output
 
 
-@pytest.mark.xfail(strict=True, reason="ingest-docs NameError _VALID_PUSH_MODES (audit; fixed by M0.9)")
 def test_ingest_docs_dry_run(tmp_path: Path) -> None:
     (tmp_path / "doc.md").write_text("# Doc\n\nBody.\n", encoding="utf-8")
     result = _invoke("ingest-docs", str(tmp_path), "-p", "x", "--dry-run")
@@ -132,7 +131,6 @@ def test_detect_screens_on_fixture(tmp_path: Path) -> None:
     assert (out / "screen_map.yaml").exists() and (out / "menu_tree.json").exists()
 
 
-@pytest.mark.xfail(strict=True, reason="verify-drift exits 0 when spec dir is missing (audit; fixed by M0.9)")
 def test_verify_drift_missing_spec_dir_fails(tmp_path: Path) -> None:
     result = _invoke("verify-drift", str(SPRING_APP), "-s", str(tmp_path / "nope"))
     assert result.exit_code != 0

@@ -250,3 +250,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** none.
 - **Follow-ups:** `invoke_structured` (batched Tier-1, screen specs) doesn't report truncation yet — fold into M1.10's single invoke path; downstream phases still receive failed placeholders in `summaries_dict` for the current run (pipeline, lane A — filter in M1.7); a proper `prompt_version` column belongs with `llm_cache` (M1.11/M3.7).
 
+## 2026-10-11 — M0.9 — interim path fixes
+- **Branch/commit:** rm/M0.9-path-fixes @ 568149d
+- **Changes:** `cli/legacy.py` (`_VALID_PUSH_MODES`; `verify-drift` default spec dir via `_default_spec_dirs` + exit 5 on missing/empty); `viewer/dashboard.py` (`_latest_scan_id` prefers `current_scan`, then newest completed; histogram, quality status and weakest docs scoped to it); tests: `tests/test_viewer_dashboard.py` fixture now builds `output-<slug>` (+2 scoping tests), `tests/cli/test_legacy_fixes.py` (new, 6), `tests/cli/test_cli_smoke.py` strict-xfail markers removed (both XPASSed).
+- **Decisions:** "nothing to check" uses exit 5 (the `nothing_to_check` reason's code) and drift stays exit 1, so CI can tell them apart. Default spec dir tries the v1 layout first, then `./data/output-<repo-name>/screens` (legacy scans name the project after the repo). A newer *running* scan no longer blanks the dashboard — it shows the last completed one. `chat`/viewer doc paths were already fixed by M1.2, as the item notes; `rag/chat.py` and `drift_checker.py` needed no change.
+- **Verify:** `pytest -q tests -k "viewer or chat or drift or ingest or legacy_fixes"` → 56 passed; the new CLI tests fail on the pre-fix `legacy.py` (5 of 6) and pass after; full `pytest -q` → 1488 passed, 4 skipped; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** none — these commands are replaced by `discover drift`/`push` in M2.6 and the viewer is retired in M4.6.
+

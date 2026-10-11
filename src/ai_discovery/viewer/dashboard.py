@@ -140,17 +140,18 @@ def confidence_histogram(db_path: Path) -> list[ConfidenceBucket]:
     edges: list[tuple[float, float]] = [(i / 10, (i + 1) / 10) for i in range(10)]
     buckets: list[ConfidenceBucket] = []
     with _connect(db_path) as conn:
+        sid = _latest_scan_id(conn)
         for lo, hi in edges:
             # Last bucket includes 1.0; others are [lo, hi).
             is_last = hi >= 1.0
             if is_last:
                 cnt = conn.execute(
-                    "SELECT COUNT(*) FROM call_edges WHERE confidence >= ?", (lo,),
+                    "SELECT COUNT(*) FROM call_edges WHERE scan_id = ? AND confidence >= ?", (sid, lo),
                 ).fetchone()[0]
             else:
                 cnt = conn.execute(
-                    "SELECT COUNT(*) FROM call_edges WHERE confidence >= ? AND confidence < ?",
-                    (lo, hi),
+                    "SELECT COUNT(*) FROM call_edges WHERE scan_id = ? AND confidence >= ? AND confidence < ?",
+                    (sid, lo, hi),
                 ).fetchone()[0]
             label = f"{lo:.1f}–{hi:.1f}"
             buckets.append(ConfidenceBucket(label=label, lo=lo, hi=hi, count=cnt))
@@ -160,18 +161,19 @@ def confidence_histogram(db_path: Path) -> list[ConfidenceBucket]:
 def quality_status(db_path: Path) -> Optional[QualityStatus]:
     """Pass/fail vs CLAUDE.md targets. Returns None if there are no edges."""
     with _connect(db_path) as conn:
+        sid = _latest_scan_id(conn)
         total = conn.execute(
-            "SELECT COUNT(*) FROM call_edges WHERE confidence IS NOT NULL"
+            "SELECT COUNT(*) FROM call_edges WHERE scan_id = ? AND confidence IS NOT NULL", (sid,),
         ).fetchone()[0]
         if total == 0:
             return None
         resolved = conn.execute(
-            "SELECT COUNT(*) FROM call_edges WHERE confidence >= ?",
-            (HIGH_CONF_THRESHOLD,),
+            "SELECT COUNT(*) FROM call_edges WHERE scan_id = ? AND confidence >= ?",
+            (sid, HIGH_CONF_THRESHOLD),
         ).fetchone()[0]
         low = conn.execute(
-            "SELECT COUNT(*) FROM call_edges WHERE confidence < ?",
-            (LOW_CONF_THRESHOLD,),
+            "SELECT COUNT(*) FROM call_edges WHERE scan_id = ? AND confidence < ?",
+            (sid, LOW_CONF_THRESHOLD),
         ).fetchone()[0]
     resolution_ratio = resolved / total
     low_conf_ratio = low / total
@@ -197,13 +199,14 @@ def weakest_docs(db_path: Path, limit: int = 20) -> list[DocRow]:
             """
             SELECT doc_id, title, doc_type, domain, confidence, unverified_claims
             FROM generated_docs
+            WHERE scan_id = ?
             ORDER BY
                 COALESCE(unverified_claims, 0) DESC,
                 CASE WHEN confidence IS NULL THEN 1 ELSE 0 END ASC,
                 confidence ASC
             LIMIT ?
             """,
-            (limit,),
+            (_latest_scan_id(conn), limit),
         ).fetchall()
     return [
         DocRow(
@@ -303,6 +306,16 @@ def _parse_int(v: Optional[str]) -> Optional[int]:
 # ---------------------------------------------------------------------------
 
 def _latest_scan_id(conn: sqlite3.Connection) -> Optional[int]:
+    """The scan readers should see: the ``current_scan`` pointer (v1 store),
+    else the newest completed scan, else the newest scan of any status."""
+    from ai_discovery.store.scans import get_current_scan
+
+    current = get_current_scan(conn)
+    if current is not None:
+        return current
+    row = conn.execute("SELECT MAX(id) FROM scan_runs WHERE status = 'completed'").fetchone()
+    if row and row[0] is not None:
+        return row[0]
     row = conn.execute("SELECT MAX(id) FROM scan_runs").fetchone()
     return row[0] if row else None
 

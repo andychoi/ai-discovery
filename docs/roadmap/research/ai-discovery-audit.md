@@ -15,10 +15,10 @@ File paths are relative to `src/ai_discovery/` unless they start with a top-leve
 
 | # | Finding | Location | Sev | Item |
 |---|---|---|---|---|
-| 1 | `ingest-docs` always raises `NameError`: `_VALID_PUSH_MODES` is never defined (only `_VALID_INGEST_TARGETS`) | `cli.py:756`, `cli.py:20` | S1 | M0.9 (then removed in M2.6) |
+| 1 | `ingest-docs` always raises `NameError`: `_VALID_PUSH_MODES` is never defined (only `_VALID_INGEST_TARGETS`) | `cli.py:756`, `cli.py:20` | S1 | M0.9 — fixed 568149d (removed in M2.6) |
 | 2 | Viewer docs and diagrams read the legacy `<out>/<slug>/` layout. The scan writes `output-<slug>`. DB discovery handles both layouts | `viewer/server.py:67-68`, `viewer/dashboard.py:109,253` | S1 | M0.9 |
 | 3 | `chat` indexes `<out>/output-<slug>/docs`, which nothing writes. It skips silently, so the chat only sees code chunks | `cli.py:307`, `rag/chat.py:86` | S1 | M0.9 |
-| 4 | `verify-drift` default dir `./data/specs` is wrong. When not found it **exits 0**, so a CI gate passes | `cli.py:945-948` | S1 | M0.9 |
+| 4 | `verify-drift` default dir `./data/specs` is wrong. When not found it **exits 0**, so a CI gate passes | `cli.py:945-948` | S1 | M0.9 — fixed 568149d |
 | 5 | Strict UTF-8 decode: any CP949/EUC-KR byte drops the whole file | `parsers/*` `.decode()`; `pipeline.py:599` `_parse_one` | S1 | M0.4 |
 | 6 | C# and Java tree-sitter queries capture `class_declaration` only (no interface/record/struct/enum) | `parsers/csharp.py:16-18`, `parsers/java.py:26-28` | S1 | M6.2, M6.3 |
 | 7 | Java `_unwrap_type` used for receiver typing turns `List<Item>` into `Item`, giving false `Item.remove` edges at 0.93. It is correct for JPA targets (`:617`) | `parsers/java.py:523,556,573` | S1 | M6.3 |
@@ -139,7 +139,7 @@ File paths are relative to `src/ai_discovery/` unless they start with a top-leve
 | 77 | Corpus baseline saturated (mostly 1.0), so it can't discriminate | `tests/corpus/baseline.json` | M6.13 |
 | 78 | Call edges scored on recall only; no precision sample | `tests/corpus/metrics.py:75-83` | M0.11 |
 | 79 | Spec says corpus Phase 3 is "pending", but `tests/corpus/external/` (manifest, fetch, ground_truth) exists | `docs/specs/2026-05-31-corpus-accuracy-harness.md` | M0.11 |
-| 80 | Viewer tests build the old layout, so they pass while the product breaks | `tests/test_viewer_dashboard.py:29,90` | M0.9 |
+| 80 | Viewer tests build the old layout, so they pass while the product breaks | `tests/test_viewer_dashboard.py:29,90` | M0.9 — fixed 568149d |
 | 81 | Domain classifier can name a domain after a segment of the repo's *absolute* path (e.g. `private` from macOS `/private/var/...`), so domain names and doc filenames depend on checkout location. Found by the M0.2 golden harness (WebForms node in `dotnet-webforms` fixture) | `graph/domain_classifier.py` (Unverified exact line) | M6.1 (path handling) — golden normalizes it meanwhile |
 | 82 | `screens` table is defined but never written; screen identity only lands in `screen_specs`/`screen_mappings` | `db.py:170` (schema), no `INSERT INTO screens` in `src/` | M3.3 |
 | 83 | `pyproject.toml` allowed `tree-sitter>=0.24`, but parsers import `QueryCursor` (0.25+): on 0.24, 9/10 floor checks fail. Fixed in M0.3 (floor pinned to 0.25 + tested grammar minimums) | `pyproject.toml`, `parsers/java.py:6` | Fixed (M0.3) |

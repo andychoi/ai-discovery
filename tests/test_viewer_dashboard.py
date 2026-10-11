@@ -26,7 +26,7 @@ def scan_out(tmp_path: Path) -> tuple[Path, Path, str]:
     slug = "demo"
     output_dir = tmp_path / "discovery-output"
     docs_root = tmp_path / "docs"
-    slug_dir = output_dir / slug
+    slug_dir = output_dir / f"output-{slug}"  # the layout the scan writes (audit #80)
     slug_dir.mkdir(parents=True)
 
     db = slug_dir / f"discovery-{slug}.db"
@@ -87,7 +87,7 @@ def scan_out(tmp_path: Path) -> tuple[Path, Path, str]:
     (slug_dir / "bpmn" / "scenario1.bpmn").write_text("<?xml?>")
 
     # Rendered markdown under docs_root.
-    asis = docs_root / slug / "ASIS"
+    asis = docs_root / f"output-{slug}" / "ASIS"
     asis.mkdir(parents=True)
     (asis / "demo-orders-as-is.md").write_text(
         '---\ntitle: "Orders — As-Is"\ndiscovery_confidence: 0.6\n'
@@ -100,7 +100,7 @@ def scan_out(tmp_path: Path) -> tuple[Path, Path, str]:
 
 def test_confidence_histogram_sums_to_total(scan_out):
     output_dir, _, slug = scan_out
-    db = output_dir / slug / f"discovery-{slug}.db"
+    db = output_dir / f"output-{slug}" / f"discovery-{slug}.db"
     buckets = confidence_histogram(db)
     assert len(buckets) == 10
     assert sum(b.count for b in buckets) == 20
@@ -114,7 +114,7 @@ def test_confidence_histogram_sums_to_total(scan_out):
 
 def test_quality_status_flags_both_failures(scan_out):
     output_dir, _, slug = scan_out
-    db = output_dir / slug / f"discovery-{slug}.db"
+    db = output_dir / f"output-{slug}" / f"discovery-{slug}.db"
     q = quality_status(db)
     assert q is not None
     assert q.total_edges == 20
@@ -134,7 +134,7 @@ def test_quality_status_none_when_no_edges(tmp_path: Path):
 
 def test_weakest_docs_ranks_by_unverified_then_confidence(scan_out):
     output_dir, _, slug = scan_out
-    db = output_dir / slug / f"discovery-{slug}.db"
+    db = output_dir / f"output-{slug}" / f"discovery-{slug}.db"
     docs = weakest_docs(db, limit=10)
     assert [d.doc_id for d in docs] == [
         "demo-orders-as-is",    # 7 unverified
@@ -202,3 +202,49 @@ def test_thresholds_match_claude_md_targets():
     assert HIGH_CONF_THRESHOLD == 0.85
     assert LOW_CONF_THRESHOLD == 0.65
     assert MAX_LOW_CONF_RATIO == 0.15
+
+
+# ---------------------------------------------------------------------------
+# Latest-scan scoping (M0.9): an older scan's edges/docs must not leak in
+# ---------------------------------------------------------------------------
+
+def test_aggregates_only_count_the_latest_scan(scan_out):
+    import sqlite3
+
+    output_dir, _, slug = scan_out
+    db = output_dir / f"output-{slug}" / f"discovery-{slug}.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("UPDATE scan_runs SET status = 'completed'")
+    conn.execute("INSERT INTO scan_runs (repo_path, project_slug, started_at, status) "
+                 "VALUES ('/tmp', ?, '2026-04-22T00:00:00', 'completed')", (slug,))
+    new_id = conn.execute("SELECT MAX(id) FROM scan_runs").fetchone()[0]
+    conn.execute("INSERT INTO code_nodes (scan_id, file_path, language, node_type, name, qualified_name) "
+                 "VALUES (?, 'a.py', 'python', 'function', 'f', 'a.f')", (new_id,))
+    caller = conn.execute("SELECT MAX(id) FROM code_nodes").fetchone()[0]
+    for c in (0.95, 0.95, 0.3):
+        conn.execute("INSERT INTO call_edges (scan_id, caller_id, callee_name, confidence) "
+                     "VALUES (?, ?, 'x', ?)", (new_id, caller, c))
+    conn.execute("INSERT INTO generated_docs (scan_id, domain, doc_type, doc_id, title, content_md, "
+                 "confidence, unverified_claims, created_at) VALUES (?, 'orders', 'as-is', "
+                 "'demo-orders-as-is-v2', 'Orders v2', '', 0.9, 1, '2026-04-22')", (new_id,))
+    conn.commit()
+    conn.close()
+
+    assert sum(b.count for b in confidence_histogram(db)) == 3
+    q = quality_status(db)
+    assert (q.total_edges, q.resolved_edges, q.low_conf_edges) == (3, 2, 1)
+    assert [d.doc_id for d in weakest_docs(db)] == ["demo-orders-as-is-v2"]
+
+
+def test_running_newer_scan_does_not_hide_the_completed_one(scan_out):
+    import sqlite3
+
+    output_dir, _, slug = scan_out
+    db = output_dir / f"output-{slug}" / f"discovery-{slug}.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("UPDATE scan_runs SET status = 'completed'")
+    conn.execute("INSERT INTO scan_runs (repo_path, project_slug, started_at, status) "
+                 "VALUES ('/tmp', ?, '2026-04-22T00:00:00', 'running')", (slug,))
+    conn.commit()
+    conn.close()
+    assert quality_status(db).total_edges == 20
