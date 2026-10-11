@@ -99,7 +99,8 @@ Incremental by default (ADR-0002).
 - **`--repair`:** clears a stale lock, runs pending migrations, rebuilds FTS, and re-registers MCP. It is not allowed together with `--json`.
 
 ### `discover serve`
-- **Flags:** `--host 127.0.0.1`, `--port 7341`, `--open/--no-open`.
+- **Flags:** `--host 127.0.0.1`, `--port 7341` (`0` = any free port), `--open/--no-open` (default no-open), `--allow-remote`, `--token` (env `DISCOVER_SERVE_TOKEN`; random when omitted).
+- **Before an index exists** it still serves (the UI shows "No index yet") and prints a hint; a legacy-only index gets a "run `discover scan`" hint. A taken port fails fast with `port_in_use` (exit 1). `--json` prints `{url, host, port, remote, indexed, notes[, token]}` once, then serves.
 - **What it serves:** FastAPI API v1 plus the bundled SPA (`design/wiki-web.md`). It reads `current_scan` read-only.
 - **Exposure:** a non-loopback host prints a warning, and also requires `--allow-remote`.
 
@@ -157,7 +158,7 @@ Incremental by default (ADR-0002).
 ## 5. Reason slug registry (`core/errors.py`, new)
 Format: snake_case. Slugs are stable, so they can be used in tests and telemetry. The initial set:
 
-`project_not_found`, `not_indexed`, `target_not_found`, `init_needs_choice`, `config_invalid_key`, `config_invalid_value`, `provider_not_configured`, `provider_unreachable`, `model_not_invocable`, `budget_exceeded`, `cost_gate_no_tty`, `cost_gate_declined`, `lock_held`, `migration_failed`, `fts_unavailable`, `sqlite_vec_unavailable`, `grammar_query_failed`, `drift_detected`, `push_auth_failed`, `serve_remote_not_allowed`, `contradictory_flags`, `nothing_to_check`, `evidence_format_unknown`.
+`project_not_found`, `not_indexed`, `target_not_found`, `init_needs_choice`, `config_invalid_key`, `config_invalid_value`, `provider_not_configured`, `provider_unreachable`, `model_not_invocable`, `budget_exceeded`, `cost_gate_no_tty`, `cost_gate_declined`, `lock_held`, `migration_failed`, `fts_unavailable`, `sqlite_vec_unavailable`, `grammar_query_failed`, `drift_detected`, `push_auth_failed`, `serve_remote_not_allowed`, `port_in_use`, `contradictory_flags`, `nothing_to_check`, `evidence_format_unknown`.
 
 ## 6. Old → new mapping (all 13 old commands)
 

@@ -21,7 +21,7 @@ from ai_discovery.core.errors import REASONS, DiscoveryError, as_discovery_error
 from ai_discovery.core.logging import configure_logging, level_for
 
 runner = CliRunner()
-HEAVY = ("tree_sitter", "boto3", "sqlite_vec", "ai_discovery.pipeline")
+HEAVY = ("tree_sitter", "boto3", "sqlite_vec", "ai_discovery.pipeline", "fastapi", "uvicorn")
 
 
 # ── fast --help ───────────────────────────────────────────────────────────

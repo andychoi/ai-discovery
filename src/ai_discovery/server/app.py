@@ -58,7 +58,8 @@ def create_app(layout, *, allow_remote: bool = False, token: Optional[str] = Non
     from .api_v1 import build_router
 
     app = FastAPI(title="ai-discovery wiki", version="1", docs_url="/api/docs", redoc_url=None,
-                  openapi_url="/api/openapi.json")
+                  openapi_url="/api/openapi.json",
+                  swagger_ui_oauth2_redirect_url="/api/docs/oauth2-redirect")  # /docs/* is the SPA's
     app.state.layout = layout
     app.state.allow_remote = allow_remote
     app.state.token = token or (secrets.token_urlsafe(24) if allow_remote else None)

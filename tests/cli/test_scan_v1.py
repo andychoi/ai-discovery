@@ -44,7 +44,7 @@ def test_keyless_scan_writes_v1_layout(repo: Path) -> None:
     c = out["counts"]
     assert c["files"] > 0 and c["symbols"] > 0 and c["edges"] > 0 and c["screens"] > 0
     assert c["docs"] == 0 and out["spend"]["usd"] == 0  # no LLM in keyless mode
-    assert out["next"][0] == "discover scan --prose" and len(out["next"]) <= 2
+    assert out["next"] == ["discover serve", "discover scan --prose"]
     conn = sqlite3.connect(repo / ".discovery" / "discovery.db")
     assert conn.execute("SELECT scan_id FROM current_scan").fetchone()[0] == out["scan_id"]
 
@@ -149,7 +149,7 @@ def test_post_scan_hooks_run_and_failures_degrade(repo: Path) -> None:
     hooks_ok = {h["name"]: h["ok"] for h in out["hooks"]}
     assert hooks_ok == {"pages": True, "test-ok": True, "test-bad": False}  # pages = built-in (M3.5)
     assert any(d["kind"] == "post_scan_hook" for d in out["degradations"])
-    assert "discover doctor" in out["next"]
+    assert out["next"][0] == "discover doctor" and "discover serve" not in out["next"]
 
 
 def test_hook_registry_rejects_duplicates() -> None:

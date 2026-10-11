@@ -102,11 +102,14 @@ div.state { display: block; }
 .notes li { border-left: 3px solid var(--border); padding-left: 0.5rem; margin-bottom: 0.5rem; }
 .notes p { margin: 0; }
 .linklike { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: left; }
-.source-panel { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+/* source view: a drawer pinned to the viewport, so it opens next to the citation clicked */
+.source-panel { position: fixed; right: 1rem; bottom: 1rem; width: min(46rem, calc(100vw - 2rem)); z-index: 10;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.25); }
 .source-panel header { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.75rem;
   background: var(--bg-soft); border-bottom: 1px solid var(--border); }
 .source-panel header button { margin-left: auto; background: none; border: 0; color: var(--fg); cursor: pointer; }
-.source { margin: 0; padding: 0.5rem 0; overflow-x: auto; max-height: 28rem; }
+.source { margin: 0; padding: 0.5rem 0; overflow: auto; max-height: min(28rem, 60vh); }
 .source div { padding: 0 0.75rem; white-space: pre; }
 .source div.hit { background: var(--accent-soft); }
 .source .ln { display: inline-block; width: 3.5rem; color: var(--muted); user-select: none; }

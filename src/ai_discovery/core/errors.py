@@ -27,6 +27,7 @@ REASONS: dict[str, int] = {
     "provider_unreachable": EXIT_FAILURE,
     "model_not_invocable": EXIT_FAILURE,
     "push_auth_failed": EXIT_FAILURE,
+    "port_in_use": EXIT_FAILURE,
     "init_needs_choice": EXIT_USAGE,
     "config_invalid_key": EXIT_USAGE,
     "config_invalid_value": EXIT_USAGE,

@@ -1,0 +1,36 @@
+# CI (roadmap item M4.5): unit suite + the install-from-wheel smoke test.
+# Node is needed only to build the SPA; the smoke test removes it from PATH.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@v3
+      - name: Install
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+      - name: Build web UI (offline check)
+        run: .venv/bin/python scripts/build_web.py
+      - name: Roadmap lint
+        run: .venv/bin/python scripts/roadmap_lint.py
+      - name: Tests
+        run: .venv/bin/python -m pytest -q
+      - name: Wheel smoke (no Node on PATH)
+        run: RUN_SLOW=1 .venv/bin/python -m pytest -q tests/smoke

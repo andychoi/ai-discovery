@@ -26,7 +26,7 @@ COMMANDS = [
     "chat", "ingest", "query", "impact", "federate", "view",
     "test-llm", "ingest-docs", "export-graph", "detect-screens", "verify-drift",
 ]
-V1_COMMANDS = ["init", "scan", "status", "doctor"]  # v1 commands added so far (M2.5); legacy ones go in M2.7
+V1_COMMANDS = ["init", "scan", "status", "doctor", "serve"]  # v1 commands added so far (M4.5); legacy ones go in M2.7
 
 runner = CliRunner()
 

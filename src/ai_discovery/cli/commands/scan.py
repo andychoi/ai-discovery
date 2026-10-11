@@ -100,14 +100,14 @@ def _whats_next(app: typer.Typer, prose: bool, failed_hooks: int) -> list[str]:
     names = {(c.name or c.callback.__name__) for c in app.registered_commands}
     names |= {g.name for g in app.registered_groups if getattr(g, "name", None)}
     candidates: list[str] = []
-    if "serve" in names:
+    if failed_hooks:  # design/cli-v1.md: serve is suggested unless something failed
+        candidates.append("discover doctor")
+    elif "serve" in names:
         candidates.append("discover serve")
     if "mcp" in names:
         candidates.append("discover mcp install")
     if not prose:
         candidates.append("discover scan --prose")
-    if failed_hooks:
-        candidates.append("discover doctor")
     candidates.append("discover status")
     return candidates[:2]
 

@@ -40,6 +40,11 @@ function SourcePanel({ cite, onClose }: { cite: Citation; onClose: () => void })
       .then((a) => setState(a.status === "ok" ? { data: a.data } : { error: "source not available" }),
             (e: Error) => setState({ error: e.message }));
   }, [cite]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <aside className="source-panel" aria-label="Source">
       <header>

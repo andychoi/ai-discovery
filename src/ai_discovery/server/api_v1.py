@@ -304,9 +304,12 @@ def build_router() -> APIRouter:
                 match = " ".join(f'"{t}"*' for t in tokens)  # quoted: user input can't inject FTS syntax
                 rows = conn.execute(
                     "SELECT f.page_id, p.title, p.type, snippet(pages_fts, 3, char(2), char(3), '…', 12) AS snip, "
-                    "bm25(pages_fts) AS score FROM pages_fts f JOIN pages p ON p.page_id = f.page_id "
+                    # title hits outweigh body/facts hits; an exact title match always ranks first
+                    "bm25(pages_fts, 0, 0, 10.0, 1.0, 2.0) AS score FROM pages_fts f JOIN pages p "
+                    "ON p.page_id = f.page_id "
                     f"AND p.scan_id = f.scan_id WHERE pages_fts MATCH ? AND f.scan_id = ?{type_clause} "
-                    "ORDER BY score LIMIT ?", [match, sid, *types, limit]).fetchall()
+                    "ORDER BY lower(p.title) = lower(?) DESC, score LIMIT ?",
+                    [match, sid, *types, q.strip(), limit]).fetchall()
                 hits = [{"page_id": row["page_id"], "title": row["title"], "type": row["type"],
                          "snippet": _plain_snippet(row["snip"]), "score": round(-row["score"], 4), "source": "fts"} for row in rows]
             else:

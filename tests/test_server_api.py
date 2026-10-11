@@ -114,6 +114,9 @@ def test_search(client) -> None:
     assert snippets and all("](" not in s and "**" not in s and "|" not in s for s in snippets)
     assert any("[orders]" in s.lower() or "[order" in s.lower() for s in snippets)
     assert all(s.count("[") == s.count("]") for s in snippets)
+    # title matches rank above pages that merely mention the term
+    assert _get(client, "/api/v1/search?q=order_items")["data"]["hits"][0]["page_id"] == "table:order_items"
+    assert _get(client, "/api/v1/search?q=Products")["data"]["hits"][0]["title"].lower() == "products"
     tables_only = _get(client, "/api/v1/search?q=orders&kinds=table")["data"]["hits"]
     assert tables_only and all(h["type"] == "table" for h in tables_only)
     # FTS syntax in user input is neutralised, not an error
