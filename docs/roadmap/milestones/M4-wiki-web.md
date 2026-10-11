@@ -54,7 +54,7 @@
 - **Out of scope:** —
 
 ### M4.5 `serve` + install-from-wheel smoke ★
-- **Status:** Planned
+- **Status:** In progress (rm/M4.5-serve, 2026-10-11)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M4.3, M2.1
