@@ -112,7 +112,7 @@
 - **Out of scope:** masking secrets inside source sent to LLMs (M1.13).
 
 ### M0.9 Interim path fixes
-- **Status:** Planned
+- **Status:** In progress (rm/M0.9-path-fixes, 2026-10-11)
 - **Size:** S
 - **Lane:** A
 - **Depends on:** —
