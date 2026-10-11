@@ -1,0 +1,96 @@
+# Benchmark reference repositories (roadmap M0.11, design/benchmark-protocol.md §2).
+#
+# Every entry is SHA-pinned. `local` is an optional checkout used when its HEAD
+# equals `sha`; otherwise `python -m bench fetch` clones into
+# tests/corpus/external/.cache/<id>. `ground_truth` is only scored when the
+# scanned SHA equals `ground_truth_sha` (labels are made from source at that SHA).
+# Existence, SHA and license verified 2026-10-11 (git ls-remote + GitHub API).
+# `status = "candidate"`: pinned but not yet part of a baseline run.
+
+[[repo]]
+id = "spring-petclinic"
+url = "https://github.com/spring-projects/spring-petclinic.git"
+sha = "753d35c2f84432d88c0f3b61c9302a16069b78dd"   # = tests/corpus/external pin
+stack = "java-spring"
+license = "Apache-2.0"
+local = "../sample-apps/spring-petclinic"          # owner checkout is at 500158f (newer) → fetched
+ground_truth = "tests/corpus/external/ground_truth/spring-petclinic.json"
+ground_truth_sha = "753d35c2f84432d88c0f3b61c9302a16069b78dd"
+status = "active"
+
+[[repo]]
+id = "eshop"
+url = "https://github.com/dotnet/eShop.git"
+sha = "dc7ea499cd356924fb6689b3702964a5869dbae9"
+stack = "aspnet-core"
+license = "MIT"
+local = "../sample-apps/eShop"
+status = "active"
+
+[[repo]]
+id = "node-express-realworld"
+url = "https://github.com/gothinkster/node-express-realworld-example-app.git"
+sha = "30b68e1e881462b2f4164ea09ab4c4f5699c7b0b"
+stack = "ts-js-backend"
+license = "none-declared"   # GitHub reports no license; derived facts only, no code committed
+ground_truth = "tests/corpus/external/ground_truth/node-express-realworld-example-app.json"
+ground_truth_sha = "30b68e1e881462b2f4164ea09ab4c4f5699c7b0b"
+status = "active"
+
+[[repo]]
+id = "microblog"
+url = "https://github.com/miguelgrinberg/microblog.git"
+sha = "a975ef64864354867c88e0ed3a17ba7d17dca752"
+stack = "python-flask"
+license = "MIT"
+ground_truth = "tests/corpus/external/ground_truth/microblog.json"
+ground_truth_sha = "a975ef64864354867c88e0ed3a17ba7d17dca752"
+status = "active"
+
+[[repo]]
+id = "jpetstore-6"
+url = "https://github.com/mybatis/jpetstore-6.git"
+sha = "1ffdf1e91b62aa32abfc4511f548c9bdc84b9bbf"
+stack = "java-jsp-mybatis"
+license = "Apache-2.0"
+status = "candidate"
+
+[[repo]]
+id = "vue-realworld"
+url = "https://github.com/realworld-apps/vue-realworld-example-app.git"
+sha = "f7e48c8178602ce25d43293bc6f8ca51d84ae222"
+stack = "vue-spa"
+license = "MIT"
+status = "candidate"
+
+[[repo]]
+id = "react-redux-realworld"
+url = "https://github.com/gothinkster/react-redux-realworld-example-app.git"
+sha = "ee72eba4056392c95a27bc48d385d3f54ba38a18"
+stack = "react-spa"
+license = "MIT"           # archived upstream
+status = "candidate"
+
+[[repo]]
+id = "ui5-sample-app"
+url = "https://github.com/UI5/sample-app.git"   # formerly SAP-samples/openui5-sample-app
+sha = "a8d247f5e9aa8dfd10f892ff98b7856204a50279"
+stack = "ui5-fiori"
+license = "Apache-2.0"
+status = "candidate"
+
+[[repo]]
+id = "abapgit"
+url = "https://github.com/abapGit/abapGit.git"
+sha = "7d6e7b9bcdae13f05542b35d75d367056fd2bcc8"
+stack = "abap"
+license = "MIT"
+status = "candidate"
+
+[[repo]]
+id = "abap2xlsx"
+url = "https://github.com/abap2xlsx/abap2xlsx.git"
+sha = "3bdf779f490717bfe0553c95f686e6371ffc326e"
+stack = "abap"
+license = "Apache-2.0"
+status = "candidate"

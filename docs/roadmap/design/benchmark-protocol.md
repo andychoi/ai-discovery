@@ -1,7 +1,7 @@
 # Design: Benchmark Protocol
 
-- **Status:** Accepted. Reference repos are candidates until pinned in M0.11.
-- **Last updated:** 2026-10-08
+- **Status:** Accepted. Reference repos are pinned in `bench/repos.toml` (M0.11).
+- **Last updated:** 2026-10-11
 - **Related items:** M0.11 (harness), M0.12 (baseline), M1.12 (edge-contract gate), M5.7 (agent-loop eval), M6.13 (CI accuracy gates), M7.1 (SAP repos)
 - **Existing assets:**
   - `tests/corpus/` (fixture ground truth, `baseline.json`, `metrics.py`)
@@ -37,7 +37,7 @@ Owner-provided local checkouts live in `../sample-apps/` (ASP.NET Core `eShop`, 
 | UI5 / Fiori | SAP-samples/openui5-sample-app | No | Confirm in M7.1 |
 | Korean legacy encoding | Synthetic CP949/EUC-KR fixtures (M0.4) + an owner repo | No | |
 
-Pin each by commit SHA in `tests/corpus/external/manifest.json`. Record the license of each repo before committing derived ground truth.
+**Pinned (M0.11, 2026-10-11):** every row above is SHA-pinned with its license in `bench/repos.toml` (verified with `python -m bench verify-repos`). `active` = spring-petclinic @ `753d35c` (the ground-truth SHA; the owner checkout at `500158f` is newer, so the harness fetches the pinned commit), eShop @ `dc7ea49` (local), node-express-realworld @ `30b68e1`, microblog @ `a975ef6`. `candidate` = jpetstore-6, vue-realworld (now `realworld-apps/…`), react-redux-realworld (archived upstream), UI5 sample-app (now `UI5/sample-app`), abapGit, abap2xlsx. node-express-realworld declares no license: commit derived facts only. WebForms/VB.NET/Korean-encoding rows still need owner repos. `tests/corpus/external/manifest.json` keeps the ground-truth pins; a test asserts both files agree.
 
 ## 3. Metrics
 
@@ -59,15 +59,21 @@ Doc *quality* (prose usefulness) is **not** scored with an LLM judge until the j
 ## 4. Harness layout (M0.11)
 
 ```
-bench/                       (new, lane Q)
-  __main__.py               python -m bench run [--repo X] [--tool ai-discovery|repowise] [--gate]
-  repos.py                  reads tests/corpus/external/manifest.json; fetch + pin
-  run_ai_discovery.py       keyless scan (--no-llm, M0.10) → metrics JSON
-  run_repowise.py           black box: `repowise init --no-prose -y`; read exported JSON/MCP answers only
-  precision/                sampler (seeded, stratified) + grading sheets (CSV committed)
-  impact/                   historical replay
-  results/                  YYYY-MM-DD-<label>.json (machine) — summaries go to docs/roadmap/benchmarks/
+bench/                       (lane Q; M0.11 built the parts marked ✓)
+  __main__.py            ✓  python -m bench list | verify-repos | fetch | run | sample | score
+  repos.toml / repos.py  ✓  SHA-pinned repos; local checkout if HEAD == sha, else shallow fetch into
+                            tests/corpus/external/.cache/ (gitignored)
+  run_ai_discovery.py    ✓  `discover scan --full --no-prose` with a temp --state-dir → metrics JSON
+  metrics.py             ✓  files indexed/skipped by reason, nodes by kind, edges by resolved_by,
+                            unresolved, screens, wall, $; key-call-edge recall per repo (only at the GT SHA)
+  precision/             ✓  sampler (seeded, stratified language × origin) → sheets/*.csv; score.py
+                            re-scores graded sheets (Wilson 95% CI per stratum, unknown kept separate)
+  run_repowise.py           black box: `repowise init --no-prose -y` (M0.12)
+  impact/                   historical replay (later)
+  results/                  YYYY-MM-DD-<repo>.json via `run --save` — summaries go to docs/roadmap/benchmarks/
 ```
+
+Skipped-file reasons are classified by the harness, not the walker: `skip_dir`, `unsupported_extension`, `no_symbols` (a parsable file that produced no nodes). `--gate` is not built yet (CI gating is M6.13).
 
 `--gate` compares the run with the committed baseline. It fails when precision drops beyond the CI band, or when recall drops without a matching rise in `unresolved_calls` (the M1.12 trade-off).
 
