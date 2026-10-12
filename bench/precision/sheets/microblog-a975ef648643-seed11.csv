@@ -1,0 +1,79 @@
+language,origin,caller,caller_file,caller_line,callee_name,resolved_to,resolved_file,resolved_line,confidence,verdict,reason
+python,external_system,__init__.create_app,app/__init__.py,31,external::redis,external::redis,,0,0.9,correct,Redis.from_url(REDIS_URL) in create_app
+python,external_system,__init__.get_locale,app/__init__.py,17,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,routes.explore,app/main/routes.py,56,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,routes.index,app/main/routes.py,28,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,routes.login,app/auth/routes.py,15,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,routes.messages,app/main/routes.py,201,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,routes.notifications,app/main/routes.py,232,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,routes.search,app/main/routes.py,167,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,routes.translate_text,app/main/routes.py,158,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,routes.user,app/main/routes.py,73,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,translate.translate,app/translate.py,6,external::requests,external::requests,,0,0.9,correct,requests.post to Microsoft Translator API
+python,external_system,users.create_user,app/api/users.py,46,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,users.get_followers,app/api/users.py,27,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,users.get_following,app/api/users.py,37,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,users.get_users,app/api/users.py,18,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,external_system,users.update_user,app/api/users.py,66,external::request,external::request,,0,0.9,correct,uses flask request (args/get_json) in body
+python,import_scope,auth.verify_token,app/api/auth.py,24,models.User.check_token,models.User.check_token,app/models.py,274,0.95,correct,User.check_token(token); User imported from app.models
+python,import_scope,routes.reset_password,app/auth/routes.py,73,models.User.verify_reset_password_token,models.User.verify_reset_password_token,app/models.py,187,0.95,correct,User.verify_reset_password_token(token) static method
+python,short_name,auth.token_auth_error,app/api/auth.py,29,errors.error_response,errors.error_response,app/api/errors.py,6,0.8,correct,error_response imported from app.api.errors
+python,short_name,email.send_password_reset_email,app/auth/email.py,6,email.send_email,email.send_email,app/email.py,12,0.85,correct,from app.email import send_email
+python,short_name,email.send_password_reset_email,app/auth/email.py,6,models.User.get_reset_password_token,models.User.get_reset_password_token,app/models.py,181,0.8,correct,user.get_reset_password_token(); user is User
+python,short_name,errors.handle_exception,app/api/errors.py,18,errors.error_response,errors.error_response,app/api/errors.py,6,0.9,correct,same-module error_response(e.code)
+python,short_name,handlers.internal_error,app/errors/handlers.py,20,handlers.wants_json_response,handlers.wants_json_response,app/errors/handlers.py,7,0.9,correct,same-module wants_json_response() call
+python,short_name,models.SearchableMixin.after_commit,app/models.py,41,search.add_to_index,search.add_to_index,app/search.py,4,0.8,correct,add_to_index imported from app.search
+python,short_name,models.SearchableMixin.after_commit,app/models.py,41,search.remove_from_index,search.remove_from_index,app/search.py,13,0.8,correct,remove_from_index imported from app.search
+python,short_name,models.Task.get_progress,app/models.py,354,models.Task.get_rq_job,models.Task.get_rq_job,app/models.py,347,0.95,correct,self.get_rq_job() on Task
+python,short_name,models.User.from_dict,app/models.py,252,models.User.set_password,models.User.set_password,app/models.py,134,0.95,correct,self.set_password(...) on User
+python,short_name,models.User.to_dict,app/models.py,231,models.User.avatar,models.User.avatar,app/models.py,140,0.95,correct,self.avatar(128)
+python,short_name,models.User.to_dict,app/models.py,231,models.User.posts_count,models.User.posts_count,app/models.py,226,0.95,correct,self.posts_count()
+python,short_name,models.User.unfollow,app/models.py,148,models.User.is_following,models.User.is_following,app/models.py,152,0.95,correct,self.is_following(user)
+python,short_name,routes.register,app/auth/routes.py,40,forms.RegistrationForm,forms.RegistrationForm,app/auth/forms.py,17,0.8,correct,RegistrationForm imported from app.auth.forms
+python,short_name,routes.translate_text,app/main/routes.py,158,translate.translate,translate.translate,app/translate.py,6,0.6,correct,from app.translate import translate
+python,short_name,tasks._set_task_progress,app/tasks.py,15,models.User.add_notification,models.User.add_notification,app/models.py,202,0.8,correct,task.user (User) .add_notification(...)
+python,short_name,tasks.export_posts,app/tasks.py,28,email.send_email,email.send_email,app/email.py,12,0.8,correct,from app.email import send_email
+python,short_name,tests.UserModelCase.setUp,tests.py,16,__init__.create_app,__init__.create_app,app/__init__.py,31,0.8,correct,create_app imported from app
+python,short_name,tests.UserModelCase.test_avatar,tests.py,33,models.User,models.User,app/models.py,98,0.8,correct,"User(...) constructor, imported from app.models"
+python,short_name,tests.UserModelCase.test_follow,tests.py,39,models.User.following_count,models.User.following_count,app/models.py,161,0.8,correct,u1.following_count(); u1 is User
+python,short_name,tests.UserModelCase.test_follow,tests.py,39,routes.follow,routes.follow,app/main/routes.py,116,0.6,wrong,"u1.follow(u2) is User.follow, not route view"
+python,short_name,tests.UserModelCase.test_follow_posts,tests.py,66,models.User,models.User,app/models.py,98,0.8,correct,"User(...) constructor, imported from app.models"
+python,short_name,tests.UserModelCase.test_follow_posts,tests.py,66,routes.follow,routes.follow,app/main/routes.py,116,0.6,wrong,"u1.follow(u2) is User.follow, not route view"
+python,short_name,tests.UserModelCase.test_password_hashing,tests.py,27,models.User,models.User,app/models.py,98,0.8,correct,"User(...) constructor, imported from app.models"
+python,short_name,tests.UserModelCase.test_password_hashing,tests.py,27,models.User.check_password,models.User.check_password,app/models.py,137,0.8,correct,u.check_password(); u is User
+python,short_name,users.create_user,app/api/users.py,46,errors.bad_request,errors.bad_request,app/api/errors.py,13,0.8,correct,bad_request imported from app.api.errors
+python,short_name,users.create_user,app/api/users.py,46,models.User.to_dict,models.User.to_dict,app/models.py,231,0.8,correct,user = User(); user.to_dict()
+python,short_name,users.get_following,app/api/users.py,37,models.PaginatedAPIMixin.to_collection_dict,models.PaginatedAPIMixin.to_collection_dict,app/models.py,65,0.8,correct,User.to_collection_dict inherited from PaginatedAPIMixin
+python,short_name,users.get_user,app/api/users.py,12,models.User.to_dict,models.User.to_dict,app/models.py,231,0.8,correct,"db.get_or_404(User, id).to_dict()"
+python,short_name,users.get_users,app/api/users.py,18,models.PaginatedAPIMixin.to_collection_dict,models.PaginatedAPIMixin.to_collection_dict,app/models.py,65,0.8,correct,User.to_collection_dict inherited from PaginatedAPIMixin
+python,short_name,users.update_user,app/api/users.py,66,models.User.to_dict,models.User.to_dict,app/models.py,231,0.8,correct,"user = db.get_or_404(User,...); user.to_dict()"
+python,unresolved,__init__.create_app,app/__init__.py,31,Formatter,,,,0.5,correct,logging.Formatter (stdlib); not in repo
+python,unresolved,__init__.create_app,app/__init__.py,31,setFormatter,,,,0.5,correct,RotatingFileHandler.setFormatter (stdlib logging); not in repo
+python,unresolved,email.send_email,app/email.py,12,start,,,,0.5,correct,threading.Thread(...).start() (stdlib); not in repo
+python,unresolved,forms.EditProfileForm.validate_username,app/main/forms.py,21,scalar,,,,0.5,correct,db.session.scalar (SQLAlchemy); not in repo
+python,unresolved,forms.EditProfileForm.validate_username,app/main/forms.py,21,select,,,,0.5,correct,sa.select (SQLAlchemy); not in repo
+python,unresolved,forms.SearchForm.__init__,app/main/forms.py,42,super,,,,0.5,correct,builtin super() -> FlaskForm.__init__; not in repo
+python,unresolved,models.User.followers_count,app/models.py,156,scalar,,,,0.5,correct,db.session.scalar (SQLAlchemy); not in repo
+python,unresolved,models.User.following_posts,app/models.py,166,where,,,,0.5,correct,SQLAlchemy Select.where; not in repo
+python,unresolved,models.User.get_reset_password_token,app/models.py,181,encode,,,,0.5,correct,jwt.encode (PyJWT); not in repo
+python,unresolved,models.User.get_token,app/models.py,259,timedelta,,,,0.5,correct,datetime.timedelta (stdlib); not in repo
+python,unresolved,models.User.posts_count,app/models.py,226,subquery,,,,0.5,correct,SQLAlchemy select().subquery(); not in repo
+python,unresolved,models.User.to_dict,app/models.py,231,replace,,,,0.5,correct,datetime.replace (stdlib); not in repo
+python,unresolved,models.User.unread_message_count,app/models.py,195,count,,,,0.5,correct,sa.func.count (SQLAlchemy); not in repo
+python,unresolved,routes.before_request,app/main/routes.py,17,commit,,,,0.5,correct,db.session.commit (SQLAlchemy); not in repo
+python,unresolved,routes.edit_profile,app/main/routes.py,99,redirect,,,,0.5,correct,flask.redirect; not in repo
+python,unresolved,routes.login,app/auth/routes.py,15,flash,,,,0.5,correct,flask.flash; not in repo
+python,unresolved,routes.login,app/auth/routes.py,15,redirect,,,,0.5,correct,flask.redirect; not in repo
+python,unresolved,routes.messages,app/main/routes.py,201,render_template,,,,0.5,correct,flask.render_template; not in repo
+python,unresolved,routes.register,app/auth/routes.py,40,_,,,,0.5,correct,flask_babel _ gettext; not in repo
+python,unresolved,routes.register,app/auth/routes.py,40,flash,,,,0.5,correct,flask.flash; not in repo
+python,unresolved,routes.reset_password_request,app/auth/routes.py,56,url_for,,,,0.5,correct,flask.url_for; not in repo
+python,unresolved,routes.search,app/main/routes.py,167,url_for,,,,0.5,correct,flask.url_for; not in repo
+python,unresolved,routes.send_message,app/main/routes.py,183,add,,,,0.5,correct,db.session.add (SQLAlchemy); not in repo
+python,unresolved,routes.unfollow,app/main/routes.py,137,url_for,,,,0.5,correct,flask.url_for; not in repo
+python,unresolved,routes.user,app/main/routes.py,73,order_by,,,,0.5,correct,SQLAlchemy select().order_by; not in repo
+python,unresolved,tasks._set_task_progress,app/tasks.py,15,get,,,,0.5,correct,db.session.get (SQLAlchemy); not in repo
+python,unresolved,tests.UserModelCase.tearDown,tests.py,22,remove,,,,0.5,correct,db.session.remove (SQLAlchemy); not in repo
+python,unresolved,tests.UserModelCase.test_follow,tests.py,39,scalars,,,,0.5,correct,db.session.scalars (SQLAlchemy); not in repo
+python,unresolved,tests.UserModelCase.test_follow_posts,tests.py,66,assertEqual,,,,0.5,correct,unittest.TestCase.assertEqual (stdlib); not in repo
+python,unresolved,users.get_followers,app/api/users.py,27,get_or_404,,,,0.5,correct,flask_sqlalchemy db.get_or_404; not in repo

@@ -1,0 +1,36 @@
+{
+  "cost_usd": 0,
+  "dead_code": {
+    "unreachable": 0,
+    "unused_exports": 0
+  },
+  "decisions": 3,
+  "file_pages": {
+    "files": 47,
+    "generated": 42,
+    "omitted": 5
+  },
+  "git_coverage_files": [
+    47,
+    47
+  ],
+  "graph_edges": 1171,
+  "graph_nodes": 551,
+  "hotspots": 0,
+  "mode": "keyless (init --no-prose -y)",
+  "note": "black box: CLI/export outputs only (ADR-0006); graph edges are not in the export, so edge precision is not sampled",
+  "ok": true,
+  "pages_by_type": {
+    "file_page": 42,
+    "infra_page": 1,
+    "module_page": 3,
+    "onboarding": 3,
+    "repo_overview": 1,
+    "symbol_spotlight": 21
+  },
+  "pages_total": 71,
+  "repo": "spring-petclinic",
+  "tool": "repowise",
+  "version": "0.53.0",
+  "wall_seconds": 7.39
+}

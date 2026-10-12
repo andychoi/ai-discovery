@@ -21,31 +21,41 @@ def discover_cmd() -> list[str]:
     return [str(exe)] if exe.exists() else [sys.executable, "-c", "from ai_discovery.cli import main; main()"]
 
 
-def scan_command(source: Path, state_dir: Path) -> list[str]:
+def scan_command(source: Path, state_dir: Path, *, prose: bool = False,
+                 budget: Optional[float] = None) -> list[str]:
     # --state-dir keeps every write out of the scanned checkout (sample apps stay untouched)
-    return [*discover_cmd(), "-q", "--json", "-C", str(source), "--state-dir", str(state_dir),
-            "scan", "--full", "--no-prose"]
+    cmd = [*discover_cmd(), "-q", "--json", "-C", str(source), "--state-dir", str(state_dir),
+           "scan", "--full", "--prose" if prose else "--no-prose"]
+    if prose:
+        cmd += ["--yes"] + (["--budget", str(budget)] if budget is not None else [])
+    return cmd
 
 
-def run(repo: Repo, source: Source, *, keep_state: Optional[Path] = None) -> dict:
+def run(repo: Repo, source: Source, *, keep_state: Optional[Path] = None, prose: bool = False,
+        budget: Optional[float] = None) -> dict:
     assert source.path is not None
     state = keep_state or Path(tempfile.mkdtemp(prefix=f"bench-{repo.id}-"))
     try:
         started = time.monotonic()
-        proc = subprocess.run(scan_command(source.path, state), capture_output=True, text=True)
+        proc = subprocess.run(scan_command(source.path, state, prose=prose, budget=budget),
+                              capture_output=True, text=True)
         wall = round(time.monotonic() - started, 2)
         try:
             scan = json.loads(proc.stdout.strip().splitlines()[-1])
         except (IndexError, json.JSONDecodeError):
             scan = {"ok": False, "error": {"message": (proc.stderr or proc.stdout)[-2000:]}}
         result = {"repo": repo.id, "sha": repo.sha, "stack": repo.stack, "tool": "ai-discovery",
-                  "source": source.how, "wall_seconds": wall, "ok": bool(scan.get("ok"))}
+                  "mode": "prose" if prose else "keyless", "source": source.how, "wall_seconds": wall,
+                  "ok": bool(scan.get("ok"))}
         if not scan.get("ok"):
             result["error"] = scan.get("error")
             return result
         db = Path(scan["db"])
         result["cost_usd"] = scan.get("spend", {}).get("usd", 0)
         result["screens"] = scan.get("counts", {}).get("screens")
+        result["scan_status"] = scan.get("status")
+        result["docs"] = scan.get("counts", {}).get("docs")
+        result["pages_hook"] = next((h.get("detail") for h in scan.get("hooks", []) if h.get("name") == "pages"), None)
         result.update(metrics.collect(db, scan["scan_id"], source.path))
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
         try:

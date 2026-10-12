@@ -19,6 +19,15 @@ ground_truth_sha = "753d35c2f84432d88c0f3b61c9302a16069b78dd"
 status = "active"
 
 [[repo]]
+id = "spring-petclinic-local"
+url = "https://github.com/spring-projects/spring-petclinic.git"
+sha = "500158f732419217507c7656904b8e6aa1bcc0d6"   # owner checkout (M0.12 requires this SHA)
+stack = "java-spring"
+license = "Apache-2.0"
+local = "../sample-apps/spring-petclinic"
+status = "active"                                  # no ground truth at this SHA (labels are @753d35c)
+
+[[repo]]
 id = "eshop"
 url = "https://github.com/dotnet/eShop.git"
 sha = "dc7ea499cd356924fb6689b3702964a5869dbae9"

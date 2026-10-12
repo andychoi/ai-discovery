@@ -1,0 +1,243 @@
+[
+  {
+    "sheet": "eshop-dc7ea499cd35-seed11.csv",
+    "strata": [
+      {
+        "language": "csharp",
+        "origin": "external_system",
+        "graded": 26,
+        "correct": 15,
+        "precision": 0.577,
+        "ci95": [
+          0.389,
+          0.745
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "csharp",
+        "origin": "interface_impl",
+        "graded": 30,
+        "correct": 26,
+        "precision": 0.867,
+        "ci95": [
+          0.703,
+          0.947
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "csharp",
+        "origin": "receiver_type",
+        "graded": 14,
+        "correct": 14,
+        "precision": 1.0,
+        "ci95": [
+          0.785,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "csharp",
+        "origin": "short_name",
+        "graded": 30,
+        "correct": 17,
+        "precision": 0.567,
+        "ci95": [
+          0.392,
+          0.726
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "csharp",
+        "origin": "short_name_community",
+        "graded": 1,
+        "correct": 0,
+        "precision": 0.0,
+        "ci95": [
+          0.0,
+          0.793
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "csharp",
+        "origin": "unresolved",
+        "graded": 30,
+        "correct": 25,
+        "precision": 0.833,
+        "ci95": [
+          0.664,
+          0.927
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "javascript",
+        "origin": "short_name",
+        "graded": 1,
+        "correct": 1,
+        "precision": 1.0,
+        "ci95": [
+          0.207,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "javascript",
+        "origin": "unresolved",
+        "graded": 28,
+        "correct": 28,
+        "precision": 1.0,
+        "ci95": [
+          0.879,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      }
+    ]
+  },
+  {
+    "sheet": "microblog-a975ef648643-seed11.csv",
+    "strata": [
+      {
+        "language": "python",
+        "origin": "external_system",
+        "graded": 16,
+        "correct": 16,
+        "precision": 1.0,
+        "ci95": [
+          0.806,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "python",
+        "origin": "import_scope",
+        "graded": 2,
+        "correct": 2,
+        "precision": 1.0,
+        "ci95": [
+          0.342,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "python",
+        "origin": "short_name",
+        "graded": 30,
+        "correct": 28,
+        "precision": 0.933,
+        "ci95": [
+          0.787,
+          0.982
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "python",
+        "origin": "unresolved",
+        "graded": 30,
+        "correct": 30,
+        "precision": 1.0,
+        "ci95": [
+          0.886,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      }
+    ]
+  },
+  {
+    "sheet": "node-express-realworld-30b68e1e8814-seed11.csv",
+    "strata": [
+      {
+        "language": "javascript",
+        "origin": "short_name",
+        "graded": 30,
+        "correct": 30,
+        "precision": 1.0,
+        "ci95": [
+          0.886,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "javascript",
+        "origin": "unresolved",
+        "graded": 30,
+        "correct": 30,
+        "precision": 1.0,
+        "ci95": [
+          0.886,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      }
+    ]
+  },
+  {
+    "sheet": "spring-petclinic-753d35c2f844-seed11.csv",
+    "strata": [
+      {
+        "language": "java",
+        "origin": "receiver_type",
+        "graded": 16,
+        "correct": 16,
+        "precision": 1.0,
+        "ci95": [
+          0.806,
+          1.0
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "java",
+        "origin": "short_name",
+        "graded": 30,
+        "correct": 21,
+        "precision": 0.7,
+        "ci95": [
+          0.521,
+          0.833
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      },
+      {
+        "language": "java",
+        "origin": "unresolved",
+        "graded": 30,
+        "correct": 29,
+        "precision": 0.967,
+        "ci95": [
+          0.833,
+          0.994
+        ],
+        "unknown": 0,
+        "ungraded": 0
+      }
+    ]
+  }
+]

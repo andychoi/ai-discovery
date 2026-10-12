@@ -151,7 +151,7 @@
 - **Out of scope:** CI gating (M6.13).
 
 ### M0.12 Baseline: ai-discovery vs repowise
-- **Status:** In progress (rm/M0.12-baseline, 2026-10-11)
+- **Status:** Done (f833097)
 - **Size:** M
 - **Lane:** Q
 - **Depends on:** M0.11
@@ -161,3 +161,16 @@
   - Report `docs/roadmap/benchmarks/YYYY-MM-DD-baseline.md` with the protocol's metrics + precision sample results for ai-discovery; UX observations (commands to first useful output, time-to-wiki).
 - **Verify:** report exists and links raw JSON under `docs/roadmap/benchmarks/raw/`
 - **Out of scope:** reading repowise source (ADR-0006).
+
+### M0.13 Test-file detection uses repo-relative paths
+- **Status:** Planned
+- **Size:** S
+- **Lane:** B
+- **Depends on:** —
+- **Owns:** `src/ai_discovery/ai/summarizer.py`, `src/ai_discovery/pipeline.py` (`_count_tier1_targets` call site only)
+- **Acceptance:**
+  - `_is_test_chunk` classifies by the path relative to the scanned repo root, so a checkout under any `test`/`tests` directory still gets Tier-1 summaries (audit #90).
+  - Regression test: the same fixture under `<tmp>/tests/app` and `<tmp>/app` yields the same Tier-1 target count; a real `tests/` dir inside the repo is still skipped.
+  - When Tier 1 has chunks but 0 targets, the scan records a degradation instead of completing silently.
+- **Verify:** `pytest -q tests -k "summar or tier1"`
+- **Out of scope:** making `code_nodes.file_path` repo-relative everywhere (M1.6+).

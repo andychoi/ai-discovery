@@ -1,0 +1,31 @@
+{
+  "repo": "microblog",
+  "sha": "a975ef64864354867c88e0ed3a17ba7d17dca752",
+  "tool": "ai-discovery",
+  "mode": "prose",
+  "provider": "aigw (local gateway at localhost:11433; models per discovery.yaml)",
+  "budget_usd": 2.0,
+  "ok": false,
+  "outcome": "stopped by owner decision after 10h07m, while in phase 17 (self_review); no scan JSON was emitted",
+  "phase_seconds": {
+    "9 chunk": 0.0,
+    "10 rag_embed": 5.2,
+    "11 tier1_summarize": 465.4,
+    "12 tier2_flow_analysis": 5064.1,
+    "13 scenario_flow_inference": 30760.6,
+    "14 tier3_doc_rollup": 92.5,
+    "15 visual_artifacts": 56.6
+  },
+  "phase_17_self_review": "running when stopped (started 15:01:40 UTC)",
+  "tier1": {
+    "chunks": 139,
+    "summaries_stored": 41,
+    "note": "98 not stored = failed or truncated (M0.7: failures are no longer persisted)"
+  },
+  "scenario_flows": 26,
+  "generated_docs": 6,
+  "cost_usd": null,
+  "cost_note": "llm_costs is persisted only at scan end, so spend for the stopped run is unknown",
+  "first_attempt": "an earlier attempt from tests/corpus/external/.cache/microblog summarized 0 chunks (audit #90) and was discarded",
+  "node_express_realworld": "not run (owner decision after the microblog run)"
+}

@@ -1,0 +1,62 @@
+{
+  "cost_usd": 0,
+  "date": "2026-10-11",
+  "docs": 0,
+  "edges_by_resolved_by": {
+    "external_system": 16,
+    "import_scope": 2,
+    "short_name": 89,
+    "unresolved": 381
+  },
+  "edges_total": 488,
+  "files": {
+    "indexed": 20,
+    "skipped": {
+      "no_symbols": 4,
+      "skip_dir": 13,
+      "unsupported_extension": 36
+    },
+    "top_unsupported_extensions": {
+      "(none)": 8,
+      ".cfg": 1,
+      ".conf": 2,
+      ".gif": 1,
+      ".html": 18,
+      ".md": 1,
+      ".po": 1,
+      ".sh": 1,
+      ".txt": 3
+    }
+  },
+  "ground_truth": {
+    "call_edge_recall": 0.667,
+    "labelled": 3,
+    "missing": [
+      "translate_text -> translate.translate (>= 0.7) not resolved"
+    ],
+    "status": "ok"
+  },
+  "mode": "keyless",
+  "nodes_by_kind": {
+    "class": 19,
+    "endpoint": 26,
+    "external_system": 3,
+    "function": 28,
+    "method": 44
+  },
+  "ok": true,
+  "pages_hook": "105 pages, 105 indexed",
+  "repo": "microblog",
+  "scan_status": "completed",
+  "screens": 0,
+  "sha": "a975ef64864354867c88e0ed3a17ba7d17dca752",
+  "source": "cache",
+  "stack": "python-flask",
+  "tool": "ai-discovery",
+  "unresolved": {
+    "edges_without_target": 381,
+    "unresolved_calls_rows": 0
+  },
+  "void": false,
+  "wall_seconds": 0.44
+}

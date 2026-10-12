@@ -47,9 +47,10 @@ def test_repos_are_pinned_and_well_formed() -> None:
 def test_ground_truth_pins_match_the_corpus_manifest() -> None:
     manifest = json.loads((ROOT / "tests/corpus/external/manifest.json").read_text())
     pins = {m["url"]: m["sha"] for m in manifest["repos"]}
-    for r in load_repos().values():
-        if r.url in pins:
-            assert r.sha == pins[r.url] == r.ground_truth_sha, r.id
+    labelled = [r for r in load_repos().values() if r.ground_truth]
+    assert labelled
+    for r in labelled:
+        assert r.sha == pins[r.url] == r.ground_truth_sha, r.id
 
 
 def test_bad_pins_are_rejected(tmp_path: Path) -> None:

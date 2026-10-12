@@ -266,3 +266,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** none (no baseline committed — that is M0.12).
 - **Follow-ups:** M0.12 grades the precision sheets and adds `run_repowise.py`; eShop shows 193 parsable files with no symbols (worth a look in M6.2: Razor/JS assets vs C# gaps); `--gate` belongs to M6.13; a call-site line on `call_edges` would make grading faster (M1.12).
 
+## 2026-10-12 — M0.12 — baseline: ai-discovery vs repowise
+- **Branch/commit:** rm/M0.12-baseline @ f833097
+- **Changes:** `docs/roadmap/benchmarks/2026-10-11-baseline.md` + `raw/` (11 JSON files); graded `bench/precision/sheets/*-seed11.csv` (4 repos, 374 edges); `bench/` gains `--prose/--budget/--out/--source` and a `spring-petclinic-local` pin @ `500158f` (lane Q, same lane as M0.11); `tests/corpus/test_bench.py` pin test scoped to labelled repos; audit #90–#95; new item **M0.13** (test-path bug).
+- **Decisions:** owner chose keyless runs for both tools plus ai-discovery `--prose` on the two small repos ($2 cap), and Claude-graded precision (labelled as such in the report). repowise ran from scratch clones (`--no-editor-setup` after the first run; telemetry was already disabled via env) and only its CLI/export outputs were read (ADR-0006); its edge precision is not measurable from outputs (export has pages only). The microblog prose run was stopped after 10 h 07 m in phase 17 by owner decision; node-express prose not run.
+- **Verify:** report exists and links `raw/` JSON; `python -m bench score bench/precision/sheets/*.csv` reproduces `raw/precision-seed11.json`; sample apps untouched (clean `git status`, no `.discovery/`); full `pytest -q` → 1501 passed, 2 skipped; `roadmap_lint` ok.
+- **Bench/golden changes:** first baseline recorded (this file is the reference M1.12 must beat).
+- **Follow-ups:** M0.13 (audit #90, silent zero Tier-1 under `tests/` paths) — high priority, it makes prose output empty with no warning; audit #95 (prose runtime/opacity) → M1.8/M1.11/M2.4; #91–#93 → M1.12/M6.2; #94 (0 screens on all five repos) → M6.6/M6.11; repowise edge precision via MCP sampling in M1.12's comparison.
+

@@ -3,7 +3,7 @@
   list                                   pinned repos and where their source is
   verify-repos [--repo ID]               check each pinned SHA is fetchable (network)
   fetch --repo ID                        shallow-fetch the pinned commit into the cache
-  run --repo ID [--dry-run] [--fetch] [--save]
+  run --repo ID [--dry-run] [--fetch] [--save] [--prose --budget USD] [--out FILE]
                                          keyless scan → metrics JSON (stdout; --save → bench/results/)
   sample --repo ID --seed N [--per-stratum 30] [--fetch]
                                          seeded stratified edge sample → CSV for hand grading
@@ -81,10 +81,22 @@ def cmd_run(args) -> int:
                 "ground_truth": repo.ground_truth, "would_fetch": src.path is None}
         print(json.dumps(plan, indent=2))
         return 0
-    result = run(repo, _source(repo, args.fetch))
+    if args.source:
+        from .repos import Source, _head
+
+        path = Path(args.source).resolve()
+        if _head(path) != repo.sha:
+            sys.exit(f"--source {path} is not at the pinned {repo.sha[:12]}")
+        src = Source(path, "override")
+    else:
+        src = _source(repo, args.fetch)
+    result = run(repo, src, prose=args.prose, budget=args.budget)
     result["date"] = dt.date.today().isoformat()
     text = json.dumps(result, indent=2, sort_keys=True)
     print(text)
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(text + "\n", encoding="utf-8")
     if args.save:
         RESULTS.mkdir(exist_ok=True)
         out = RESULTS / f"{result['date']}-{repo.id}.json"
@@ -138,6 +150,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dry-run", action="store_true", help="print the plan; scan nothing")
     p.add_argument("--fetch", action="store_true", help="fetch the pinned commit if no local copy matches")
     p.add_argument("--save", action="store_true", help="also write bench/results/<date>-<repo>.json")
+    p.add_argument("--out", help="also write the JSON to this file")
+    p.add_argument("--prose", action="store_true", help="LLM run (spends money; needs a configured provider)")
+    p.add_argument("--budget", type=float, help="USD cap for --prose runs")
+    p.add_argument("--source", help="scan this checkout instead (must be at the pinned SHA)")
     p.set_defaults(fn=cmd_run)
     p = sub.add_parser("sample")
     p.add_argument("--repo", required=True)
