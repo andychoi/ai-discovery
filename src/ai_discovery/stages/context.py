@@ -38,6 +38,15 @@ class RunContext:
     sql_fsms: list = field(default_factory=list)                   # sql
     relationships: list = field(default_factory=list)              # sql
     fsms: list = field(default_factory=list)                       # entities
+    chunks: list = field(default_factory=list)                     # embed
+    rag_chunks: list = field(default_factory=list)                 # embed
+    summaries_dict: dict = field(default_factory=dict)             # summaries
+    flows_by_domain: dict = field(default_factory=dict)            # flows
+    scenario_flows: list = field(default_factory=list)             # flows
+    rollups: list = field(default_factory=list)                    # rollup
+    scenario_artifacts: dict = field(default_factory=dict)         # visuals
+    mining_results: dict = field(default_factory=dict)             # visuals
+    final_status: Optional[str] = None                             # finalise
 
     pipeline_start: float = field(default_factory=time.perf_counter)
 

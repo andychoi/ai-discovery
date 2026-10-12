@@ -35,23 +35,37 @@ def _run_pipeline_funcdef() -> ast.FunctionDef:
 
 
 def test_llm_client_bound_before_first_use():
-    """llm_client's first assignment must precede its first use in run_pipeline."""
+    """The LLM client must be on the RunContext before the first stage that uses it.
+
+    M1.7 (ADR-0003): phases are stage modules reading ``ctx.llm_client``; the
+    screens stage (phase 2) is the first consumer. Assert ``ctx.llm_client = ...``
+    precedes the first ``<stage>.execute(ctx)`` call after ``resolve``.
+    """
     func = _run_pipeline_funcdef()
 
     first_store = None
-    first_load = None
+    executes = []
     for node in ast.walk(func):
-        if isinstance(node, ast.Name) and node.id == "llm_client":
-            if isinstance(node.ctx, ast.Store):
-                first_store = node.lineno if first_store is None else min(first_store, node.lineno)
-            elif isinstance(node.ctx, ast.Load):
-                first_load = node.lineno if first_load is None else min(first_load, node.lineno)
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Attribute) and t.attr == "llm_client" \
+                        and isinstance(t.value, ast.Name) and t.value.id == "ctx":
+                    first_store = node.lineno if first_store is None else min(first_store, node.lineno)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "execute" and isinstance(node.func.value, ast.Name):
+            executes.append((node.lineno, node.func.value.id))
 
-    assert first_store is not None, "llm_client is never assigned in run_pipeline"
-    assert first_load is not None, "llm_client is never used in run_pipeline"
-    assert first_store <= first_load, (
-        f"CRIT-1 regression: llm_client is used at line {first_load} but not "
-        f"constructed until line {first_store}. Phase 2 (screen specs) will raise "
-        f"UnboundLocalError on any repo with a detectable menu. Construct "
-        f"llm_client before Phase 2."
+    assert first_store is not None, "ctx.llm_client is never assigned in _run_pipeline_unlocked"
+    screens_call = min((ln for ln, name in executes if name == "screens"), default=None)
+    assert screens_call is not None, "screens stage is never executed"
+    assert first_store < screens_call, (
+        f"CRIT-1 regression: ctx.llm_client is assigned at line {first_store}, after the "
+        f"screens stage runs at line {screens_call}; screen specs would see no LLM client."
     )
+
+
+def test_screens_stage_reads_llm_client_from_context():
+    from ai_discovery.stages import screens
+
+    source = Path(screens.__file__).read_text()
+    assert "llm_client = ctx.llm_client" in source
