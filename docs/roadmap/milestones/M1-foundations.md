@@ -73,7 +73,7 @@
 - **Out of scope:** behaviour changes, fingerprints.
 
 ### M1.7 Stages — back half (verbatim move)
-- **Status:** Planned
+- **Status:** In progress (rm/M1.7-stages-back, 2026-10-12)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M1.6
