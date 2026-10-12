@@ -61,7 +61,7 @@
 - **Out of scope:** writing pages (M3.5).
 
 ### M1.6 Stages — front half (verbatim move)
-- **Status:** Planned
+- **Status:** In progress (rm/M1.6-stages-front, 2026-10-12)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M0.2, M0.6, M1.2
