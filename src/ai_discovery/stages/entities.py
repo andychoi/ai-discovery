@@ -1,0 +1,156 @@
+"""Stage ``entities``: 8b backbone — per-entity FSMs, consolidation, denormalization,
+entity kinds, cross-entity links, guards, conditions, backbone Mermaid, DMN and EARS.
+Moved verbatim from the unnumbered block after phase 8 (M1.6). No checkpoint (as before)."""
+
+from __future__ import annotations
+
+from .context import RunContext
+
+
+def run(ctx: RunContext) -> None:
+    from ..graph.entity_classifier import classify_entities
+    from ..graph.entity_correlator import (
+        detect_denormalization_links,
+        mine_cross_entity_transitions,
+        mine_entity_conditions,
+    )
+    from ..graph.fsm_export import (
+        write_cross_entity_links_json,
+        write_entity_conditions_json,
+        write_entity_state_machines_json,
+    )
+    from ..graph.fsm_identity import consolidate_entities
+    from ..graph.fsm_persistence import persist_entity_state_machines
+    from ..graph.fsm_rollup import build_entity_state_machines
+    from ..graph.guard_parser import parse_cross_entity_guards
+    from ..pipeline import _timed, console
+
+    all_nodes, scenarios, scan_id = ctx.all_nodes, ctx.scenarios, ctx.scan_id
+    db_path, output_dir = ctx.db_path, ctx.output_dir
+    nodes_for_consolidation = all_nodes + ctx.sql_nodes
+
+    # 8b (inline, Phase 2a–2d): roll transitions up into per-entity FSMs,
+    # consolidate name-variants (Order/OrderEntity/order_reducer → one FSM),
+    # persist to SQLite, export JSON. This is the canonical backbone artifact
+    # — every downstream BPMN/DMN/EARS view is supposed to consume the FSM,
+    # not re-scan scenarios.
+    node_file_index = {n.qualified_name: n.file_path for n in all_nodes}
+    with _timed("fsm rollup"), console.status("[bold cyan]Aggregating state transitions into entity FSMs..."):
+        raw_fsms = build_entity_state_machines(ctx.all_transitions, node_file_index=node_file_index)
+    raw_fsms = raw_fsms + ctx.sql_fsms
+    with _timed("fsm consolidate"), console.status("[bold cyan]Consolidating entity name-variants..."):
+        fsms, projection_links = consolidate_entities(raw_fsms, nodes_for_consolidation)
+    ctx.fsms = fsms
+    # Phase 3a: detect denormalized field copies across entities so the
+    # classifier's junction rule can see through them.
+    with _timed("denorm detect"), console.status("[bold cyan]Detecting denormalized fields..."):
+        detect_denormalization_links(fsms)
+    denorm_count = sum(1 for f in fsms if f.metadata.get("denormalized_fields"))
+    if denorm_count:
+        console.print(f"  Denormalized fields: [green]{denorm_count}[/] entities annotated")
+    # Phase 2e-2: annotate each FSM with entity_kind so downstream generators
+    # can branch on role (transactional vs. master vs. key vs. summary / …).
+    with _timed("fsm classify"), console.status("[bold cyan]Classifying entity kinds..."):
+        classify_entities(fsms)
+    if fsms:
+        fsm_json_path = output_dir / "entity_state_machines.json"
+        write_entity_state_machines_json(fsms, fsm_json_path)
+        if scan_id is not None:
+            persist_entity_state_machines(db_path, scan_id, fsms)
+        total_transitions = sum(len(f.transitions) for f in fsms)
+        merged_count = len(raw_fsms) - len(fsms)
+        merge_suffix = f", [yellow]{merged_count}[/] merged" if merged_count else ""
+        proj_suffix = f", [dim]{len(projection_links)}[/] projection links" if projection_links else ""
+        console.print(
+            f"  Entity FSMs: [green]{len(fsms)}[/] entities"
+            f"{merge_suffix}{proj_suffix}, "
+            f"[green]{total_transitions}[/] deduped transitions → {fsm_json_path.name}"
+        )
+        kind_counts: dict[str, int] = {}
+        for f in fsms:
+            k = f.metadata.get("entity_kind", "unknown")
+            kind_counts[k] = kind_counts.get(k, 0) + 1
+        if kind_counts:
+            parts = ", ".join(f"[green]{n}[/] {k}" for k, n in sorted(kind_counts.items()))
+            console.print(f"  Entity kinds: {parts}")
+        # Phase 3b: cross-entity transition sequence mining. Drives BPMN
+        # cross-lane sequence flows and impact analysis.
+        with _timed("cross-entity mining"), console.status("[bold cyan]Mining cross-entity transition sequences..."):
+            # min_support=2 (MED): a single co-occurrence is coincidence, not a
+            # causal trigger; require the A→B sequence in at least 2 scenarios.
+            cross_links = mine_cross_entity_transitions(fsms, scenarios, min_support=2)
+        if cross_links:
+            cross_json_path = output_dir / "cross_entity_transitions.json"
+            write_cross_entity_links_json(cross_links, cross_json_path)
+            console.print(
+                f"  Cross-entity links: [green]{len(cross_links)}[/] sequences → {cross_json_path.name}"
+            )
+        # Phase 3c: parse guard expressions for cross-entity state refs.
+        # Annotates transition metadata in place; downstream DMN/BPMN
+        # generators can render these as multi-entity rule inputs.
+        with _timed("guard parse"), console.status("[bold cyan]Parsing cross-entity guards..."):
+            guarded = parse_cross_entity_guards(fsms)
+        if guarded:
+            console.print(f"  Cross-entity guards: [green]{guarded}[/] transitions annotated")
+        # Phase 3d: mine entity-condition correlations. When a transition on
+        # entity Y consistently fires while entity X is in a specific state,
+        # that's a DMN rule input ("WHEN Order=submitted, Invoice → pending").
+        # Unlike guards (syntactic, from source text), correlations are
+        # statistical (from scenario walks) — complementary signals.
+        with _timed("condition mining"), console.status("[bold cyan]Mining entity condition correlations..."):
+            conditions = mine_entity_conditions(fsms, scenarios)
+        if conditions:
+            conditions_path = output_dir / "entity_conditions.json"
+            write_entity_conditions_json(conditions, conditions_path)
+            console.print(
+                f"  Entity conditions: [green]{len(conditions)}[/] correlations → {conditions_path.name}"
+            )
+        # Phase 4: L1/L2 entity-backbone Mermaid view. First consumer of
+        # entity_kind + cross_entity_transitions as a unified artifact.
+        # Track 2: route into BPMN/ folder alongside ASIS/ASD/ASSC/PF so it
+        # ships as a first-class DocHub artifact, not a flat scan-root file.
+        from ..generators.bpmn_generator import BPMNGenerator
+        from ..generators.doc_generator import _doc_type_prefix
+        bpmn_dir = output_dir / _doc_type_prefix("entity-backbone")
+        bpmn_dir.mkdir(parents=True, exist_ok=True)
+        backbone_path = bpmn_dir / "entity-backbone.md"
+        backbone_path.write_text(
+            "# Entity Backbone (Mermaid)\n\n```mermaid\n"
+            + BPMNGenerator().generate_entity_backbone_mermaid(fsms, cross_links)
+            + "\n```\n"
+        )
+        # Keep a copy at the legacy path for tools that still read it directly
+        # (e.g. external scripts) — same content, two locations during transition.
+        (output_dir / "entity_backbone.mmd").write_text(
+            BPMNGenerator().generate_entity_backbone_mermaid(fsms, cross_links)
+        )
+        console.print(f"  Entity backbone: → {backbone_path.relative_to(output_dir)}")
+
+        # Phase 3 deliverable: DMN decision tables on guarded/conditioned
+        # transitions. Consumes guards (3c) + conditions (3d) as merged
+        # rule inputs; Markdown for PR review (DMN XML export can layer on).
+        from ..generators.dmn_generator import generate_entity_decisions_markdown
+        decisions_md = generate_entity_decisions_markdown(fsms, conditions)
+        if "No guarded or conditioned transitions" not in decisions_md:
+            dmn_dir = output_dir / _doc_type_prefix("entity-decisions")
+            dmn_dir.mkdir(parents=True, exist_ok=True)
+            decisions_path = dmn_dir / "entity-decisions.md"
+            decisions_path.write_text(decisions_md)
+            (output_dir / "entity_decisions.md").write_text(decisions_md)  # legacy mirror
+            console.print(f"  Entity decisions: → {decisions_path.relative_to(output_dir)}")
+
+        # Phase 3 deliverable: EARS requirement skeletons. Unlike DMN, emits
+        # for every transition with a to_state — each state change is a
+        # behavioral fact worth documenting, not only the guarded ones.
+        from ..generators.ears_generator import generate_entity_ears_markdown
+        ears_md = generate_entity_ears_markdown(fsms, conditions)
+        if "No transitions found" not in ears_md:
+            ears_dir = output_dir / _doc_type_prefix("entity-ears")
+            ears_dir.mkdir(parents=True, exist_ok=True)
+            ears_path = ears_dir / "entity-ears.md"
+            ears_path.write_text(ears_md)
+            (output_dir / "entity_ears.md").write_text(ears_md)  # legacy mirror
+            console.print(f"  Entity EARS: → {ears_path.relative_to(output_dir)}")
+
+
+execute = run

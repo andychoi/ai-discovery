@@ -282,3 +282,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** none.
 - **Follow-ups:** re-run the microblog prose benchmark only after M1.8/M1.11 address the >10 h runtime (audit #95).
 
+## 2026-10-12 — M1.6 — stages, front half (verbatim move)
+- **Branch/commit:** rm/M1.6-stages-front @ b5fa586
+- **Changes:** `stages/` (new): `context.py` (`RunContext`), `resolve.py` (steps 1–4: DB init, repo resolve, resume/rescan checks, scan-run record), `walk.py` (phase 5), `parse.py` (phase 6 + OpenAPI/GraphQL/proto), `domains.py` + `graph.py` (phase 7: classify + persist nodes, then call graph / external systems / edges / `interfaces.json`), `slices.py` (phase 8 + 8a entry-point links), `sql.py` (2e-1 SQL entities + FK relationships), `entities.py` (8b FSMs → DMN/EARS); `pipeline.py` calls them (2298 → 1638 lines); audit #96.
+- **Decisions:** code moved verbatim; only locals became `ctx.` fields (with local aliases inside stages to keep the diff readable). Each old `else:` resume branch is the stage's `rehydrate()`; `execute()` picks run/rehydrate from the existing phase gate. Phase 7 stays one checkpoint: `graph.execute` runs `domains.run` then `graph.run`, preserving order (the ADR lists `graph` before `domains`; order changes wait for M1.8). Early returns became `ctx.halt(result)`. Stage helpers (`_timed`, `_with_checkpoint`, `console`, loaders) are still imported lazily from `pipeline` — they move with M1.7/M1.8. Phase 2 (screens) and phases 9–19 are M1.7.
+- **Verify:** `pytest -q tests/golden` → 2 passed (snapshot unchanged); full `pytest -q` → 1508 passed, 2 skipped; keyless `python -m bench run` on spring-petclinic, eShop, microblog → files, nodes, edges by origin, unresolved, screens, GT recall and pages identical to the M0.12 raw JSON; resume with `resume_from="9"` exercises every rehydrate path (same output as `main`, including the pre-existing 0-edge rebuild, audit #96); ruff F/E9 clean on `stages/`.
+- **Bench/golden changes:** none.
+- **Follow-ups:** M1.8 — three blind `except Exception` moved verbatim into `stages/` (`parse._parse_one`, parse future guard, `graph` interfaces.json write) must become narrow catches + degradations; `graph.rehydrate` should load `call_edges` from the DB (audit #96). M1.7 moves phase 2 and 9–19.
+
