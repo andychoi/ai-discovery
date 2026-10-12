@@ -186,7 +186,7 @@ def _with_checkpoint(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _count_tier1_targets(chunks: list) -> int:
+def _count_tier1_targets(chunks: list, repo_root: Path | None = None) -> int:
     """Number of chunks that Phase 11 (Tier 1) will actually send to the LLM.
 
     Mirrors the filtering in summarize_chunks: skip structural types and test files.
@@ -195,18 +195,35 @@ def _count_tier1_targets(chunks: list) -> int:
 
     return sum(
         1 for c in chunks
-        if c.chunk_type not in _SKIP_TYPES and not _is_test_chunk(c.file_path)
+        if c.chunk_type not in _SKIP_TYPES and not _is_test_chunk(c.file_path, repo_root)
     )
 
 
-def _build_rag_chunks(chunks: list, config: DiscoveryConfig) -> list:
+def _record_degradation(db_path: Path, scan_id: int, stage: str, kind: str, count: int,
+                        sample: Optional[list] = None) -> None:
+    """Persist a degradation (v1 ``degradations`` table) so the scan end panel shows it."""
+    import sqlite3 as _sqlite3
+
+    conn = get_conn(db_path)
+    try:
+        conn.execute("INSERT OR REPLACE INTO degradations (scan_id, stage, kind, count, sample_json) "
+                     "VALUES (?, ?, ?, ?, ?)",
+                     (scan_id, stage, kind, count, json.dumps(sample) if sample else None))
+        conn.commit()
+    except _sqlite3.OperationalError as exc:  # pre-0002 DB without the table
+        logger.warning("could not record degradation %s/%s: %s", stage, kind, exc)
+    finally:
+        conn.close()
+
+
+def _build_rag_chunks(chunks: list, config: DiscoveryConfig, repo_root: Path | None = None) -> list:
     """Build the RAG chunk set, honoring config.rag filters."""
     from .ai.chunker import chunk_for_rag
     from .ai.summarizer import _is_test_chunk
 
     source = chunks
     if config.rag.skip_tests:
-        source = [c for c in source if not _is_test_chunk(c.file_path)]
+        source = [c for c in source if not _is_test_chunk(c.file_path, repo_root)]
     return chunk_for_rag(source, config.rag.chunk_size, config.rag.chunk_overlap)
 
 
@@ -1240,8 +1257,8 @@ def _run_pipeline_unlocked(
         with _with_checkpoint(db_path, scan_id, 9, "chunk"):
             with _timed("chunk"), console.status("[bold cyan]Chunking code nodes..."):
                 chunks = chunk_code_nodes(all_nodes)
-                rag_chunks = _build_rag_chunks(chunks, config)
-            tier1_count = _count_tier1_targets(chunks)
+                rag_chunks = _build_rag_chunks(chunks, config, resolved.repo_path)
+            tier1_count = _count_tier1_targets(chunks, resolved.repo_path)
             console.print(
                 f"  Chunks: [green]{len(chunks)}[/] parsed "
                 f"([green]{tier1_count}[/] for Tier 1), "
@@ -1250,7 +1267,7 @@ def _run_pipeline_unlocked(
     else:
         console.print("[dim]Phase 9 (chunk): rebuilding (cheap)...[/]")
         chunks = chunk_code_nodes(all_nodes)
-        rag_chunks = _build_rag_chunks(chunks, config)
+        rag_chunks = _build_rag_chunks(chunks, config, resolved.repo_path)
 
     # P0-3 (memory): chunking is the last in-memory consumer of node.source_code.
     # Release it now (it stays in code_nodes) so phases 10–19 don't carry the
@@ -1369,12 +1386,21 @@ def _run_pipeline_unlocked(
                     # chunks into community batches (one structured call each).
                     call_edges=edges,
                     semantic_batching=config.semantic_batching,
+                    repo_root=resolved.repo_path,
                 )
 
             n_failed = persist_summaries(summaries, scan_id, db_path)
             if n_failed:
                 console.print(f"  [yellow]{n_failed} summaries failed[/] (not stored; the next "
                               "scan or a resume of this phase re-summarizes only those)")
+                _record_degradation(db_path, scan_id, "tier1_summarize", "tier1_failed", n_failed,
+                                    sorted(s["qualified_name"] for s in summaries
+                                           if s.get("failed"))[:5])
+            if chunks and not _count_tier1_targets(chunks, resolved.repo_path):
+                # Never "complete" Tier 1 silently with nothing summarized (audit #90).
+                console.print("  [yellow]Tier 1 had no chunks to summarize[/] (all filtered as tests "
+                              "or structural types)")
+                _record_degradation(db_path, scan_id, "tier1_summarize", "tier1_no_targets", len(chunks))
             summaries_dict = {s["qualified_name"]: s for s in summaries}
             console.print(f"  Summaries: [green]{len(summaries)}[/] (cost so far: ${llm_client.total_cost_usd():.4f})")
 

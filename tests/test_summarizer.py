@@ -449,3 +449,43 @@ def test_legacy_failed_rows_do_not_count_as_done(tmp_path) -> None:
     assert client.invoke.call_count == 1 and results[0]["purpose"] == "Greets"
     persist_summaries(results, 1, db)  # INSERT OR REPLACE overwrites the placeholder
     assert _stored(db) == [(stored_tier_label("tier1"), "Greets")]
+
+
+# ---------------------------------------------------------------------------
+# M0.13 (audit #90): test detection is repo-relative
+# ---------------------------------------------------------------------------
+
+from ai_discovery.ai.summarizer import _is_test_chunk  # noqa: E402
+
+
+@pytest.mark.parametrize("root_parent", ["tests", "test", "work"])
+def test_checkout_under_a_tests_dir_is_not_all_tests(tmp_path, root_parent) -> None:
+    root = tmp_path / root_parent / "app"
+    assert not _is_test_chunk(str(root / "app" / "models.py"), root)
+    assert _is_test_chunk(str(root / "tests" / "test_models.py"), root)       # real test dir inside repo
+    assert _is_test_chunk(str(root / "src" / "OrderServiceTests.cs"), root)   # name-based rule still applies
+
+
+def test_without_root_the_old_behaviour_is_kept() -> None:
+    assert _is_test_chunk("/home/me/tests/app/models.py")  # why callers must pass the root
+
+
+def test_summarize_chunks_honours_repo_root(tmp_path) -> None:
+    root = tmp_path / "tests" / "app"
+    chunk = _make_chunk(file_path=str(root / "app" / "views.py"))
+    client = MagicMock()
+    client.invoke.return_value = LLMResponse(text=_GOOD, tokens_in=1, tokens_out=1, model="m", tier="tier1")
+    assert summarize_chunks([chunk], client, skip_tests=True, skip_rag=True, max_concurrent=1) == []
+    out = summarize_chunks([chunk], client, skip_tests=True, skip_rag=True, max_concurrent=1, repo_root=root)
+    assert [s["purpose"] for s in out] == ["Greets"]
+
+
+def test_tier1_target_count_matches_across_checkout_locations(tmp_path) -> None:
+    from ai_discovery.pipeline import _count_tier1_targets
+
+    def chunks_under(root):
+        return [_make_chunk(file_path=str(root / rel), qualified_name=rel)
+                for rel in ("app/a.py", "app/b.py", "tests/test_a.py")]
+
+    plain, nested = tmp_path / "app", tmp_path / "tests" / "app"
+    assert _count_tier1_targets(chunks_under(plain), plain) == _count_tier1_targets(chunks_under(nested), nested) == 2

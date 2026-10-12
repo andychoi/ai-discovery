@@ -80,6 +80,11 @@ def _summary(layout, scan_id: Optional[int], cfg, status: str) -> dict[str, Any]
         out["spend"] = {"usd": round(spent or 0, 4), "budget_usd": cfg.budget_limit_usd}
         enc = q("SELECT COUNT(DISTINCT file_path) FROM code_nodes WHERE scan_id = ? "
                 "AND framework_hints LIKE '%source_encoding%'")
+        try:  # degradations recorded by pipeline stages (v1 table, migration 0002)
+            stage_deg = conn.execute("SELECT stage, kind, count FROM degradations WHERE scan_id = ? "
+                                     "ORDER BY stage, kind", (scan_id,)).fetchall()
+        except sqlite3.OperationalError:
+            stage_deg = []
     finally:
         conn.close()
     deg = out["degradations"]
@@ -89,6 +94,11 @@ def _summary(layout, scan_id: Optional[int], cfg, status: str) -> dict[str, Any]
     if out["counts"]["screens"] == 0 and files:
         deg.append({"kind": "no_screens", "count": 0,
                     "message": "0 screens: no supported menu format matched (screens skipped)"})
+    messages = {"tier1_no_targets": "Tier 1 summarized nothing: all {n} chunks were filtered as tests/structural",
+                "tier1_failed": "{n} Tier-1 summaries failed (not stored; the next scan retries them)"}
+    for stage, kind, n in stage_deg:
+        deg.append({"kind": kind, "count": n, "stage": stage,
+                    "message": messages.get(kind, f"{stage}: {kind} ({{n}})").format(n=n)})
     if out["counts"]["unresolved_edges"]:
         n = out["counts"]["unresolved_edges"]
         deg.append({"kind": "unresolved_calls", "count": n,

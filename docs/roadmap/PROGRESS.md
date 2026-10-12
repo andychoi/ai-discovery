@@ -274,3 +274,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** first baseline recorded (this file is the reference M1.12 must beat).
 - **Follow-ups:** M0.13 (audit #90, silent zero Tier-1 under `tests/` paths) — high priority, it makes prose output empty with no warning; audit #95 (prose runtime/opacity) → M1.8/M1.11/M2.4; #91–#93 → M1.12/M6.2; #94 (0 screens on all five repos) → M6.6/M6.11; repowise edge precision via MCP sampling in M1.12's comparison.
 
+## 2026-10-12 — M0.13 — test-file detection uses repo-relative paths
+- **Branch/commit:** rm/M0.13-test-paths @ 7cb6331
+- **Changes:** `ai/summarizer.py` (`_repo_relative`, `_is_test_chunk(file_path, repo_root)`, `summarize_chunks(..., repo_root)`); `pipeline.py` (`_count_tier1_targets`/`_build_rag_chunks` take the repo root; new `_record_degradation`; phase 11 records `tier1_failed` and `tier1_no_targets`); cross-lane `cli/commands/scan.py` end panel reads the `degradations` table; tests: `tests/test_summarizer.py` (+6), `tests/cli/test_scan_degradations.py` (new).
+- **Decisions:** paths are made repo-relative at the test check (both raw and resolved forms tried, so `/private/tmp` vs `/tmp` symlinks match) rather than changing `code_nodes.file_path`, which stays absolute until the stage refactor. The `degradations` table (m0002) had no writer until now; failures to write it on a pre-0002 DB are logged, not raised. `_is_test_chunk` without a root keeps the old behaviour (tested) — every pipeline call site now passes it.
+- **Verify:** microblog in `tests/corpus/external/.cache/` → Tier-1 targets 0 before, 139 after; `pytest -q tests -k "summar or tier1 or degradation"` → 42 passed; full `pytest -q` → 1508 passed, 2 skipped; `roadmap_lint` ok.
+- **Bench/golden changes:** none.
+- **Follow-ups:** re-run the microblog prose benchmark only after M1.8/M1.11 address the >10 h runtime (audit #95).
+

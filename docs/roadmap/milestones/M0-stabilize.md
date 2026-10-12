@@ -163,7 +163,7 @@
 - **Out of scope:** reading repowise source (ADR-0006).
 
 ### M0.13 Test-file detection uses repo-relative paths
-- **Status:** In progress (rm/M0.13-test-paths, 2026-10-12)
+- **Status:** Done (7cb6331)
 - **Size:** S
 - **Lane:** B
 - **Depends on:** —

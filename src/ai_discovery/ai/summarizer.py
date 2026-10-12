@@ -38,14 +38,32 @@ def stored_tier_label(tier: str = "tier1") -> str:
 _TEST_DIR_NAMES = frozenset({"tests", "test", "__tests__"})
 
 
-def _is_test_chunk(file_path: str) -> bool:
+def _repo_relative(file_path: str, repo_root: Path | str | None) -> str:
+    """*file_path* relative to *repo_root* ('/' separators); unchanged when outside it."""
+    path = file_path.replace("\\", "/")
+    if repo_root is None:
+        return path
+    for root in (Path(repo_root), Path(repo_root).resolve()):
+        for candidate in (Path(file_path), Path(file_path).resolve()):
+            try:
+                return candidate.relative_to(root).as_posix()
+            except ValueError:
+                continue
+    return path
+
+
+def _is_test_chunk(file_path: str, repo_root: Path | str | None = None) -> bool:
     """Return True if *file_path* looks like a test file.
 
     Tests are parsed (so call edges from tests into production code are kept),
     but skipped at Tier 1 summarization — their summaries add little value for
     BPMN/DMN/EARS generation while often being 50%+ of chunk volume.
+
+    Pass *repo_root*: directory names are judged on the path **inside** the
+    repo, so a checkout that itself lives under ``…/tests/…`` is not one big
+    test directory (audit #90).
     """
-    parts = file_path.replace("\\", "/").split("/")
+    parts = _repo_relative(file_path, repo_root).split("/")
     if any(p in _TEST_DIR_NAMES for p in parts[:-1]):
         return True
     name = parts[-1]
@@ -370,6 +388,7 @@ def summarize_chunks(
     budget_exhausted: Callable[[], bool] | None = None,
     call_edges: list | None = None,
     semantic_batching: bool = False,
+    repo_root: Path | None = None,
 ) -> list[dict]:
     """Summarize multiple chunks concurrently using ThreadPoolExecutor.
 
@@ -382,7 +401,8 @@ def summarize_chunks(
     - If skip_rag is True, bypass RAG context retrieval (faster, no grounding);
       db_path is still used for the resume guard.
     - If skip_tests is True, bypass LLM summarization for test files (still parsed
-      into the graph; just no Tier 1 summary).
+      into the graph; just no Tier 1 summary). Pass *repo_root* so test
+      detection uses repo-relative paths.
     - If semantic_batching is True and call_edges are provided, group chunks by
       call-graph community (A-1 Louvain batching) and fire ONE structured call
       per batch instead of one call per chunk. Community context replaces RAG
@@ -391,7 +411,7 @@ def summarize_chunks(
     """
     to_summarize = [c for c in chunks if c.chunk_type not in _SKIP_TYPES]
     if skip_tests:
-        to_summarize = [c for c in to_summarize if not _is_test_chunk(c.file_path)]
+        to_summarize = [c for c in to_summarize if not _is_test_chunk(c.file_path, repo_root)]
 
     # Dedup by qualified_name
     seen: set[str] = set()
