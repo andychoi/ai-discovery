@@ -168,7 +168,7 @@
 - **Out of scope:** response cache, estimator, prompt caching (M1.11.b); persisting cache-token counts (needs an `llm_costs` migration, lane A).
 
 ### M1.11.b `llm/` response cache, estimator, prompt caching
-- **Status:** Planned
+- **Status:** In progress (rm/M1.11b-cache-estimate, 2026-10-13)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.11.a
