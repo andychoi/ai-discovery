@@ -354,3 +354,6 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** none.
 - **Follow-ups:** M2.4 cost gate uses `estimate` + `shape_from_db`; have the Tier-1 batch and rollup prompt builders pass their instruction block as `system=` so Anthropic prompt caching actually applies; calibrate the estimator from `llm_costs` after real prose runs; domain over-splitting (#86) is the largest cost driver on eShop.
 
+## 2026-10-13 — migration reservation
+- `m0003_edge_kinds` reserved for M1.12.a (adds `call_edges.edge_kind`, `call_edges.evidence_kind`).
+

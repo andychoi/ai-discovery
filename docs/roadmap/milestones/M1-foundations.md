@@ -180,19 +180,39 @@
 - **Out of scope:** cost gate UI (M2.4).
 
 ### M1.12 Edge contract
-- **Status:** Planned
+- **Status:** Blocked (split 2026-10-13 into M1.12.a + M1.12.b; mark Done when both are)
+- **Size:** M
+- **Lane:** C
+- **Depends on:** M1.12.a, M1.12.b
+- **Owns:** see M1.12.a / M1.12.b
+- **Acceptance:** the union of M1.12.a and M1.12.b.
+- **Verify:** `pytest -q tests -k "call_graph or origins"`; `python -m bench run --all`
+- **Out of scope:** new language coverage (M6).
+
+### M1.12.a Edge contract: resolver, origins, unresolved calls
+- **Status:** In progress (rm/M1.12a-edge-contract, 2026-10-13)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M0.12
-- **Owns:** `src/ai_discovery/graph/origins.py` (new), `src/ai_discovery/graph/call_graph.py`, `src/ai_discovery/graph/` slice/BFS code, migration file (number reserved in PROGRESS.md)
+- **Owns:** `src/ai_discovery/graph/origins.py` (new), `src/ai_discovery/graph/call_graph.py`, `src/ai_discovery/stages/graph.py` (edge persistence), `src/ai_discovery/store/migrations/m0003_edge_kinds.py` (new, reserved in PROGRESS.md), consumers of `resolved_by`/unresolved edges (scan summary, page builders, export, API, bench metrics), affected tests/baselines
 - **Acceptance:**
   - Closed origin enum (ADR-0004) with exactly one confidence per origin; `resolved_by` only takes enum values.
-  - Ambiguity → no edge (no fan-out); unresolved calls → `unresolved_calls` rows (columns + reason enum per ADR-0004), never edges to bare names.
-  - Short-name tier requires same language, non-builtin, callable target.
+  - Ambiguity → no edge (no fan-out); unresolved calls → `unresolved_calls` rows (reason enum per ADR-0004), never edges to bare names.
+  - Short-name tier requires same language, non-builtin, callable target; class-scope matches only for receiver-less or `self`/`this` calls.
   - `evidence_kind` and `edge_kind` on edges, values per ADR-0004.
+- **Verify:** `pytest -q tests -k "call_graph or origins"`
+- **Out of scope:** slice/BFS following rules, bench comparison, ADR acceptance (M1.12.b).
+
+### M1.12.b Edge contract: slices/BFS + bench + ADR acceptance
+- **Status:** Planned
+- **Size:** M
+- **Lane:** C
+- **Depends on:** M1.12.a
+- **Owns:** `src/ai_discovery/graph/` slice/BFS code, `docs/roadmap/benchmarks/`, ADR-0004
+- **Acceptance:**
   - Execution slices/BFS follow only resolved static edges above a floor, with depth cap, visited set, and stop reasons.
   - Bench: precision ≥ M0.12 baseline per language; recall delta and unresolved counts reported in PROGRESS.md. ADR-0004 status → Accepted.
-- **Verify:** `pytest -q tests -k "call_graph or origins"`; `python -m bench run --all`
+- **Verify:** `pytest -q tests -k "slice or call_graph"`; `python -m bench run --all`
 - **Out of scope:** new language coverage (M6).
 
 ### M1.13 Mask secrets in source before prompts
