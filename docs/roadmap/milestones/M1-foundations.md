@@ -110,17 +110,38 @@
 - **Out of scope:** page-level parity (M3.6).
 
 ### M1.10 `llm/` package: registry, roles, capabilities
-- **Status:** Planned
+- **Status:** Blocked (split 2026-10-13 into M1.10.a + M1.10.b; mark Done when both are)
+- **Size:** M
+- **Lane:** B
+- **Depends on:** M1.10.a, M1.10.b
+- **Owns:** see M1.10.a / M1.10.b
+- **Acceptance:** the union of M1.10.a and M1.10.b.
+- **Verify:** `pytest -q tests -k "llm or provider"`
+- **Out of scope:** budget/cost/cache (M1.11).
+
+### M1.10.a `llm/` package: provider registry, capability matrix, one invoke path
+- **Status:** In progress (rm/M1.10a-llm-package, 2026-10-13)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M0.7
-- **Owns:** `src/ai_discovery/llm/` (new), `src/ai_discovery/ai/llm_client.py`, `src/ai_discovery/shared/llm_router.py`, `src/ai_discovery/shared/llm_invoke.py`, `src/ai_discovery/shared/model_defaults.py` (shims)
+- **Owns:** `src/ai_discovery/llm/` (new), `src/ai_discovery/ai/llm_client.py`, `src/ai_discovery/shared/llm_router.py`, `src/ai_discovery/shared/llm_invoke.py`, `src/ai_discovery/shared/model_defaults.py` (shims), LLM tests
 - **Acceptance:**
-  - One invoke path; provider registry; roles fast/standard/deep resolved from config v2; capability matrix (temperature constraints, structured output, max tokens field, timeout class).
-  - Config: `models.fast|standard|deep` + `quality: draft|final` replace tier1/2/3d/3p and `--prod`/`prod:` (moved here from M1.3; cross-lane edit of `config/`).
-  - No module-global config (`llm_router.configure()` removed); client object passed explicitly.
-  - Old modules are thin shims re-exporting the new API.
-- **Verify:** `pytest -q tests -k "llm or provider"`
+  - One invoke path (`llm/invoke.py`); provider registry with a capability matrix (protocol, structured-output mode, max-tokens field, temperature constraint, timeout class, embeddings, metered); roles fast/standard/deep mapped from today's tiers.
+  - No module-global config: `llm_router.configure()`/`get_config()`/`save_config()` removed; settings are built from a `DiscoveryConfig` and passed explicitly (`LLMClient` owns them).
+  - `shared/llm_invoke.py`, `shared/model_defaults.py`, `shared/llm_router.py` are thin shims re-exporting the new API.
+- **Verify:** `pytest -q tests -k "llm or provider"`; golden unchanged
+- **Out of scope:** config key rename (M1.10.b); budget/cost/cache (M1.11).
+
+### M1.10.b Config: `models.fast|standard|deep` + `quality: draft|final`
+- **Status:** Planned
+- **Size:** M
+- **Lane:** B
+- **Depends on:** M1.10.a
+- **Owns:** `src/ai_discovery/config/` (cross-lane, moved here from M1.3), `src/ai_discovery/llm/settings.py`, CLI `--quality`, config template, docs
+- **Acceptance:**
+  - Config: `models.fast|standard|deep` + `quality: draft|final` replace tier1/2/3d/3p and `--prod`/`prod:`; old keys rejected with a suggestion (strict config).
+  - All `get_model("tierN")` call sites use roles.
+- **Verify:** `pytest -q tests -k "config or llm"`
 - **Out of scope:** budget/cost/cache (M1.11).
 
 ### M1.11 `llm/` budget, cost, retry, cache, estimator
