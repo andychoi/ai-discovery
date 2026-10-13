@@ -98,7 +98,7 @@
 - **Out of scope:** per-file parse cache (M1.9).
 
 ### M1.9 Per-file parse cache
-- **Status:** Planned
+- **Status:** In progress (rm/M1.9-parse-cache, 2026-10-13)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M1.8
