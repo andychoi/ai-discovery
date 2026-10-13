@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from ..pipeline import (
     _budget_exhausted_fn, _budget_ok, _finalise_scan, _llm_skipped, _timed, _with_checkpoint, console,
 )
 from .context import RunContext
+
+# same logger name as before the move, so log output/filters are unchanged
+logger = logging.getLogger("ai_discovery.pipeline")
 
 
 def run(ctx: RunContext) -> None:
@@ -83,6 +88,8 @@ def run(ctx: RunContext) -> None:
                     )
             except Exception as exc:  # annotation is non-critical: warn, don't lose docs
                 console.print(f"  [yellow]Prose validation skipped:[/] {exc}")
+                logger.debug("prose validation traceback", exc_info=True)
+                ctx.degrade("rollup", "prose_validation_skipped", 1, [type(exc).__name__])
 
             persist_rollups(rollups, scan_id, db_path, project_slug)
             console.print(f"  Documents: [green]{len(rollups)}[/] generated")

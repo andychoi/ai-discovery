@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from ..pipeline import (
-    _budget_exhausted_fn, _budget_ok, _finalise_scan, _llm_skipped, _load_flows_from_db, _phase_should_run, _timed, _with_checkpoint, console, logger,
-)
+    _budget_exhausted_fn, _budget_ok, _finalise_scan, _llm_skipped, _load_flows_from_db, _timed, _with_checkpoint, console, )
 from .context import RunContext
+
+# same logger name as before the move, so log output/filters are unchanged
+logger = logging.getLogger("ai_discovery.pipeline")
 
 
 def run(ctx: RunContext) -> None:
@@ -16,8 +20,6 @@ def run(ctx: RunContext) -> None:
     llm_client = ctx.llm_client
     db_path = ctx.db_path
     scan_id = ctx.scan_id
-    start_phase = ctx.start_phase
-    skip_phases = ctx.skip_phases
     domains = ctx.domains
     scenarios = ctx.scenarios
     summaries_dict = ctx.summaries_dict
@@ -28,7 +30,7 @@ def run(ctx: RunContext) -> None:
     # ------------------------------------------------------------------
     from ..ai.flow_analyzer import analyze_all_domains, persist_flows
 
-    if _llm_skipped(config, "Phase 12 (tier2_flow_analysis)") or not _phase_should_run(12, start_phase, skip_phases):
+    if _llm_skipped(config, "Phase 12 (tier2_flow_analysis)") or not ctx.phase_runs(12):
         console.print("[dim]Phase 12 (tier2_flow_analysis): loading from DB...[/]")
         flows_by_domain = _load_flows_from_db(db_path, scan_id)
         console.print(f"  Loaded [green]{sum(len(v) for v in flows_by_domain.values())}[/] flows from DB")
@@ -72,10 +74,11 @@ def run(ctx: RunContext) -> None:
     if getattr(config, "no_llm", False):
         _llm_skipped(config, "Phase 13 (scenario_flow_inference)")
         scenario_flows = []
-    elif _phase_should_run(13, start_phase, skip_phases):
+    elif ctx.phase_runs(13):
         with _with_checkpoint(db_path, scan_id, 13, "scenario_flow_inference"):
             console.print("[bold cyan]Phase 13: Reconstructing scenario flows...[/]")
             scenario_flows = []
+            failed_flows: list[str] = []
             flow_inference = ScenarioFlowInference(llm_client)
 
             with _timed("scenario inference"), Progress(
@@ -97,7 +100,10 @@ def run(ctx: RunContext) -> None:
                         scenario_flows.append(flow)
                     except Exception as e:
                         logger.warning(f"Failed to infer flow for {scenario.scenario_id}: {e}")
+                        logger.debug("flow inference traceback", exc_info=True)
+                        failed_flows.append(scenario.scenario_id)
                     progress.advance(task)
+            ctx.degrade("flows", "flow_inference_failed", len(failed_flows), failed_flows[:5])
             verified_n = sum(1 for f in scenario_flows if getattr(f, "verified", False))
             console.print(
                 f"  Scenario flows: [green]{len(scenario_flows)}[/] reconstructed"

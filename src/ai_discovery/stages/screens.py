@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from ..pipeline import (
-    _budget_ok, _phase_should_run, _timed, _with_checkpoint, console,
+    _budget_ok, _timed, _with_checkpoint, console,
 )
 from .context import RunContext
 
@@ -17,8 +17,6 @@ def run(ctx: RunContext) -> None:
     db_path = ctx.db_path
     scan_id = ctx.scan_id
     resolved = ctx.resolved
-    start_phase = ctx.start_phase
-    skip_phases = ctx.skip_phases
     docs_dir = ctx.docs_dir
     project_slug = ctx.project_slug
     # ------------------------------------------------------------------
@@ -31,7 +29,7 @@ def run(ctx: RunContext) -> None:
     )
     from ..generators.screen_doc_writer import write_all_screen_specs
 
-    if _phase_should_run(2, start_phase, skip_phases):
+    if ctx.phase_runs(2):
         with _with_checkpoint(db_path, scan_id, 2, "screen_llm_specs"):
             console.print("[bold cyan]Phase 2: Generating screen specs...[/]")
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from ..pipeline import (
-    _budget_exhausted_fn, _budget_ok, _count_tier1_targets, _finalise_scan, _llm_skipped, _load_summaries_from_db, _phase_should_run, _record_degradation, _timed, _with_checkpoint, console,
+    _budget_exhausted_fn, _budget_ok, _count_tier1_targets, _finalise_scan, _llm_skipped, _load_summaries_from_db, _record_degradation, _timed, _with_checkpoint, console,
 )
 from .context import RunContext
 
@@ -17,8 +17,6 @@ def run(ctx: RunContext) -> None:
     db_path = ctx.db_path
     scan_id = ctx.scan_id
     resolved = ctx.resolved
-    start_phase = ctx.start_phase
-    skip_phases = ctx.skip_phases
     edges = ctx.edges
     chunks = ctx.chunks
     summaries_dict = ctx.summaries_dict
@@ -27,7 +25,7 @@ def run(ctx: RunContext) -> None:
     # ------------------------------------------------------------------
     from ..ai.summarizer import summarize_chunks, persist_summaries, reuse_prior_summaries
 
-    if _llm_skipped(config, "Phase 11 (tier1_summarize)") or not _phase_should_run(11, start_phase, skip_phases):
+    if _llm_skipped(config, "Phase 11 (tier1_summarize)") or not ctx.phase_runs(11):
         console.print("[dim]Phase 11 (tier1_summarize): loading from DB...[/]")
         summaries_dict = _load_summaries_from_db(db_path, scan_id)
         console.print(f"  Loaded [green]{len(summaries_dict)}[/] summaries from DB")

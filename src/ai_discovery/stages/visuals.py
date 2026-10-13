@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 from ..pipeline import (
-    _budget_ok, _finalise_scan, _llm_skipped, _mine_processes, _timed, _with_checkpoint, console, get_conn, logger, now_iso,
+    _budget_ok, _finalise_scan, _llm_skipped, _mine_processes, _timed, _with_checkpoint, console, get_conn, now_iso,
 )
 from .context import RunContext
+
+# same logger name as before the move, so log output/filters are unchanged
+logger = logging.getLogger("ai_discovery.pipeline")
 
 
 def run(ctx: RunContext) -> None:
@@ -88,7 +93,9 @@ def run(ctx: RunContext) -> None:
                     )
                 except Exception as e:
                     logger.error(f"Flow statistics failed (continuing): {e}")
+                    logger.debug("flow statistics traceback", exc_info=True)
                     console.print(f"  [yellow]Flow statistics skipped:[/] {e}")
+                    ctx.degrade("visuals", "flow_statistics_failed", 1, [type(e).__name__])
     else:
         # No checkpoint written — disabled runs shouldn't leave a "16 complete"
         # marker that misleads resume logic.

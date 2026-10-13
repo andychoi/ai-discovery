@@ -35,33 +35,37 @@ def _run_pipeline_funcdef() -> ast.FunctionDef:
 
 
 def test_llm_client_bound_before_first_use():
-    """The LLM client must be on the RunContext before the first stage that uses it.
+    """The LLM client must be on the RunContext before any stage runs.
 
-    M1.7 (ADR-0003): phases are stage modules reading ``ctx.llm_client``; the
-    screens stage (phase 2) is the first consumer. Assert ``ctx.llm_client = ...``
-    precedes the first ``<stage>.execute(ctx)`` call after ``resolve``.
+    M1.8 (ADR-0003): stages run inside ``StageRunner(ctx).run()``; the screens
+    stage (phase 2) is the first LLM consumer. Assert ``ctx.llm_client = ...``
+    precedes the runner call.
     """
     func = _run_pipeline_funcdef()
 
     first_store = None
-    executes = []
+    runner_call = None
     for node in ast.walk(func):
         if isinstance(node, ast.Assign):
             for t in node.targets:
                 if isinstance(t, ast.Attribute) and t.attr == "llm_client" \
                         and isinstance(t.value, ast.Name) and t.value.id == "ctx":
                     first_store = node.lineno if first_store is None else min(first_store, node.lineno)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-                and node.func.attr == "execute" and isinstance(node.func.value, ast.Name):
-            executes.append((node.lineno, node.func.value.id))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "StageRunner":
+            runner_call = node.lineno
 
     assert first_store is not None, "ctx.llm_client is never assigned in _run_pipeline_unlocked"
-    screens_call = min((ln for ln, name in executes if name == "screens"), default=None)
-    assert screens_call is not None, "screens stage is never executed"
-    assert first_store < screens_call, (
+    assert runner_call is not None, "StageRunner is never called"
+    assert first_store < runner_call, (
         f"CRIT-1 regression: ctx.llm_client is assigned at line {first_store}, after the "
-        f"screens stage runs at line {screens_call}; screen specs would see no LLM client."
+        f"stages start at line {runner_call}; screen specs would see no LLM client."
     )
+
+
+def test_screens_is_the_first_stage():
+    from ai_discovery.stages.runner import STAGES
+
+    assert STAGES[0].name == "screens"
 
 
 def test_screens_stage_reads_llm_client_from_context():

@@ -378,6 +378,7 @@ def run_pipeline(
     skip_phases: list[str] | None = None,
     rescan: bool = False,
     layout: "ProjectLayout | None" = None,
+    only: list[str] | None = None,
 ) -> str | None:
     """Run the pipeline under the project's single-flight run lock (M1.4).
 
@@ -394,7 +395,7 @@ def run_pipeline(
         return _run_pipeline_unlocked(
             repo=repo, branch=branch, project_slug=project_slug, output_dir=output_dir,
             config=config, docs_root=docs_root, resume=resume, resume_from=resume_from,
-            skip_phases=skip_phases, rescan=rescan, layout=layout,
+            skip_phases=skip_phases, rescan=rescan, layout=layout, only=only,
         )
 
 
@@ -410,6 +411,7 @@ def _run_pipeline_unlocked(
     skip_phases: list[str] | None = None,
     rescan: bool = False,
     layout: "ProjectLayout | None" = None,
+    only: list[str] | None = None,
 ) -> str | None:
     """Run the full discovery pipeline in offline mode.
 
@@ -425,6 +427,8 @@ def _run_pipeline_unlocked(
         resume: Continue from last complete phase
         resume_from: Start from a specific phase (phase number or name, e.g. "14", "self_review")
         skip_phases: List of phases to skip (e.g. ["16", "10"])
+        only: Run only these stages (stage names, e.g. ["parse", "graph"]); other
+            reloadable stages reuse stored output (``stages/runner.py``)
     """
 
     # M1.2: every project path comes from core.paths.ProjectLayout (ADR-0001).
@@ -436,18 +440,18 @@ def _run_pipeline_unlocked(
     db_path = layout.db_path
     _pipeline_start = time.perf_counter()
 
-    # ADR-0003 (M1.6/M1.7): every step lives in `stages/`; each stage reads and
-    # writes this RunContext. Phase numbers remain only as checkpoint-row aliases.
+    # ADR-0003 (M1.6–M1.8): every step lives in `stages/`; StageRunner runs them
+    # in order with fingerprints and `--only`. Phase numbers remain only as
+    # checkpoint-row aliases.
     from .ai.llm_client import LLMClient
-    from .stages import (
-        embed, entities, finalise, flows, graph, parse, render, resolve, review, rollup,
-        screens, slices, sql, summaries, visuals, walk,
-    )
+    from .stages import resolve
     from .stages.context import RunContext
+    from .stages.runner import StageRunner, normalize_only
 
     ctx = RunContext(repo=repo, branch=branch, config=config, layout=layout, resume=resume,
                      resume_from=resume_from, rescan=rescan, skip_phases=skip_phases or [],
-                     pipeline_start=_pipeline_start)
+                     pipeline_start=_pipeline_start,
+                     only=normalize_only(only) if only else None)
     resolve.run(ctx)                      # steps 1–4: DB init, repo, resume/rescan checks, scan row
     if ctx.halted:
         return ctx.result
@@ -458,31 +462,9 @@ def _run_pipeline_unlocked(
     # repo with a detectable menu. Keep this binding ahead of the screens stage.
     ctx.llm_client = LLMClient(config)
 
-    screens.execute(ctx)                  # phase 2 screen_llm_specs
-    walk.execute(ctx)                     # phase 5 lang_detect
-    parse.execute(ctx)                    # phase 6 parse
-    if not ctx.all_nodes:
-        console.print("[yellow]No code nodes found -- nothing to analyse.[/]")
-        _finalise_scan(ctx.scan_id, db_path, "completed")
-        return
-    graph.execute(ctx)                    # phase 7 domain_classify (domains + call graph)
-    slices.execute(ctx)                   # phase 8 execution_slices + 8a entry-point links
-    sql.execute(ctx)                      # 2e-1 SQL entities + FK relationships
-    entities.execute(ctx)                 # 8b FSMs, cross-entity links, DMN/EARS
-    for stage in (
-        embed,                            # phases 9 chunk + 10 rag_embed
-        summaries,                        # phase 11 tier1_summarize
-        flows,                            # phases 12 tier2_flow_analysis + 13 scenario_flow_inference
-        rollup,                           # phase 14 tier3_doc_rollup
-        visuals,                          # phases 15 visual_artifacts + 16 flow statistics
-        review,                           # phase 17 self_review
-        render,                           # phase 18 render_markdown
-        finalise,                         # phase 19 finalise
-    ):
-        stage.execute(ctx)
-        if ctx.halted:
-            return ctx.result
-    return ctx.final_status
+    # screens → walk → parse → graph → slices → sql → entities → embed → summaries
+    # → flows → rollup → visuals → review → render → finalise (stages/runner.py)
+    return StageRunner(ctx).run()
 
 
 def _display_checkpoint_status(db_path: Path, scan_id: int) -> None:

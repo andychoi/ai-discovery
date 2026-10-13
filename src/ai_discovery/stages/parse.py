@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
 from .context import RunContext
+
+# same logger name as before the move, so log output/filters are unchanged
+logger = logging.getLogger("ai_discovery.pipeline")
 
 
 def run(ctx: RunContext) -> None:
-    from ..pipeline import _stamp_file_hash, _timed, _with_checkpoint, console, logger
+    from ..pipeline import _stamp_file_hash, _timed, _with_checkpoint, console
     from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
     from ..repo.file_walker import walk_repo
     from ..parsers.python_parser import PythonParser
@@ -26,6 +31,7 @@ def run(ctx: RunContext) -> None:
         parsers += [cls() for cls in IMPORT_MAP_PARSERS]
         all_nodes: list = []
         parse_errors = 0
+        failed_files: list[str] = []
 
         def _parse_one(file_path):
             """Parse a single file with the first matching parser. Returns
@@ -37,6 +43,7 @@ def run(ctx: RunContext) -> None:
                         _stamp_file_hash(nodes, file_path)  # A-2: cross-scan identity
                         return nodes, None
                     except Exception as exc:
+                        logger.debug("parse traceback for %s", file_path, exc_info=True)
                         return [], (file_path, exc)
             return [], None
 
@@ -65,6 +72,7 @@ def run(ctx: RunContext) -> None:
                         nodes, err = fut.result()
                     except Exception as exc:  # shouldn't happen — _parse_one catches
                         logger.warning("Parse future crashed: %s", exc)
+                        logger.debug("parse future traceback", exc_info=True)
                         parse_errors += 1
                         progress.advance(task)
                         continue
@@ -72,6 +80,7 @@ def run(ctx: RunContext) -> None:
                         fpath, exc = err
                         logger.warning("Parse error: %s: %s", fpath, exc)
                         parse_errors += 1
+                        failed_files.append(str(fpath))
                     else:
                         all_nodes.extend(nodes)
                     progress.advance(task)
@@ -88,6 +97,8 @@ def run(ctx: RunContext) -> None:
             _enc_summary = ", ".join(f"{n} {enc}" for enc, n in sorted(_enc_fallbacks.items()))
             console.print(f"  Encoding fallback: [yellow]{_enc_summary}[/] file(s)")
             logger.info("Encoding fallback decodes: %s", _enc_fallbacks)
+            ctx.degrade("parse", "encoding_fallback", sum(_enc_fallbacks.values()), sorted(_enc_fallbacks))
+        ctx.degrade("parse", "parser_error", parse_errors, sorted(failed_files)[:5])
 
         # HIGH-7: ingest OpenAPI/Swagger specs as an authoritative endpoint
         # source. Spec endpoints flow into the same verified-facts API table
@@ -152,3 +163,9 @@ def rehydrate(ctx: RunContext) -> None:
 
 def execute(ctx: RunContext) -> None:
     (run if ctx.phase_runs(6) else rehydrate)(ctx)
+    if not ctx.all_nodes:
+        from ..pipeline import _finalise_scan, console
+
+        console.print("[yellow]No code nodes found -- nothing to analyse.[/]")
+        _finalise_scan(ctx.scan_id, ctx.db_path, "completed")
+        ctx.halt(None)

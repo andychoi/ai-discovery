@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from ..pipeline import (
-    _build_rag_chunks, _count_tier1_targets, _llm_skipped, _phase_should_run, _release_node_source, _timed, _with_checkpoint, console, logger,
-)
+    _build_rag_chunks, _count_tier1_targets, _llm_skipped, _release_node_source, _timed, _with_checkpoint, console, )
 from .context import RunContext
+
+# same logger name as before the move, so log output/filters are unchanged
+logger = logging.getLogger("ai_discovery.pipeline")
 
 
 def run(ctx: RunContext) -> None:
@@ -17,17 +21,15 @@ def run(ctx: RunContext) -> None:
     db_path = ctx.db_path
     scan_id = ctx.scan_id
     resolved = ctx.resolved
-    start_phase = ctx.start_phase
-    skip_phases = ctx.skip_phases
     all_nodes = ctx.all_nodes
     chunks = ctx.chunks
     rag_chunks = ctx.rag_chunks
     # ------------------------------------------------------------------
     # 9. Smart chunk
     # ------------------------------------------------------------------
-    from ..ai.chunker import chunk_code_nodes, chunk_for_rag
+    from ..ai.chunker import chunk_code_nodes
 
-    if _phase_should_run(9, start_phase, skip_phases):
+    if ctx.phase_runs(9):
         with _with_checkpoint(db_path, scan_id, 9, "chunk"):
             with _timed("chunk"), console.status("[bold cyan]Chunking code nodes..."):
                 chunks = chunk_code_nodes(all_nodes)
@@ -61,7 +63,7 @@ def run(ctx: RunContext) -> None:
         console.print("[dim]Phase 10 (rag_embed): disabled via config.rag.enabled=false[/]")
     elif _llm_skipped(config, "Phase 10 (rag_embed)"):
         pass
-    elif _phase_should_run(10, start_phase, skip_phases):
+    elif ctx.phase_runs(10):
         with _with_checkpoint(db_path, scan_id, 10, "rag_embed"):
             # Pre-warm small models that stay resident for the whole run.
             # (No-op on Bedrock; on Ollama this pins them with keep_alive=2h so they
@@ -111,7 +113,9 @@ def run(ctx: RunContext) -> None:
                         )
                 except Exception as exc:
                     logger.warning("RAG embedding failed (continuing without RAG): %s", exc)
+                    logger.debug("RAG embedding traceback", exc_info=True)
                     console.print(f"  [yellow]RAG embedding skipped:[/] {exc}")
+                    ctx.degrade("embed", "rag_embed_failed", 1, [type(exc).__name__])
     else:
         console.print("[dim]Phase 10 (rag_embed): skipped (already complete)[/]")
     ctx.chunks = chunks

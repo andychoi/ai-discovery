@@ -50,6 +50,11 @@ class RunContext:
 
     pipeline_start: float = field(default_factory=time.perf_counter)
 
+    # ── StageRunner controls (M1.8) ────────────────────────────────────────
+    only: Optional[set[str]] = None                                # --only stage names
+    forced_phases: set[float] = field(default_factory=set)        # fingerprint changed / --only
+    suppressed_phases: set[float] = field(default_factory=set)    # reuse stored output
+
     # ── early exit (a stage decides the run is over) ───────────────────────
     halted: bool = False
     result: Optional[str] = None
@@ -75,7 +80,24 @@ class RunContext:
         return self.layout.db_path
 
     def phase_runs(self, phase_num: float) -> bool:
-        """The old ``_phase_should_run(n, start_phase, skip_phases)`` gate."""
+        """Run (True) or reload (False) a gated phase.
+
+        The StageRunner's decision wins (``suppressed_phases``: stored output
+        is reused; ``forced_phases``: inputs changed or ``--only`` named it);
+        otherwise the old ``_phase_should_run(n, start_phase, skip_phases)`` gate.
+        """
+        if phase_num in self.suppressed_phases:
+            return False
+        if phase_num in self.forced_phases:
+            return True
         from ..pipeline import _phase_should_run
 
         return _phase_should_run(phase_num, self.start_phase, self.skip_phases)
+
+    def degrade(self, stage: str, kind: str, count: int, sample: Optional[list] = None) -> None:
+        """Record a degradation for this scan (``degradations`` table; end-panel summary)."""
+        if self.scan_id is None or count <= 0:
+            return
+        from ..pipeline import _record_degradation
+
+        _record_degradation(self.db_path, self.scan_id, stage, kind, count, sample)

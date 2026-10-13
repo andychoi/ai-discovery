@@ -11,7 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from ai_discovery.cli import app
-from ai_discovery.cli.commands.scan import _only_to_skip
+from ai_discovery.cli.commands.scan import _only_stages
 from ai_discovery.core import hooks
 from tests.golden.test_golden import GOLDEN_REPOS, _build_repo
 
@@ -90,12 +90,9 @@ def test_quiet_human_output_has_end_panel(repo: Path) -> None:
 
 # ── flags ─────────────────────────────────────────────────────────────────
 
-def test_only_translates_to_skip_list() -> None:
-    from ai_discovery.pipeline import _SKIPPABLE_PHASES
-
-    skip = _only_to_skip("parse,domain_classify")
-    assert "6" not in skip and "7" not in skip
-    assert len(skip) == len(_SKIPPABLE_PHASES) - 2
+def test_only_takes_stage_names_and_legacy_phase_names() -> None:
+    assert _only_stages("parse,domain_classify") == ["graph", "parse"]   # phase name → stage
+    assert _only_stages("domains, embed") == ["embed", "graph"]           # alias
 
 
 @pytest.mark.parametrize("args", [["--only", "render_markdown"], ["--only", "nope"], ["--quality", "best"]])

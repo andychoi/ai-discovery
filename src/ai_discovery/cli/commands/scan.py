@@ -6,8 +6,8 @@
   when unset). The cost gate (``--yes``) arrives with M2.4.
 * Incremental: unchanged commits are reused and Tier-1 summaries are reused per
   file today; stage fingerprints take over with M1.8. ``--full`` forces a rescan.
-* ``--only``: until the stage engine (M1.8), it maps to the pipeline phases that
-  can be skipped (``_SKIPPABLE_PHASES``) — everything else always runs.
+* ``--only``: stage names (``stages/runner.py``); the other reloadable stages reuse
+  their stored output, cheap ungated stages always run.
 * After a completed scan: post-scan hooks (``core.hooks``), then an end panel
   with counts, degradations and at most two "What's next" commands.
 """
@@ -29,19 +29,18 @@ from ..output import ProgressEmitter, emit, handle_errors
 QUALITY = ("draft", "final")
 
 
-def _only_to_skip(only: str) -> list[str]:
-    """Translate ``--only a,b`` into the pipeline's skip list (pre-M1.8)."""
-    from ...pipeline import _PHASE_NAME_TO_NUM, _PHASE_SPECS, _SKIPPABLE_PHASES
+def _only_stages(only: str) -> list[str]:
+    """Validate ``--only a,b`` into canonical stage names (StageRunner, M1.8).
 
-    wanted: set[int] = set()
-    for raw in (x.strip() for x in only.split(",") if x.strip()):
-        num = _PHASE_NAME_TO_NUM.get(raw) or (int(raw) if raw.isdigit() else None)
-        if num not in _SKIPPABLE_PHASES:
-            names = ", ".join(_PHASE_SPECS[p] for p in sorted(_SKIPPABLE_PHASES))
-            raise DiscoveryError(f"--only {raw!r} is not a selectable stage", "contradictory_flags",
-                                 hint=f"choose from: {names}")
-        wanted.add(num)
-    return [str(p) for p in sorted(_SKIPPABLE_PHASES - wanted)]
+    Legacy phase names/numbers (``domain_classify``, ``6``) are accepted as aliases.
+    """
+    from ...stages.runner import normalize_only, selectable
+
+    try:
+        return sorted(normalize_only(only.split(",")))
+    except ValueError as exc:
+        raise DiscoveryError(f"--only: {exc}", "contradictory_flags",
+                             hint=f"choose from: {', '.join(selectable())}") from exc
 
 
 @contextlib.contextmanager
@@ -95,8 +94,16 @@ def _summary(layout, scan_id: Optional[int], cfg, status: str) -> dict[str, Any]
         deg.append({"kind": "no_screens", "count": 0,
                     "message": "0 screens: no supported menu format matched (screens skipped)"})
     messages = {"tier1_no_targets": "Tier 1 summarized nothing: all {n} chunks were filtered as tests/structural",
-                "tier1_failed": "{n} Tier-1 summaries failed (not stored; the next scan retries them)"}
+                "tier1_failed": "{n} Tier-1 summaries failed (not stored; the next scan retries them)",
+                "parser_error": "{n} file(s) could not be parsed",
+                "llm_truncated": "{n} LLM answer(s) hit max_tokens (treated as truncated)",
+                "flow_inference_failed": "{n} scenario flow(s) could not be inferred",
+                "self_review_failed": "{n} document review(s) failed",
+                "self_review_timeout": "{n} document review(s) timed out"}
+    seen = {d["kind"] for d in deg}
     for stage, kind, n in stage_deg:
+        if kind in seen:          # e.g. encoding_fallback is also derived from code_nodes above
+            continue
         deg.append({"kind": kind, "count": n, "stage": stage,
                     "message": messages.get(kind, f"{stage}: {kind} ({{n}})").format(n=n)})
     if out["counts"]["unresolved_edges"]:
@@ -156,7 +163,7 @@ def register(app: typer.Typer) -> None:
             cfg.budget_limit_usd = budget
         if quality is not None:
             cfg.prod = quality == "final"
-        skip = _only_to_skip(only) if only else []
+        only_stages = _only_stages(only) if only else None
 
         progress = ProgressEmitter(g)
         if g.progress == "json":
@@ -165,7 +172,7 @@ def register(app: typer.Typer) -> None:
             status = run_pipeline(
                 repo=str(layout.repo), branch=branch, project_slug=layout.slug,
                 output_dir=layout.state_dir, docs_root=layout.state_dir, config=cfg,
-                resume=resume, skip_phases=skip, rescan=full, layout=layout,
+                resume=resume, rescan=full, layout=layout, only=only_stages,
             )
         if status == "budget_exceeded":
             if g.progress == "json":

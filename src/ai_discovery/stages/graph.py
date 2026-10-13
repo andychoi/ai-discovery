@@ -6,16 +6,21 @@
 
 from __future__ import annotations
 
+import logging
+
 import json
 
 from . import domains as domains_stage
 from .context import RunContext
 
+# same logger name as before the move, so log output/filters are unchanged
+logger = logging.getLogger("ai_discovery.pipeline")
+
 
 def run(ctx: RunContext) -> None:
     from ..db import get_conn
     from ..graph.call_graph import build_call_graph
-    from ..pipeline import _timed, console, logger
+    from ..pipeline import _timed, console
 
     resolved, all_nodes, scan_id, db_path = ctx.resolved, ctx.all_nodes, ctx.scan_id, ctx.db_path
     domains_dict, domains = ctx.domains_dict, ctx.domains
@@ -143,6 +148,8 @@ def run(ctx: RunContext) -> None:
         )
     except Exception as exc:
         logger.warning("Failed to write interfaces.json: %s", exc)
+        logger.debug("interfaces.json traceback", exc_info=True)
+        ctx.degrade("graph", "interfaces_write_failed", 1, [type(exc).__name__])
 
 
 def rehydrate(ctx: RunContext) -> None:

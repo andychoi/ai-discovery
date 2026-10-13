@@ -59,3 +59,11 @@ A big-bang rewrite would change behaviour and structure at once in the hardest-t
 - The golden test is the safety net. Updating it requires a justification line in `docs/roadmap/PROGRESS.md`.
 - Lane A owns `pipeline.py` and `stages/` serially (see `docs/roadmap/README.md`). No parallel edits.
 - Registries are auto-discovered: stages, parsers, page builders and MCP tools are found via `pkgutil`, so adding one never edits a central list.
+
+## Implementation notes (M1.6–M1.8, 2026-10-12)
+- Stages live in `src/ai_discovery/stages/`; `stages/runner.py` holds the ordered `STAGES` list (explicit, not `pkgutil`-discovered: order matters and every stage needs a spec). `resolve` runs before the runner (it creates the scan row); `domains` runs inside `graph` (one phase-7 checkpoint).
+- Each `StageSpec` names its gated phases and consumed config keys. Fingerprint = sha256(version, consumed config, commit, upstream fingerprint) — a change propagates downstream.
+- Decisions: `reuse` (complete `stage_runs` row for this scan with the same fingerprint, or `--only` excludes it and output is stored) → phases suppressed, the stage's resume branch reloads; `forced` (fingerprint changed, or named by `--only`) → phases forced to run; otherwise the old phase gate decides. Reuse within the same scan only — a new scan has nothing stored.
+- `phase_checkpoints` rows keep phase numbers as aliases; `stage_runs` carries stage names.
+- Blind excepts in `stages/` keep their behaviour but log a debug traceback (`exc_info=True`, which satisfies ruff `BLE001`) and record a `degradations` row; stages log through `logging.getLogger("ai_discovery.pipeline")` so log names did not change.
+

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+
 import time
 
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
 from ..pipeline import (
-    _budget_ok, _iter_with_deadline, _llm_skipped, _with_checkpoint, console, get_conn, logger, record_phase_complete,
+    _budget_ok, _iter_with_deadline, _llm_skipped, _with_checkpoint, console, get_conn, record_phase_complete,
 )
 from .context import RunContext
+
+# same logger name as before the move, so log output/filters are unchanged
+logger = logging.getLogger("ai_discovery.pipeline")
 
 
 def run(ctx: RunContext) -> None:
@@ -33,7 +38,7 @@ def run(ctx: RunContext) -> None:
         record_phase_complete(db_path, scan_id, 17, "self_review", {"skipped": "no_rollups"})
     else:
         with _with_checkpoint(db_path, scan_id, 17, "self_review"):
-            from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed, TimeoutError as _FuturesTimeout
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeout
             from ..ai.self_review import review_document, get_review_summary, persist_claims, annotate_document
 
             console.print("[bold cyan]Self-review: verifying claims against source...[/]")
@@ -95,6 +100,7 @@ def run(ctx: RunContext) -> None:
                 executor = ThreadPoolExecutor(max_workers=min(config.max_concurrent, len(rollups)))
                 futures = {executor.submit(_review_one, r): r for r in rollups}
                 _timed_out_reviews = 0
+                _failed_reviews: list[str] = []
                 try:
                     for future, _expired in _iter_with_deadline(
                         futures, lambda f: _review_started.get(id(futures[f])), _PER_DOC_TIMEOUT,
@@ -121,6 +127,8 @@ def run(ctx: RunContext) -> None:
                                 "Self-review failed for %s/%s: %s",
                                 rollup_submitted.domain, rollup_submitted.doc_type, exc,
                             )
+                            logger.debug("self-review traceback", exc_info=True)
+                            _failed_reviews.append(f"{rollup_submitted.domain}/{rollup_submitted.doc_type}")
                             progress.update(overall, advance=1)
                             console.print(
                                 f"  [red]✗[/] [dim]{rollup_submitted.domain}[/] › [bold]{rollup_submitted.doc_type}[/]"
@@ -152,6 +160,8 @@ def run(ctx: RunContext) -> None:
                                     "Re-verification after regeneration failed for %s/%s: %s",
                                     rollup.domain, rollup.doc_type, exc,
                                 )
+                                logger.debug("re-verification traceback", exc_info=True)
+                                _failed_reviews.append(f"{rollup.domain}/{rollup.doc_type} (re-verify)")
 
                         rollup.content_md = annotate_document(rollup.content_md, claims)
                         rollup.unverified_claims = summary["unverified"] + summary["contradicted"]
@@ -206,6 +216,8 @@ def run(ctx: RunContext) -> None:
                     # stuck forever. _review_one only *reads* (claims are persisted
                     # here in the main loop), so abandoning it cannot race writes.
                     executor.shutdown(wait=not _timed_out_reviews, cancel_futures=True)
+                    ctx.degrade("review", "self_review_timeout", _timed_out_reviews)
+                    ctx.degrade("review", "self_review_failed", len(_failed_reviews), _failed_reviews[:5])
 
             console.print(
                 f"  Self-review complete — "
@@ -230,6 +242,8 @@ def run(ctx: RunContext) -> None:
                 console.print(f"  Screen specs source-verified: [green]{n_verified}[/]")
         except Exception as exc:
             logger.warning("Screen verification phase failed: %s", exc)
+            logger.debug("screen verification traceback", exc_info=True)
+            ctx.degrade("review", "screen_verification_failed", 1, [type(exc).__name__])
 
 
 execute = run
