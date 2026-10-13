@@ -110,7 +110,7 @@
 - **Out of scope:** page-level parity (M3.6).
 
 ### M1.10 `llm/` package: registry, roles, capabilities
-- **Status:** Blocked (split 2026-10-13 into M1.10.a + M1.10.b; mark Done when both are)
+- **Status:** Done (M1.10.a 51d1198 + M1.10.b f7086ce)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.10.a, M1.10.b
@@ -133,7 +133,7 @@
 - **Out of scope:** config key rename (M1.10.b); budget/cost/cache (M1.11).
 
 ### M1.10.b Config: `models.fast|standard|deep` + `quality: draft|final`
-- **Status:** In progress (rm/M1.10b-roles-quality, 2026-10-13)
+- **Status:** Done (f7086ce)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.10.a

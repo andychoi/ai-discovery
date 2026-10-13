@@ -73,7 +73,7 @@ def run(ctx: RunContext) -> None:
                 emb_model = MODELS.get(config.provider, {}).get("embedding", config.rag.ollama_model)
                 console.print(f"[dim]Warming embedding model ({emb_model})...[/]")
                 llm_client.warm_embedding("2h")
-                tier1_model = config.get_model("tier1")
+                tier1_model = config.get_model("fast")
                 console.print(f"[dim]Warming tier1 ({tier1_model})...[/]")
                 llm_client.warm("tier1", "2h")
 

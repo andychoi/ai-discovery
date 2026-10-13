@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
 from .catalog import DEFAULT_PROVIDER, MODELS
-from .providers import get_provider
+from .providers import PROVIDERS, get_provider
 
 if TYPE_CHECKING:
     from ai_discovery.config import DiscoveryConfig
@@ -114,34 +114,27 @@ DOC_TYPE_TIER: dict[str, str] = {
 
 
 def _flatten_discovery_config(cfg: "DiscoveryConfig") -> dict[str, str]:
-    """Map DiscoveryConfig fields onto the router's flat key space.
+    """Map DiscoveryConfig fields onto the flat key space.
 
-    Discovery tier → router tier (see config.py "Discovery tier mapping"):
-      tier1 → fast, tier2 → standard,
-      tier3 (active) → expert (tier3p if cfg.prod else tier3d),
-      tier3p → heavy, expert value also aliased to legacy "deep".
+    Role → router tier: fast → fast, standard → standard, deep → heavy, and the
+    router's ``expert`` (documents) = deep when ``quality: final`` else standard
+    (also aliased to legacy ``deep``). ``models.<role>`` overrides apply to the
+    active provider only.
     """
     o: dict[str, str] = {"provider": cfg.provider}
-    provider_cfgs = {
-        "bedrock": cfg.bedrock,
-        "ollama": cfg.ollama,
-        "mlx-gemma": cfg.mlx_gemma,
-        "mlx-qwen": cfg.mlx_qwen,
-        "openai": cfg.openai,
-        "gemini": cfg.gemini,
-        "anthropic": cfg.anthropic,
-        "aigw": cfg.aigw,
-        "omlx": cfg.omlx,
-        "openrouter": cfg.openrouter,
-    }
-    for name, pc in provider_cfgs.items():
+    for name in PROVIDERS:
+        pc = cfg.provider_section(name)
         suffix = f"{name}_model"
-        o[f"tier.fast.{suffix}"] = pc.tier1
-        o[f"tier.standard.{suffix}"] = pc.tier2
-        expert = pc.tier3p if cfg.prod else pc.tier3d
+        overrides = cfg.models if name == cfg.provider else None
+        fast = (overrides and overrides.fast) or pc.fast
+        standard = (overrides and overrides.standard) or pc.standard
+        deep = (overrides and overrides.deep) or pc.deep
+        expert = deep if cfg.is_final else standard
+        o[f"tier.fast.{suffix}"] = fast
+        o[f"tier.standard.{suffix}"] = standard
         o[f"tier.expert.{suffix}"] = expert
         o[f"tier.deep.{suffix}"] = expert  # legacy alias
-        o[f"tier.heavy.{suffix}"] = pc.tier3p
+        o[f"tier.heavy.{suffix}"] = deep
         if name == "bedrock":
             o["bedrock.region"] = pc.region
         else:

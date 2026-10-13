@@ -13,16 +13,21 @@ budget_limit_usd: 50.0
 # Max concurrent workers for parallel processing
 max_concurrent: 10
 
-# Production mode: use tier3p (deep) instead of tier3d (standard) for doc generation
-prod: false
+# Quality: draft = documents use the standard model (cheap); final = deep model + source verification
+quality: draft
+
+# Model per role for the active provider; empty = the provider's default (see its section)
+models:
+  fast: ""
+  standard: ""
+  deep: ""
 
 # Bedrock configuration
 bedrock:
   region: us-west-2
-  tier1: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-  tier2: us.anthropic.claude-sonnet-4-6
-  tier3d: us.anthropic.claude-sonnet-4-6
-  tier3p: us.anthropic.claude-opus-4-6
+  fast: global.anthropic.claude-haiku-5-5
+  standard: global.anthropic.claude-sonnet-5-5
+  deep: global.anthropic.claude-opus-5-5
 
 # RAG configuration
 # embedding_model: model for embedding_provider (empty = provider default)

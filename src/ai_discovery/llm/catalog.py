@@ -38,10 +38,16 @@ MODELS: dict[str, dict[str, str]] = {
     "bedrock": {
         "region":    "us-west-2",
         "embedding": "amazon.titan-embed-text-v2:0",
-        "fast":      "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        "standard":  "us.anthropic.claude-sonnet-4-6",
-        "expert":    "us.anthropic.claude-opus-4-6",
-        "heavy":     "us.anthropic.claude-opus-4-6",
+        # Claude 5.5 family on bedrock-runtime (InvokeModel + Converse) through the
+        # Global cross-region inference profile. `global.anthropic.claude-haiku-5-5`
+        # is the id in AWS's launch post ("Introducing Claude Haiku 5.5 on AWS",
+        # 2026); the Sonnet/Opus ids follow the same pattern and are UNVERIFIED —
+        # check with `discover doctor --llm`, or override bedrock.standard/deep
+        # (us./eu./au./jp. geo profiles also exist; exact ids not published there).
+        "fast":      "global.anthropic.claude-haiku-5-5",
+        "standard":  "global.anthropic.claude-sonnet-5-5",
+        "expert":    "global.anthropic.claude-opus-5-5",
+        "heavy":     "global.anthropic.claude-opus-5-5",
     },
     "ollama": {
         "url":       _default_ollama_url(),
@@ -108,10 +114,10 @@ MODELS: dict[str, dict[str, str]] = {
     # API, so no "embedding" key — pick a different rag.embedding_provider.
     "anthropic": {
         "url":      "https://api.anthropic.com",
-        "fast":     "claude-haiku-4-5",
-        "standard": "claude-sonnet-4-6",
-        "expert":   "claude-opus-4-8",
-        "heavy":    "claude-opus-4-8",
+        "fast":     "claude-haiku-5-5",
+        "standard": "claude-sonnet-5-5",
+        "expert":   "claude-opus-5-5",
+        "heavy":    "claude-opus-5-5",
     },
     # ── ai-gateway (local, :11433) — OpenAI-compatible front for OMLX ─────
     # base_url includes /v1; invoke_openai_compat appends /chat/completions.
@@ -144,13 +150,14 @@ MODELS: dict[str, dict[str, str]] = {
     # (vendor/model) — verify against https://openrouter.ai/models.
     "openrouter": {
         "url":       "https://openrouter.ai/api/v1",
-        # 1024-dim. Alternatives (set rag.embedding_model):
-        # openai/text-embedding-3-small, liquid/lfm-2.5-embedding-350m:free.
+        # 1024-dim. Alternatives (set rag.embedding_model), one id per line:
+        #   openai/text-embedding-3-small
+        #   liquid/lfm-2.5-embedding-350m:free
         "embedding": "perplexity/pplx-embed-v1-0.6b",
-        "fast":      "anthropic/claude-haiku-4.5",
-        "standard":  "anthropic/claude-sonnet-4.6",
-        "expert":    "anthropic/claude-opus-4.6",
-        "heavy":     "anthropic/claude-opus-4.6",
+        "fast":      "anthropic/claude-haiku-5.5",     # slugs checked against
+        "standard":  "anthropic/claude-sonnet-5.5",    # openrouter.ai/api/v1/models
+        "expert":    "anthropic/claude-opus-5.5",      # (2026-10-13)
+        "heavy":     "anthropic/claude-opus-5.5",
     },
     # ── ai-mlx-server (Qwen3.5 variant) ──────────────────────────────────
     # Same server (:11435), different tier → model map. Selectable as a
@@ -192,9 +199,18 @@ _LOCAL_PROVIDERS = frozenset({"ollama", "mlx-gemma", "mlx-qwen", "omlx"})
 MODEL_RATES: tuple[tuple[str, float, float], ...] = (
     # OpenRouter free variants (vendor/model:free)
     (":free",  0.0, 0.0),
-    # Anthropic Claude — matches direct aliases AND Bedrock-prefixed IDs
-    # (us.anthropic.claude-…). Opus 4.x $5/$25, Sonnet 4.6 $3/$15,
+    # Anthropic Claude — matches direct aliases, Bedrock (anthropic.… / us.anthropic.…)
+    # and OpenRouter (anthropic/claude-…-5.5) ids. 5.5 family first (first-party
+    # rates, 2026-10): Opus $4/$20, Sonnet $2/$10, Haiku $0.10/$0.50 (prompts
+    # ≤100K tokens; $0.50/$2.50 beyond — not modelled). Bedrock and OpenRouter
+    # price separately; these first-party rates are used as the estimate there. Older generations: Opus 4.x $5/$25, Sonnet 4.6 $3/$15,
     # Haiku 4.5 $1/$5.
+    ("opus-5-5",   4.0, 20.0),
+    ("opus-5.5",   4.0, 20.0),
+    ("sonnet-5-5", 2.0, 10.0),
+    ("sonnet-5.5", 2.0, 10.0),
+    ("haiku-5-5",  0.10, 0.50),
+    ("haiku-5.5",  0.10, 0.50),
     ("opus",   5.0, 25.0),
     ("sonnet", 3.0, 15.0),
     ("haiku",  1.0, 5.0),

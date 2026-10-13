@@ -28,17 +28,17 @@ def test_invoke_bedrock_tier1():
         assert result.tokens_in == 100
         assert result.tokens_out == 50
         assert result.tier == "tier1"
-        assert result.model == cfg.get_model("tier1")
+        assert result.model == cfg.get_model("fast")
 
 
 def test_invoke_ollama_tier1_passes_num_ctx():
-    """Tier1 must forward tier1_num_ctx to invoke_ollama so KV cache stays small."""
+    """Tier 1 must forward fast_num_ctx to invoke_ollama so KV cache stays small."""
     cfg = DiscoveryConfig(provider="ollama")
     client = LLMClient(cfg)
     with patch(_OLLAMA_TARGET, return_value=("text", 80, 40)) as mock_invoke:
         result = client.invoke("tier1", "prompt")
         assert result.text == "text"
-        assert mock_invoke.call_args.kwargs["num_ctx"] == cfg.ollama.tier1_num_ctx
+        assert mock_invoke.call_args.kwargs["num_ctx"] == cfg.ollama.fast_num_ctx
 
 
 def test_invoke_ollama_tier2_omits_num_ctx():
@@ -56,7 +56,7 @@ def test_invoke_openai_routes_through_router():
     with patch(_OPENAI_TARGET, return_value=("oai text", 60, 30)) as mock_invoke:
         result = client.invoke("tier2", "prompt")
         assert result.text == "oai text"
-        assert result.model == cfg.get_model("tier2")
+        assert result.model == cfg.get_model("standard")
         assert mock_invoke.call_args.kwargs["max_tokens_field"] == "max_completion_tokens"
 
 
@@ -66,7 +66,7 @@ def test_invoke_anthropic_routes_through_router():
     with patch(_ANTHROPIC_TARGET, return_value=("claude text", 70, 35)):
         result = client.invoke("tier3", "prompt")
         assert result.text == "claude text"
-        assert result.model == cfg.get_model("tier3")  # expert tier (prod flag aware)
+        assert result.model == cfg.get_model("deep")  # documents: deep role (quality aware)
 
 
 def test_invoke_uses_config_api_key_over_env(monkeypatch):
@@ -101,12 +101,20 @@ def test_total_cost():
 
 
 def test_cost_rates_per_model_bedrock_haiku():
-    """tier1 on Bedrock runs Haiku 4.5 — $1/1M in, $5/1M out."""
+    """tier1 on Bedrock runs Haiku 5.5 — estimated at first-party $0.10/1M in, $0.50/1M out."""
     cfg = DiscoveryConfig(provider="bedrock")
     client = LLMClient(cfg)
     with patch(_BEDROCK_TARGET, return_value=("text", 1_000_000, 500_000)):
         client.invoke("tier1", "p")
-    assert client.total_cost_usd() == pytest.approx(1.0 * 1.0 + 0.5 * 5.0)
+    assert client.total_cost_usd() == pytest.approx(1.0 * 0.10 + 0.5 * 0.50)
+
+
+def test_cost_rates_older_haiku_keeps_its_price():
+    from ai_discovery.llm.catalog import rates_for_model
+
+    assert rates_for_model("us.anthropic.claude-haiku-4-5-20251001-v1:0") == (1.0, 5.0)
+    assert rates_for_model("claude-opus-5-5") == (4.0, 20.0)
+    assert rates_for_model("anthropic/claude-sonnet-5.5") == (2.0, 10.0)
 
 
 def test_cost_rates_per_model_openai_mini():
@@ -166,7 +174,7 @@ def test_simulated_advisor_works_on_any_provider():
             "tier2", "analyze the architecture trade-off here", 512)
     assert result.text == "answer"
     # First call: advisor pre-call (256 tokens, expert model); then executor
-    assert calls[0] == (cfg.get_model("tier3"), 256)
+    assert calls[0] == (cfg.get_model("deep"), 256)
     assert calls[1][1] == 512
     assert "advisor" in client.get_costs()
 

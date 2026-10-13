@@ -400,7 +400,7 @@ def view(
 def test_llm(
     provider: Optional[str] = typer.Option(None, "--provider", help="Override LLM provider (bedrock|ollama|mlx-gemma|mlx-qwen)."),
     config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to YAML config file."),
-    tier: str = typer.Option("tier1", "--tier", help="Which generation tier to probe (tier1|tier2|tier3d|tier3p)."),
+    tier: str = typer.Option("tier1", "--tier", help="Which generation tier to probe (tier1|tier2|tier3; tier3 follows quality)."),
     skip_gen: bool = typer.Option(False, "--skip-gen", help="Skip text-generation probe."),
     skip_embedding: bool = typer.Option(False, "--skip-embedding", help="Skip embedding probe."),
 ) -> None:
@@ -430,7 +430,8 @@ def test_llm(
     failures = 0
 
     if not skip_gen:
-        model = cfg.get_model(tier)
+        from ai_discovery.llm import role_for_tier
+        model = cfg.get_model(role_for_tier(tier))
         console.print(f"\n[bold]Generation[/] tier={tier} model={model}")
         t0 = time.monotonic()
         try:

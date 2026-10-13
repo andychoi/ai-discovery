@@ -162,7 +162,7 @@ def register(app: typer.Typer) -> None:
         if budget is not None:
             cfg.budget_limit_usd = budget
         if quality is not None:
-            cfg.prod = quality == "final"
+            cfg.quality = quality
         only_stages = _only_stages(only) if only else None
 
         progress = ProgressEmitter(g)

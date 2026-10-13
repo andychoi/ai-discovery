@@ -37,7 +37,7 @@ def run(ctx: RunContext) -> None:
             console.print("[bold cyan]Tier 1: Summarizing code chunks...[/]")
             # A-2 incremental re-scan: copy summaries from the latest prior
             # scan for unchanged files; the resume guard below then skips them.
-            n_reused = reuse_prior_summaries(db_path, scan_id, model=config.get_model("tier1"))
+            n_reused = reuse_prior_summaries(db_path, scan_id, model=config.get_model("fast"))
             if n_reused:
                 console.print(
                     f"  Reused [green]{n_reused}[/] summaries from prior scan (unchanged files)"

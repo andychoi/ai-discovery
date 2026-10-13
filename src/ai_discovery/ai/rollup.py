@@ -728,7 +728,7 @@ def generate_all_docs(
             f"All {len(tasks)} Tier-3 doc rollups failed (0 succeeded). "
             f"First error: {detail}. Common cause: the tier3 model id is not "
             "enabled in this Bedrock account/region — check the scan log for "
-            "'model identifier is invalid' and set bedrock.tier3p/tier3d in "
+            "'model identifier is invalid' and set bedrock.deep (quality: final) / bedrock.standard (draft) in "
             "discovery.yaml to a model you can invoke."
         ) from last_exc
 

@@ -6,7 +6,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 
 log = logging.getLogger(__name__)
@@ -33,18 +33,21 @@ _OR = MODELS.get("openrouter", {})
 
 # ── Provider configs ─────────────────────────────────────────────────────────
 
-_VALID_TIERS = frozenset({"tier1", "tier2", "tier3", "screen"})
-
-# Discovery tier mapping:  tier1→fast, tier2→standard, tier3d→fast (dev), tier3p→deep (prod)
+# Model roles (M1.10.b): every provider section names a model per role —
+#   fast     → Tier-1 summaries, self-review
+#   standard → flows, screens, onboarding; also rollups when quality: draft
+#   deep     → rollups when quality: final
+# (replaces tier1 / tier2 / tier3d / tier3p; tier3d defaulted to the standard model)
+ROLES = ("fast", "standard", "deep")
+_VALID_ROLES = frozenset({*ROLES, "screen"})   # screen = standard
 
 
 @dataclass
 class BedrockConfig:
     region: str = _B["region"]
-    tier1: str = _B["fast"]
-    tier2: str = _B["standard"]
-    tier3d: str = _B["standard"]   # dev: use standard model for doc generation
-    tier3p: str = _B["deep"]       # prod: use deep model for doc generation
+    fast: str = _B["fast"]
+    standard: str = _B["standard"]
+    deep: str = _B["deep"]       # quality: final document generation
 
 
 @dataclass
@@ -52,11 +55,10 @@ class MLXGemmaConfig:
     """ai-mlx-server (:11435) gemma4 variant — Apple Silicon MLX runtime."""
     base_url: str = _MG.get("url", "http://localhost:11435")
     api_key: str = ""
-    tier1: str = _MG.get("fast", "mlx-community/gemma-4-e2b-it-4bit")
-    tier2: str = _MG.get("expert", "mlx-community/gemma-4-26b-a4b-it-4bit")
-    tier3d: str = _MG.get("expert", "mlx-community/gemma-4-26b-a4b-it-4bit")
-    tier3p: str = _MG.get("heavy", "mlx-community/gemma-4-31b-it-4bit")
-    tier1_num_ctx: int = 4096
+    fast: str = _MG.get("fast", "mlx-community/gemma-4-e2b-it-4bit")
+    standard: str = _MG.get("expert", "mlx-community/gemma-4-26b-a4b-it-4bit")
+    deep: str = _MG.get("heavy", "mlx-community/gemma-4-31b-it-4bit")
+    fast_num_ctx: int = 4096
 
 
 @dataclass
@@ -64,33 +66,31 @@ class MLXQwenConfig:
     """ai-mlx-server Qwen3.5 variant — same server, different model tags."""
     base_url: str = _MQ.get("url", "http://localhost:11435")
     api_key: str = ""
-    tier1: str = _MQ.get("fast", "mlx-community/Qwen3.5-2B-4bit")
-    tier2: str = _MQ.get("standard", "mlx-community/Qwen3.5-4B-MLX-4bit")
-    tier3d: str = _MQ.get("expert", "mlx-community/Qwen3.5-9B-MLX-4bit")
-    tier3p: str = _MQ.get("heavy", "mlx-community/Qwen3.5-27B-4bit")
-    tier1_num_ctx: int = 4096
+    fast: str = _MQ.get("fast", "mlx-community/Qwen3.5-2B-4bit")
+    standard: str = _MQ.get("standard", "mlx-community/Qwen3.5-4B-MLX-4bit")
+    deep: str = _MQ.get("heavy", "mlx-community/Qwen3.5-27B-4bit")
+    fast_num_ctx: int = 4096
 
 
 @dataclass
 class OllamaConfig:
     base_url: str = _O["url"]
-    # Tier1 follows the shared "fast" default (gemma4:e2b). Discovery runs
-    # tier1 concurrently over every code chunk so latency and heat dominate;
+    # The fast role follows the shared "fast" default (gemma4:e2b). Discovery runs
+    # Tier 1 concurrently over every code chunk so latency and heat dominate;
     # 2B effective is sufficient for structured JSON extraction.
-    tier1: str = _O["fast"]
-    # Tier2/3 are pinned to literal model IDs (not shared defaults) because
+    fast: str = _O["fast"]
+    # standard/deep are pinned to literal model IDs (not shared defaults) because
     # Discovery's flow analysis and doc generation are heavier workloads
     # than DocHub's chat — they should not shrink when the shared "standard"
     # tier is lightened for interactive use. Override in discovery.yaml if
     # you want to share DocHub's lighter tiers.
-    tier2: str = "gemma4:26b"   # flow analysis: cross-chunk reasoning
-    tier3d: str = "gemma4:26b"  # dev doc generation: same as tier2
-    tier3p: str = "gemma4:31b"  # prod doc generation: highest quality
-    # Cap tier1's Ollama context window. Gemma/Qwen default to 32K tokens
+    standard: str = "gemma4:26b"   # flow analysis + draft docs: cross-chunk reasoning
+    deep: str = "gemma4:31b"      # final-quality doc generation
+    # Cap the fast role's Ollama context window. Gemma/Qwen default to 32K tokens
     # which pre-allocates ~11GB of KV cache on GPU even for ~2K-token chunks.
     # 4096 comfortably fits a 6000-char chunk + RAG context + 1024 output.
     # Set to 0 to use the model's default context window.
-    tier1_num_ctx: int = 4096
+    fast_num_ctx: int = 4096
 
 
 # ── Cloud API providers (OpenAI-compatible + Anthropic direct) ───────────────
@@ -101,10 +101,9 @@ class OpenAIConfig:
     """OpenAI (api.openai.com). Auth via api_key or OPENAI_API_KEY env."""
     base_url: str = _OAI.get("url", "https://api.openai.com/v1")
     api_key: str = ""
-    tier1: str = _OAI.get("fast", "gpt-5-nano")
-    tier2: str = _OAI.get("standard", "gpt-5-mini")
-    tier3d: str = _OAI.get("standard", "gpt-5-mini")
-    tier3p: str = _OAI.get("expert", "gpt-5.1")
+    fast: str = _OAI.get("fast", "gpt-5-nano")
+    standard: str = _OAI.get("standard", "gpt-5-mini")
+    deep: str = _OAI.get("expert", "gpt-5.1")
 
 
 @dataclass
@@ -114,10 +113,9 @@ class GeminiConfig:
     base_url: str = _GEM.get(
         "url", "https://generativelanguage.googleapis.com/v1beta/openai")
     api_key: str = ""
-    tier1: str = _GEM.get("fast", "gemini-2.5-flash-lite")
-    tier2: str = _GEM.get("standard", "gemini-3.5-flash")
-    tier3d: str = _GEM.get("standard", "gemini-3.5-flash")
-    tier3p: str = _GEM.get("expert", "gemini-2.5-pro")
+    fast: str = _GEM.get("fast", "gemini-2.5-flash-lite")
+    standard: str = _GEM.get("standard", "gemini-3.5-flash")
+    deep: str = _GEM.get("expert", "gemini-2.5-pro")
 
 
 @dataclass
@@ -127,10 +125,9 @@ class AnthropicConfig:
     No embedding models — Anthropic has no embeddings API."""
     base_url: str = _ANT.get("url", "https://api.anthropic.com")
     api_key: str = ""
-    tier1: str = _ANT.get("fast", "claude-haiku-4-5")
-    tier2: str = _ANT.get("standard", "claude-sonnet-4-6")
-    tier3d: str = _ANT.get("standard", "claude-sonnet-4-6")
-    tier3p: str = _ANT.get("expert", "claude-opus-4-8")
+    fast: str = _ANT.get("fast", "claude-haiku-5-5")
+    standard: str = _ANT.get("standard", "claude-sonnet-5-5")
+    deep: str = _ANT.get("expert", "claude-opus-5-5")
 
 
 @dataclass
@@ -139,10 +136,9 @@ class AIGWConfig:
     Model IDs are gateway aliases. Auth via api_key or AIGW_API_KEY env."""
     base_url: str = _GW.get("url", "http://localhost:11433/v1")
     api_key: str = ""
-    tier1: str = _GW.get("fast", "claude-haiku")
-    tier2: str = _GW.get("standard", "claude-sonnet")
-    tier3d: str = _GW.get("standard", "claude-sonnet")
-    tier3p: str = _GW.get("expert", "claude-opus")
+    fast: str = _GW.get("fast", "claude-haiku")
+    standard: str = _GW.get("standard", "claude-sonnet")
+    deep: str = _GW.get("expert", "claude-opus")
 
 
 @dataclass
@@ -150,10 +146,9 @@ class OMLXConfig:
     """Local OMLX host (:11434, OpenAI-compatible). Auth via api_key or OMLX_API_KEY env."""
     base_url: str = _OMLX.get("url", "http://localhost:11434/v1")
     api_key: str = ""
-    tier1: str = _OMLX.get("fast", "Qwen3.5-9B-MTPLX-Optimized-Speed")
-    tier2: str = _OMLX.get("standard", "Qwen3.5-9B-MTPLX-Optimized-Speed")
-    tier3d: str = _OMLX.get("standard", "Qwen3.5-9B-MTPLX-Optimized-Speed")
-    tier3p: str = _OMLX.get("expert", "Qwen3.5-9B-MTPLX-Optimized-Speed")
+    fast: str = _OMLX.get("fast", "Qwen3.5-9B-MTPLX-Optimized-Speed")
+    standard: str = _OMLX.get("standard", "Qwen3.5-9B-MTPLX-Optimized-Speed")
+    deep: str = _OMLX.get("expert", "Qwen3.5-9B-MTPLX-Optimized-Speed")
 
 
 @dataclass
@@ -161,10 +156,9 @@ class OpenRouterConfig:
     """OpenRouter (OpenAI-compatible). Auth via api_key or OPENROUTER_API_KEY env."""
     base_url: str = _OR.get("url", "https://openrouter.ai/api/v1")
     api_key: str = ""
-    tier1: str = _OR.get("fast", "anthropic/claude-haiku-4.5")
-    tier2: str = _OR.get("standard", "anthropic/claude-sonnet-4.6")
-    tier3d: str = _OR.get("standard", "anthropic/claude-sonnet-4.6")
-    tier3p: str = _OR.get("expert", "anthropic/claude-opus-4.6")
+    fast: str = _OR.get("fast", "anthropic/claude-haiku-5.5")
+    standard: str = _OR.get("standard", "anthropic/claude-sonnet-5.5")
+    deep: str = _OR.get("expert", "anthropic/claude-opus-5.5")
 
 
 # ── Store config ─────────────────────────────────────────────────────────────
@@ -232,6 +226,17 @@ class AdvisorConfig:
     tier3_executor_override: str = ""  # e.g. "claude-sonnet-4-6" to reduce tier3 cost on native path
 
 
+# ── Model role overrides ─────────────────────────────────────────────────────
+
+
+@dataclass
+class ModelsConfig:
+    """Role → model id for the *active* provider; "" keeps that provider's default."""
+    fast: str = ""
+    standard: str = ""
+    deep: str = ""
+
+
 # ── Top-level config ─────────────────────────────────────────────────────────
 
 
@@ -240,7 +245,11 @@ class DiscoveryConfig:
     provider: str = DEFAULT_PROVIDER
     budget_limit_usd: float = 50.0
     max_concurrent: int = 10
-    prod: bool = False  # True → use tier3p for doc generation; False → tier3d
+    # draft: rollups use the standard model, no verification passes (cheap);
+    # final: rollups use the deep model + source verification of flows/screens.
+    # Replaces `prod:` / `--prod` (M1.10.b).
+    quality: Literal["draft", "final"] = "draft"
+    models: ModelsConfig = field(default_factory=ModelsConfig)
     # M2.2 spend mode recorded by `discover init`: False = structure only (no
     # LLM calls, no key); True = add LLM prose. `scan --prose/--no-prose` overrides.
     prose: bool = False
@@ -271,35 +280,25 @@ class DiscoveryConfig:
 
     # ── helpers ───────────────────────────────────────────────────────────
 
-    def get_model(self, tier: str) -> str:
-        """Return the model ID for *tier* (tier1 | tier2 | tier3 | screen) from the
-        active provider. For tier3, selects tier3p (prod) or tier3d (dev).
-        Screen tier maps to tier2 (Sonnet equivalent) for cost-effective spec generation."""
-        if tier not in _VALID_TIERS:
-            raise ValueError(f"Invalid tier '{tier}', must be one of {_VALID_TIERS}")
-        # Screen tier uses tier2 model (Sonnet: cost-effective prose generation)
-        if tier == "screen":
-            tier = "tier2"
-        key = ("tier3p" if self.prod else "tier3d") if tier == "tier3" else tier
-        if self.provider == "bedrock":
-            return getattr(self.bedrock, key)
-        if self.provider == "mlx-gemma":
-            return getattr(self.mlx_gemma, key)
-        if self.provider == "mlx-qwen":
-            return getattr(self.mlx_qwen, key)
-        if self.provider == "openai":
-            return getattr(self.openai, key)
-        if self.provider == "gemini":
-            return getattr(self.gemini, key)
-        if self.provider == "anthropic":
-            return getattr(self.anthropic, key)
-        if self.provider == "aigw":
-            return getattr(self.aigw, key)
-        if self.provider == "omlx":
-            return getattr(self.omlx, key)
-        if self.provider == "openrouter":
-            return getattr(self.openrouter, key)
-        return getattr(self.ollama, key)
+    @property
+    def is_final(self) -> bool:
+        return self.quality == "final"
+
+    def provider_section(self, provider: Optional[str] = None):
+        """The config section for *provider* (default: the active one)."""
+        return getattr(self, (provider or self.provider).replace("-", "_"))
+
+    def get_model(self, role: str) -> str:
+        """Model id for *role* (fast | standard | deep | screen) on the active provider.
+
+        ``models.<role>`` overrides the provider section. ``deep`` resolves to
+        the standard model unless ``quality: final``; ``screen`` is standard.
+        """
+        if role not in _VALID_ROLES:
+            raise ValueError(f"Invalid model role '{role}', must be one of {sorted(_VALID_ROLES)}")
+        if role == "screen" or (role == "deep" and not self.is_final):
+            role = "standard"
+        return getattr(self.models, role) or getattr(self.provider_section(), role)
 
     def get_endpoint(self) -> tuple[str, str]:
         """Return (base_url, api_key) for the active HTTP-endpoint provider.
@@ -413,29 +412,31 @@ def _apply_env_overrides(cfg: "DiscoveryConfig", yaml_has_bedrock: bool) -> "Dis
         env_fast = os.environ.get("LLM_FAST_BEDROCK_MODEL")
         env_std = os.environ.get("LLM_STANDARD_BEDROCK_MODEL")
         if env_fast:
-            cfg.bedrock.tier1 = env_fast
+            cfg.bedrock.fast = env_fast
         if env_std:
-            cfg.bedrock.tier2 = env_std
+            cfg.bedrock.standard = env_std
 
-    # tier3d / tier3p env-var overrides (always applied)
-    env_tier3d = os.environ.get("DISCOVERY_TIER3D_MODEL")
-    env_tier3p = os.environ.get("DISCOVERY_TIER3P_MODEL")
-    if env_tier3d:
-        cfg.bedrock.tier3d = env_tier3d
-    if env_tier3p:
-        cfg.bedrock.tier3p = env_tier3p
+    # Deep-role env override (always applied). DISCOVERY_TIER3D_MODEL /
+    # DISCOVERY_TIER3P_MODEL were removed with tier3d/tier3p (M1.10.b).
+    env_deep = os.environ.get("DISCOVERY_DEEP_MODEL")
+    if env_deep:
+        cfg.bedrock.deep = env_deep
+    for old in ("DISCOVERY_TIER3D_MODEL", "DISCOVERY_TIER3P_MODEL"):
+        if os.environ.get(old):
+            log.warning("%s is no longer read — use DISCOVERY_DEEP_MODEL (deep role, quality: final) "
+                        "or models.standard for draft documents", old)
 
     # Provider-agnostic overrides for the *active* provider (applied after the
     # provider-specific vars above, so they win). DISCOVERY_LLM_MODEL pins one
-    # model for every tier.
+    # model for every role.
     active = getattr(cfg, cfg.provider.replace("-", "_"), None)
     env_llm_key = os.environ.get("DISCOVERY_LLM_API_KEY")
     if env_llm_key and active is not None and hasattr(active, "api_key"):
         active.api_key = env_llm_key
     env_llm_model = os.environ.get("DISCOVERY_LLM_MODEL")
     if env_llm_model and active is not None:
-        for tier in ("tier1", "tier2", "tier3d", "tier3p"):
-            setattr(active, tier, env_llm_model)
+        for role in ROLES:
+            setattr(active, role, env_llm_model)
 
     # RAG embedding overrides
     env_embed_provider = os.environ.get("DISCOVERY_EMBEDDING_PROVIDER")

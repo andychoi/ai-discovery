@@ -111,7 +111,7 @@ def test_prose_and_budget_and_quality_reach_pipeline(repo: Path) -> None:
     with patch("ai_discovery.pipeline.run_pipeline", side_effect=fake):
         assert _scan(repo, "--prose", "--budget", "4", "--quality", "final", "--full").exit_code == 0
     cfg = seen["cfg"]
-    assert (cfg.no_llm, cfg.budget_limit_usd, cfg.prod, seen["rescan"]) == (False, 4.0, True, True)
+    assert (cfg.no_llm, cfg.budget_limit_usd, cfg.quality, seen["rescan"]) == (False, 4.0, "final", True)
     assert seen["layout"].state_dir == repo.resolve() / ".discovery"
 
 

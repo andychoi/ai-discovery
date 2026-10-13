@@ -103,7 +103,7 @@ def run(ctx: RunContext) -> None:
 
     # Free tier3 (~20 GB) so self-review (tier1) has headroom.
     if config.provider == "ollama" and not getattr(config, "no_llm", False):
-        console.print(f"[dim]Unloading tier3 ({config.get_model('tier3')})...[/]")
+        console.print(f"[dim]Unloading tier3 ({config.get_model('deep')})...[/]")
         llm_client.unload("tier3")
 
     # Checkpoint: LLM tiers done — resume can skip here on rerun

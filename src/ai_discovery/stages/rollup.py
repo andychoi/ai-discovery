@@ -41,7 +41,7 @@ def run(ctx: RunContext) -> None:
     else:
         with _with_checkpoint(db_path, scan_id, 14, "tier3_doc_rollup"):
             if config.provider == "ollama":
-                tier3_model = config.get_model("tier3")
+                tier3_model = config.get_model("deep")
                 console.print(f"[dim]Warming tier3 ({tier3_model})...[/]")
                 llm_client.warm("tier3", "1h")
 

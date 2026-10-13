@@ -63,21 +63,24 @@ def test_env_overrides_defaults(monkeypatch):
     assert s.provider == "bedrock" and s.model("fast") == "env-fast-model"
 
 
-def test_config_maps_discovery_tiers_to_router_tiers():
+def test_config_maps_roles_to_router_tiers():
     cfg = _cfg()
-    cfg.bedrock.tier1, cfg.bedrock.tier2 = "dc-haiku", "dc-sonnet"
-    cfg.bedrock.tier3d, cfg.bedrock.tier3p = "dc-sonnet-dev", "dc-opus-prod"
+    cfg.bedrock.fast, cfg.bedrock.standard, cfg.bedrock.deep = "dc-haiku", "dc-sonnet", "dc-opus"
     s = settings_from_config(cfg)
     assert (s.model("fast"), s.model("standard")) == ("dc-haiku", "dc-sonnet")
-    assert s.model("expert") == "dc-sonnet-dev"      # dev: expert = tier3d
-    assert s.model("heavy") == "dc-opus-prod"        # heavy always tier3p
+    assert s.model("expert") == "dc-sonnet"         # draft: documents use the standard model
+    assert s.model("heavy") == "dc-opus"            # heavy is always the deep role
 
 
-def test_prod_flag_switches_expert_tier():
+def test_final_quality_switches_documents_to_deep_and_models_override_active_provider():
     cfg = _cfg()
-    cfg.prod = True
-    cfg.bedrock.tier3d, cfg.bedrock.tier3p = "dc-dev", "dc-prod"
-    assert settings_from_config(cfg).model("expert") == "dc-prod"
+    cfg.quality = "final"
+    cfg.bedrock.deep = "dc-opus"
+    assert settings_from_config(cfg).model("expert") == "dc-opus"
+    cfg.models.deep = "override-opus"
+    s = settings_from_config(cfg)
+    assert s.model("expert") == "override-opus" and s.model("heavy") == "override-opus"
+    assert s.model("expert", "openai") != "override-opus"      # other providers keep their own
 
 
 def test_config_overrides_env(monkeypatch):

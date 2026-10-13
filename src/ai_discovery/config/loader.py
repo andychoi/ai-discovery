@@ -21,7 +21,7 @@ from pydantic import ConfigDict, TypeAdapter, ValidationError
 from ..core.paths import STATE_DIRNAME, find_project
 from . import (
     AdvisorConfig, AIGWConfig, AnthropicConfig, BedrockConfig, DiscoveryConfig, GeminiConfig,
-    MLXGemmaConfig, MLXQwenConfig, OllamaConfig, OMLXConfig, OpenAIConfig, OpenRouterConfig,
+    MLXGemmaConfig, MLXQwenConfig, ModelsConfig, OllamaConfig, OMLXConfig, OpenAIConfig, OpenRouterConfig,
     ProcessMiningConfig,
     RagConfig, StoreConfig, _apply_env_overrides,
 )
@@ -35,12 +35,21 @@ REMOVED_KEYS: dict[str, str] = {
     "process_mining.fitness_threshold": "pm4py was removed (13e3010); delete this key",
     "process_mining.precision_threshold": "pm4py was removed (13e3010); delete this key",
     "process_mining.generalization_threshold": "pm4py was removed (13e3010); delete this key",
+    "prod": "replaced by `quality: final` (M1.10.b; `quality: draft` is the old prod: false)",
+}
+# M1.10.b: tier keys inside any provider section → role keys.
+RENAMED_SECTION_KEYS: dict[str, str] = {
+    "tier1": "use `fast` (or top-level `models.fast`)",
+    "tier2": "use `standard` (or top-level `models.standard`)",
+    "tier3p": "use `deep` (used when `quality: final`)",
+    "tier3d": "removed — draft documents use the `standard` model; delete this key",
+    "tier1_num_ctx": "use `fast_num_ctx`",
 }
 
 _SECTIONS = (
     BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig, OpenAIConfig,
     GeminiConfig, AnthropicConfig, AIGWConfig, OMLXConfig, OpenRouterConfig, RagConfig, ProcessMiningConfig, AdvisorConfig,
-    StoreConfig, DiscoveryConfig,
+    StoreConfig, ModelsConfig, DiscoveryConfig,
 )
 for _cls in _SECTIONS:
     # Strict validation for stdlib dataclasses (pydantic honours this attribute).
@@ -110,6 +119,9 @@ def _explain(exc: ValidationError, sources: list[str]) -> str:
         if err["type"] in ("extra_forbidden", "unexpected_keyword_argument"):
             if dotted in REMOVED_KEYS:
                 lines.append(f"  - {dotted}: {REMOVED_KEYS[dotted]}")
+                continue
+            if len(loc) == 2 and loc[-1] in RENAMED_SECTION_KEYS:
+                lines.append(f"  - {dotted}: {RENAMED_SECTION_KEYS[loc[-1]]}")
                 continue
             hint = difflib.get_close_matches(loc[-1], _known_keys(loc[:-1]), n=1)
             lines.append(f"  - unknown key '{dotted}'" + (f" — did you mean '{hint[0]}'?" if hint else ""))

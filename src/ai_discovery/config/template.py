@@ -34,8 +34,11 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
         ("# Max concurrent workers for parallel processing", None),
         ("max_concurrent", 10),
         ("", None),
-        ("# Production mode: use tier3p (deep) instead of tier3d (standard) for doc generation", None),
-        ("prod", False),
+        ("# Quality: draft = documents use the standard model (cheap); final = deep model + source verification", None),
+        ("quality", "draft"),
+        ("", None),
+        ("# Model per role for the active provider; empty = the provider's default (see its section)", None),
+        ("models", {"fast": "", "standard": "", "deep": ""}),
     ]
 
     # Provider-specific sections
@@ -44,8 +47,8 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
         template.extend([
             ("", None),
             ("# Bedrock configuration", None),
-            ("bedrock", {"region": bedrock.region, "tier1": bedrock.tier1,
-                         "tier2": bedrock.tier2, "tier3d": bedrock.tier3d, "tier3p": bedrock.tier3p}),
+            ("bedrock", {"region": bedrock.region, "fast": bedrock.fast,
+                         "standard": bedrock.standard, "deep": bedrock.deep}),
         ])
     elif provider == "mlx-gemma":
         mlx = MLXGemmaConfig()
@@ -53,8 +56,7 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
             ("", None),
             ("# MLX Gemma configuration", None),
             ("mlx_gemma", {"base_url": mlx.base_url, "api_key": mlx.api_key,
-                           "tier1": mlx.tier1, "tier2": mlx.tier2, "tier3d": mlx.tier3d,
-                           "tier3p": mlx.tier3p, "tier1_num_ctx": mlx.tier1_num_ctx}),
+                           "fast": mlx.fast, "standard": mlx.standard, "deep": mlx.deep, "fast_num_ctx": mlx.fast_num_ctx}),
         ])
     elif provider == "mlx-qwen":
         mlx = MLXQwenConfig()
@@ -62,24 +64,23 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
             ("", None),
             ("# MLX Qwen configuration", None),
             ("mlx_qwen", {"base_url": mlx.base_url, "api_key": mlx.api_key,
-                          "tier1": mlx.tier1, "tier2": mlx.tier2, "tier3d": mlx.tier3d,
-                          "tier3p": mlx.tier3p, "tier1_num_ctx": mlx.tier1_num_ctx}),
+                          "fast": mlx.fast, "standard": mlx.standard, "deep": mlx.deep, "fast_num_ctx": mlx.fast_num_ctx}),
         ])
     elif provider == "openai":
         oai = OpenAIConfig()
         template.extend([
             ("", None),
             ("# OpenAI configuration — set OPENAI_API_KEY in the environment (not here)", None),
-            ("openai", {"base_url": oai.base_url, "tier1": oai.tier1,
-                        "tier2": oai.tier2, "tier3d": oai.tier3d, "tier3p": oai.tier3p}),
+            ("openai", {"base_url": oai.base_url, "fast": oai.fast,
+                        "standard": oai.standard, "deep": oai.deep}),
         ])
     elif provider == "gemini":
         gem = GeminiConfig()
         template.extend([
             ("", None),
             ("# Gemini (OpenAI-compatible endpoint) — set GEMINI_API_KEY in the environment", None),
-            ("gemini", {"base_url": gem.base_url, "tier1": gem.tier1,
-                        "tier2": gem.tier2, "tier3d": gem.tier3d, "tier3p": gem.tier3p}),
+            ("gemini", {"base_url": gem.base_url, "fast": gem.fast,
+                        "standard": gem.standard, "deep": gem.deep}),
         ])
     elif provider == "anthropic":
         ant = AnthropicConfig()
@@ -89,8 +90,8 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
             ("# Requires the optional SDK: pip install anthropic", None),
             ("# Note: Anthropic has no embedding API — keep rag.embedding_provider on", None),
             ("# bedrock/ollama/openai/gemini.", None),
-            ("anthropic", {"base_url": ant.base_url, "tier1": ant.tier1,
-                           "tier2": ant.tier2, "tier3d": ant.tier3d, "tier3p": ant.tier3p}),
+            ("anthropic", {"base_url": ant.base_url, "fast": ant.fast,
+                           "standard": ant.standard, "deep": ant.deep}),
         ])
     elif provider == "aigw":
         gw = AIGWConfig()
@@ -98,33 +99,33 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
             ("", None),
             ("# Local ai-gateway (OpenAI-compatible, fronts OMLX) — set AIGW_API_KEY in the", None),
             ("# environment. Models are gateway aliases; the key must allowlist each one.", None),
-            ("aigw", {"base_url": gw.base_url, "tier1": gw.tier1,
-                      "tier2": gw.tier2, "tier3d": gw.tier3d, "tier3p": gw.tier3p}),
+            ("aigw", {"base_url": gw.base_url, "fast": gw.fast,
+                      "standard": gw.standard, "deep": gw.deep}),
         ])
     elif provider == "omlx":
         omlx = OMLXConfig()
         template.extend([
             ("", None),
             ("# Local OMLX host (OpenAI-compatible) — set OMLX_API_KEY in the environment", None),
-            ("omlx", {"base_url": omlx.base_url, "tier1": omlx.tier1,
-                      "tier2": omlx.tier2, "tier3d": omlx.tier3d, "tier3p": omlx.tier3p}),
+            ("omlx", {"base_url": omlx.base_url, "fast": omlx.fast,
+                      "standard": omlx.standard, "deep": omlx.deep}),
         ])
     elif provider == "openrouter":
         orc = OpenRouterConfig()
         template.extend([
             ("", None),
             ("# OpenRouter (OpenAI-compatible) — set OPENROUTER_API_KEY in the environment", None),
-            ("openrouter", {"base_url": orc.base_url, "tier1": orc.tier1,
-                            "tier2": orc.tier2, "tier3d": orc.tier3d, "tier3p": orc.tier3p}),
+            ("openrouter", {"base_url": orc.base_url, "fast": orc.fast,
+                            "standard": orc.standard, "deep": orc.deep}),
         ])
     else:  # ollama
         ollama = OllamaConfig()
         template.extend([
             ("", None),
             ("# Ollama configuration", None),
-            ("ollama", {"base_url": ollama.base_url, "tier1": ollama.tier1,
-                        "tier2": ollama.tier2, "tier3d": ollama.tier3d, "tier3p": ollama.tier3p,
-                        "tier1_num_ctx": ollama.tier1_num_ctx}),
+            ("ollama", {"base_url": ollama.base_url, "fast": ollama.fast,
+                        "standard": ollama.standard, "deep": ollama.deep,
+                        "fast_num_ctx": ollama.fast_num_ctx}),
         ])
 
     # RAG config

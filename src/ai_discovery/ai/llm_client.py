@@ -33,8 +33,8 @@ from ai_discovery.llm.transport import (
 from ai_discovery.shared.json_extract import extract_json_object
 
 # Discovery tier → role → router tier (llm.TIER_ROLE / ROLE_ROUTER_TIER). The
-# settings flattening encodes the same prod-flag logic as DiscoveryConfig.get_model
-# (expert ≡ tier3p if prod else tier3d), so model resolution is identical on both paths.
+# settings flattening encodes the same quality logic as DiscoveryConfig.get_model
+# (expert ≡ the deep model when quality: final, else standard), so model resolution is identical on both paths.
 _ROUTER_TIER = {tier: _llm.ROLE_ROUTER_TIER[role] for tier, role in _llm.TIER_ROLE.items()}
 
 
@@ -127,18 +127,18 @@ class LLMClient:
         adjusted after the client is created, e.g. by the CLI)."""
         return _llm.settings_from_config(self._config)
 
-    def _tier1_num_ctx(self, tier: str) -> int | None:
+    def _fast_num_ctx(self, tier: str) -> int | None:
         """Tier1 summarizes many small chunks — cap context window to avoid
         pre-allocating a 32K KV cache per call. Returns None for other tiers."""
         if tier != "tier1":
             return None
         p = self._config.provider
         if p == "ollama":
-            return self._config.ollama.tier1_num_ctx or None
+            return self._config.ollama.fast_num_ctx or None
         if p == "mlx-gemma":
-            return self._config.mlx_gemma.tier1_num_ctx or None
+            return self._config.mlx_gemma.fast_num_ctx or None
         if p == "mlx-qwen":
-            return self._config.mlx_qwen.tier1_num_ctx or None
+            return self._config.mlx_qwen.fast_num_ctx or None
         return None
 
     def invoke(self, tier: str, prompt: str, max_tokens: int = 4096) -> LLMResponse:
@@ -155,7 +155,7 @@ class LLMClient:
         meta = _llm.invoke_text(
             self.settings(), router_tier, prompt, max_tokens,
             enable_thinking=True,  # preserve the pre-router invoke_ollama default
-            num_ctx=self._tier1_num_ctx(tier),
+            num_ctx=self._fast_num_ctx(tier),
         )
         self._track_cost(tier, meta["model_id"], meta["input_tokens"], meta["output_tokens"])
         truncated = bool(meta.get("truncated", False))
@@ -199,7 +199,7 @@ class LLMClient:
         but the fence handling now lives in one shared helper. Raises
         ``json.JSONDecodeError`` only on the fallback path when no JSON is found.
         """
-        model = self._config.get_model(tier)
+        model = self._config.get_model(_llm.role_for_tier(tier))
 
         if _llm.is_openai_compat(self._config.provider):
             from ai_discovery.llm import max_tokens_field_for
@@ -463,7 +463,7 @@ class LLMClient:
         cfg = self._config.advisor
         model = (
             cfg.tier3_executor_override if (tier == "tier3" and cfg.tier3_executor_override)
-            else self._config.get_model(tier)
+            else self._config.get_model(_llm.role_for_tier(tier))
         )
 
         client = _anthropic.Anthropic()
@@ -567,7 +567,7 @@ class LLMClient:
             return True
         base_url, api_key = self._config.get_endpoint()
         return warm_ollama(
-            self._config.get_model(tier), base_url, keep_alive, api_key=api_key,
+            self._config.get_model(_llm.role_for_tier(tier)), base_url, keep_alive, api_key=api_key,
         )
 
     def warm_embedding(self, keep_alive: str = "30m") -> bool:
@@ -587,7 +587,7 @@ class LLMClient:
         if self._config.provider not in self._OLLAMA_LIKE:
             return True
         base_url, _ = self._config.get_endpoint()
-        return unload_ollama(self._config.get_model(tier), base_url)
+        return unload_ollama(self._config.get_model(_llm.role_for_tier(tier)), base_url)
 
     def get_costs(self) -> dict[str, dict]:
         return dict(self._costs)

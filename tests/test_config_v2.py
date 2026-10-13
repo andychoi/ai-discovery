@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -52,7 +54,7 @@ def test_defaults_when_no_files(tmp_path: Path, no_env) -> None:
 def test_cli_flags_override_config(tmp_path: Path, no_env) -> None:
     from ai_discovery.cli import app
 
-    _write(tmp_path / ".discovery" / "config.yaml", "provider: openai\nbudget_limit_usd: 9\nprod: true\n")
+    _write(tmp_path / ".discovery" / "config.yaml", "provider: openai\nbudget_limit_usd: 9\nquality: final\n")
     seen = {}
 
     def fake_run(**kwargs):
@@ -64,7 +66,7 @@ def test_cli_flags_override_config(tmp_path: Path, no_env) -> None:
     assert result.exit_code == 0, result.output
     cfg = seen["cfg"]
     assert (cfg.provider, cfg.budget_limit_usd) == ("openai", 2.0)
-    assert cfg.prod is True  # YAML prod: honoured when --quality is not given
+    assert cfg.quality == "final"  # YAML quality honoured when --quality is not given
 
 
 # ── discovery of the project file ─────────────────────────────────────────
@@ -159,8 +161,8 @@ def test_generic_llm_env_targets_active_provider(tmp_path: Path, monkeypatch, no
     monkeypatch.setenv("DISCOVERY_LLM_MODEL", "vendor/one-model")
     cfg = load_config(cwd=tmp_path, include_user=False)
     assert cfg.get_endpoint()[1] == "generic-key"
-    assert {cfg.get_model(t) for t in ("tier1", "tier2", "tier3", "screen")} == {"vendor/one-model"}
-    assert cfg.aigw.api_key == "" and cfg.aigw.tier1 != "vendor/one-model"
+    assert {cfg.get_model(t) for t in ("fast", "standard", "deep", "screen")} == {"vendor/one-model"}
+    assert cfg.aigw.api_key == "" and cfg.aigw.fast != "vendor/one-model"
 
 
 def test_generic_llm_env_key_ignored_for_keyless_provider(tmp_path: Path, monkeypatch, no_env) -> None:
@@ -168,4 +170,34 @@ def test_generic_llm_env_key_ignored_for_keyless_provider(tmp_path: Path, monkey
     monkeypatch.setenv("DISCOVERY_LLM_API_KEY", "generic-key")
     monkeypatch.setenv("DISCOVERY_LLM_MODEL", "us.anthropic.some-model")
     cfg = load_config(cwd=tmp_path, include_user=False)
-    assert cfg.get_model("tier1") == "us.anthropic.some-model"
+    assert cfg.get_model("fast") == "us.anthropic.some-model"
+
+
+# ── M1.10.b: roles + quality replace tier keys + prod ────────────────────
+
+@pytest.mark.parametrize("yaml_text,expect", [
+    ("prod: true\n", "quality: final"),
+    ("bedrock:\n  tier1: x\n", "use `fast`"),
+    ("openai:\n  tier3p: x\n", "use `deep`"),
+    ("aigw:\n  tier3d: x\n", "draft documents use the `standard` model"),
+    ("ollama:\n  tier1_num_ctx: 2048\n", "use `fast_num_ctx`"),
+])
+def test_old_tier_keys_are_rejected_with_the_replacement(tmp_path: Path, no_env, yaml_text, expect) -> None:
+    from ai_discovery.config.loader import ConfigError
+
+    f = _write(tmp_path / "c.yaml", yaml_text)
+    with pytest.raises(ConfigError, match=re.escape(expect)):
+        load_config(f, include_user=False)
+
+
+def test_quality_picks_the_document_model_and_models_override_the_active_provider(tmp_path: Path, no_env) -> None:
+    f = _write(tmp_path / "c.yaml", "provider: openai\nmodels:\n  deep: my-deep\n")
+    cfg = load_config(f, include_user=False)
+    assert cfg.get_model("deep") == cfg.openai.standard          # draft: documents use standard
+    cfg.quality = "final"
+    assert cfg.get_model("deep") == "my-deep"                    # final: models.deep wins
+    assert cfg.gemini.deep != "my-deep"                          # only the active provider
+    from ai_discovery.config.loader import ConfigError
+    with pytest.raises(ConfigError, match="quality"):
+        _write(tmp_path / "bad.yaml", "quality: best\n")
+        load_config(tmp_path / "bad.yaml", include_user=False)

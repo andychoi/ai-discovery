@@ -42,7 +42,7 @@ class StageSpec:
 # Default order. `resolve` runs before the runner (it creates the scan row);
 # `domains` runs inside `graph` (one phase-7 checkpoint).
 STAGES: tuple[StageSpec, ...] = (
-    StageSpec("screens", (2,), ("no_llm", "prod", "provider", "model:screen")),
+    StageSpec("screens", (2,), ("no_llm", "quality", "provider", "model:screen")),
     StageSpec("walk", (5,)),
     StageSpec("parse", (6,)),
     StageSpec("graph", (7,)),
@@ -51,11 +51,11 @@ STAGES: tuple[StageSpec, ...] = (
     StageSpec("entities"),
     StageSpec("embed", (9, 10), ("no_llm", "provider", "rag.enabled", "rag.chunk_size",
                                   "rag.chunk_overlap", "rag.skip_tests")),
-    StageSpec("summaries", (11,), ("no_llm", "provider", "model:tier1", "semantic_batching")),
-    StageSpec("flows", (12, 13), ("no_llm", "prod", "provider", "model:tier2")),
-    StageSpec("rollup", (), ("no_llm", "prod", "provider", "model:tier3")),
+    StageSpec("summaries", (11,), ("no_llm", "provider", "model:fast", "semantic_batching")),
+    StageSpec("flows", (12, 13), ("no_llm", "quality", "provider", "model:standard")),
+    StageSpec("rollup", (), ("no_llm", "quality", "provider", "model:deep")),
     StageSpec("visuals", (), ("no_llm", "process_mining.enabled")),
-    StageSpec("review", (), ("no_llm", "prod", "provider", "model:tier1")),
+    StageSpec("review", (), ("no_llm", "quality", "provider", "model:fast")),
     StageSpec("render"),
     StageSpec("finalise"),
 )

@@ -301,13 +301,13 @@ Five custom skills accelerate development. The first three help build the discov
 
 ---
 
-### Task: "A `--prod` scan finished but ASIS/ASD/ASSC rollups are missing"
+### Task: "A `quality: final` scan finished but ASIS/ASD/ASSC rollups are missing"
 
-`--prod` swaps in the `tier3p` model slot for doc rollup. If that model isn't enabled in your Bedrock account/region, **every Tier-3 rollup fails** with `ValidationException: The provided model identifier is invalid` — the scan still exits 0 (Tier-1/2, screens, PF, FK, dependency catalog all run), so it's easy to miss.
+`quality: final` (formerly `--prod`) switches doc rollup to the `deep` model role. If that model isn't enabled in your Bedrock account/region, **every Tier-3 rollup fails** with `ValidationException: The provided model identifier is invalid` — the scan still exits 0 (Tier-1/2, screens, PF, FK, dependency catalog all run), so it's easy to miss.
 
 1. Check the scan log for repeated `Rollup failed for …/as-is*: … model identifier is invalid`.
-2. Set `bedrock.tier3p` in `discovery.yaml` to a model you can invoke (e.g. the same Sonnet as `tier2`, or a current Opus); verify against your account's enabled models.
-3. Re-run with `--prod` (or resume from the rollup phase). `tier3d` (non-`--prod`) is independent and unaffected.
+2. Set `bedrock.deep` (or top-level `models.deep`) in `discovery.yaml` to a model you can invoke; `discover doctor --llm` probes the configuration.
+3. Re-run with `--quality final`. `quality: draft` uses the `standard` model for documents and is unaffected.
 
 ---
 

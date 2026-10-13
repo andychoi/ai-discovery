@@ -231,7 +231,7 @@ def run(ctx: RunContext) -> None:
     # rollup-gated self-review block above so a tier-3 rollup failure (which
     # leaves `rollups` empty) doesn't also skip screen verification. Gated on
     # --prod (one review pass per screen).
-    if config.prod and _budget_ok(llm_client, config, "Screen verification"):
+    if config.is_final and _budget_ok(llm_client, config, "Screen verification"):
         from ..ai.screen_spec_generator import verify_screen_specs
         try:
             n_verified = verify_screen_specs(

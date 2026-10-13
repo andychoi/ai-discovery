@@ -152,9 +152,9 @@ def check_llm(g: Globals) -> list[Check]:
     out: list[Check] = []
     try:
         resp = client.invoke("tier1", "Reply with the single word: ok", max_tokens=8)
-        out.append(Check("llm_generation", "ok", f"{cfg.provider} {cfg.get_model('tier1')}: {resp.text.strip()[:40]!r}"))
+        out.append(Check("llm_generation", "ok", f"{cfg.provider} {cfg.get_model('fast')}: {resp.text.strip()[:40]!r}"))
     except Exception as exc:  # noqa: BLE001
-        out.append(Check("llm_generation", "fail", f"{cfg.provider} {cfg.get_model('tier1')}: {exc}",
+        out.append(Check("llm_generation", "fail", f"{cfg.provider} {cfg.get_model('fast')}: {exc}",
                          "check the provider URL/key in config or .env"))
     try:
         vec = client.get_embedding("connection test")

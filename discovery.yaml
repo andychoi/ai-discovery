@@ -13,17 +13,22 @@ budget_limit_usd: 50.0
 # Max concurrent workers for parallel processing
 max_concurrent: 10
 
-# Production mode: use tier3p (deep) instead of tier3d (standard) for doc generation
-prod: false
+# Quality: draft = documents use the standard model (cheap); final = deep model + source verification
+quality: draft
+
+# Model per role for the active provider; empty = the provider's default (see its section)
+models:
+  fast: ""
+  standard: ""
+  deep: ""
 
 # Local ai-gateway (OpenAI-compatible, fronts OMLX) — set AIGW_API_KEY in the
 # environment. Models are gateway aliases; the key must allowlist each one.
 aigw:
   base_url: "http://localhost:11433/v1"
-  tier1: claude-haiku
-  tier2: claude-sonnet
-  tier3d: claude-sonnet
-  tier3p: claude-opus
+  fast: claude-haiku
+  standard: claude-sonnet
+  deep: claude-opus
 
 # RAG configuration
 # embedding_model: model for embedding_provider (empty = provider default)

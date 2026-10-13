@@ -40,7 +40,7 @@ def run(ctx: RunContext) -> None:
     else:
         with _with_checkpoint(db_path, scan_id, 12, "tier2_flow_analysis"):
             if config.provider == "ollama":
-                tier2_model = config.get_model("tier2")
+                tier2_model = config.get_model("standard")
                 console.print(f"[dim]Warming tier2 ({tier2_model})...[/]")
                 llm_client.warm("tier2", "1h")
 
@@ -65,7 +65,7 @@ def run(ctx: RunContext) -> None:
 
             total_flows = sum(len(v) for v in flows_by_domain.values())
             # Determine model used for Tier 2
-            tier2_model = config.get_model("tier2")
+            tier2_model = config.get_model("standard")
             persist_flows(flows_by_domain, scan_id, db_path, model_used=tier2_model)
             console.print(f"  Flows: [green]{total_flows}[/] across {len(flows_by_domain)} domains")
 
@@ -95,7 +95,7 @@ def run(ctx: RunContext) -> None:
                         # CRIT-2: prod scans verify each flow's narrative against
                         # RAG source so PF confidence is earned, not capped. Gated
                         # on --prod because it adds an LLM review pass per scenario.
-                        if config.prod and _budget_ok(llm_client, config, "PF verification"):
+                        if config.is_final and _budget_ok(llm_client, config, "PF verification"):
                             flow_inference.verify_flow(flow, db_path)
                         scenario_flows.append(flow)
                     except Exception as e:
@@ -127,7 +127,7 @@ def run(ctx: RunContext) -> None:
             )
 
     # Free tier2 (~17 GB) before loading tier3 (~20 GB).
-    tier2_model = config.get_model("tier2")
+    tier2_model = config.get_model("standard")
     if config.provider == "ollama" and not getattr(config, "no_llm", False):
         console.print(f"[dim]Unloading tier2 ({tier2_model})...[/]")
         llm_client.unload("tier2")

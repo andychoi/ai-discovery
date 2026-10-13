@@ -51,9 +51,14 @@ def test_openai_gemini_have_embedding_anthropic_does_not():
 
 def test_anthropic_model_ids_are_bare_aliases():
     # Per claude-api guidance: bare aliases, no date suffixes
-    assert MODELS["anthropic"]["fast"] == "claude-haiku-4-5"
-    assert MODELS["anthropic"]["standard"] == "claude-sonnet-4-6"
-    assert MODELS["anthropic"]["expert"] == "claude-opus-4-8"
+    assert MODELS["anthropic"]["fast"] == "claude-haiku-5-5"
+    assert MODELS["anthropic"]["standard"] == "claude-sonnet-5-5"
+    assert MODELS["anthropic"]["expert"] == "claude-opus-5-5"
+
+
+def test_bedrock_haiku_uses_the_global_inference_profile():
+    # id from AWS's "Introducing Claude Haiku 5.5 on AWS" launch post (InvokeModel + Converse)
+    assert MODELS["bedrock"]["fast"] == "global.anthropic.claude-haiku-5-5"
 
 
 # ── llm_invoke.invoke_openai_compat ──────────────────────────────────────────
@@ -473,16 +478,16 @@ def test_env_overrides_new_providers(monkeypatch):
 def test_discovery_config_has_provider_sections():
     cfg = DiscoveryConfig()
     assert cfg.openai.base_url == MODELS["openai"]["url"]
-    assert cfg.gemini.tier1 == MODELS["gemini"]["fast"]
-    assert cfg.anthropic.tier3p == MODELS["anthropic"]["expert"]
+    assert cfg.gemini.fast == MODELS["gemini"]["fast"]
+    assert cfg.anthropic.deep == MODELS["anthropic"]["expert"]
 
 
 @pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic", "aigw", "omlx", "openrouter"])
 def test_discovery_config_get_model(provider):
     cfg = DiscoveryConfig()
     cfg.provider = provider
-    assert cfg.get_model("tier1") == MODELS[provider]["fast"]
-    assert cfg.get_model("tier2") == MODELS[provider]["standard"]
+    assert cfg.get_model("fast") == MODELS[provider]["fast"]
+    assert cfg.get_model("standard") == MODELS[provider]["standard"]
 
 
 @pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic", "aigw", "omlx", "openrouter"])
@@ -496,9 +501,9 @@ def test_discovery_config_get_endpoint(provider):
 def test_settings_flatten_new_providers():
     cfg = DiscoveryConfig()
     cfg.provider = "openai"
-    cfg.openai.tier1 = "dc-fast"
+    cfg.openai.fast = "dc-fast"
     cfg.gemini.base_url = "https://gem.example/openai"
-    cfg.anthropic.tier3p = "dc-opus"
+    cfg.anthropic.deep = "dc-opus"
     config = settings_from_config(cfg).values
     assert config["provider"] == "openai"
     assert config["tier.fast.openai_model"] == "dc-fast"
@@ -521,14 +526,14 @@ def test_config_load_yaml_provider_sections(tmp_path, monkeypatch):
     yaml_path.write_text(
         "provider: gemini\n"
         "gemini:\n"
-        "  tier2: gemini-custom\n"
+        "  standard: gemini-custom\n"
         "anthropic:\n"
-        "  tier1: claude-custom\n"
+        "  fast: claude-custom\n"
     )
     cfg = DiscoveryConfig.load(str(yaml_path))
     assert cfg.provider == "gemini"
-    assert cfg.gemini.tier2 == "gemini-custom"
-    assert cfg.anthropic.tier1 == "claude-custom"
+    assert cfg.gemini.standard == "gemini-custom"
+    assert cfg.anthropic.fast == "claude-custom"
 
 
 # ── aigw (local ai-gateway) + openrouter ─────────────────────────────────────
