@@ -83,11 +83,14 @@ def build_graph_export(db_path: Path, slug: str, scan_id: int | None = None) -> 
                 "edge_type": r["edge_type"],
                 "confidence": r["confidence"],
                 "resolved_by": r["resolved_by"] or "",
+                "edge_kind": r["edge_kind"],
+                "evidence_kind": r["evidence_kind"],
             }
             for r in conn.execute(
                 """SELECT caller.qualified_name AS caller,
                           callee.qualified_name AS callee,
-                          ce.callee_name, ce.edge_type, ce.confidence, ce.resolved_by
+                          ce.callee_name, ce.edge_type, ce.confidence, ce.resolved_by,
+                          ce.edge_kind, ce.evidence_kind
                      FROM call_edges ce
                      JOIN code_nodes caller ON caller.id = ce.caller_id
                 LEFT JOIN code_nodes callee ON callee.id = ce.callee_id

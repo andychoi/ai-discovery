@@ -359,8 +359,14 @@ def build_router() -> APIRouter:
         nodes = {row["id"]: row for row in conn.execute(
             "SELECT id, name, qualified_name, node_type, file_path, line_start FROM code_nodes WHERE scan_id = ?",
             (sid,))}
-        edges = conn.execute("SELECT caller_id, callee_id, edge_type, resolved_by, confidence FROM call_edges "
-                             "WHERE scan_id = ? AND callee_id IS NOT NULL", (sid,)).fetchall()
+        try:   # edge_kind / evidence_kind: migration 0003 (ADR-0004)
+            edges = conn.execute("SELECT caller_id, callee_id, edge_type, resolved_by, confidence, edge_kind, "
+                                 "evidence_kind FROM call_edges WHERE scan_id = ? AND callee_id IS NOT NULL",
+                                 (sid,)).fetchall()
+        except sqlite3.OperationalError:
+            edges = conn.execute("SELECT caller_id, callee_id, edge_type, resolved_by, confidence, "
+                                 "'calls' AS edge_kind, 'static' AS evidence_kind FROM call_edges "
+                                 "WHERE scan_id = ? AND callee_id IS NOT NULL", (sid,)).fetchall()
         return nodes, edges
 
     def _find_node(conn, sid, ident: str) -> Optional[int]:
@@ -411,8 +417,9 @@ def build_router() -> APIRouter:
                 degree[e["callee_id"]] += 1
             ranked = sorted(seen, key=lambda n: (n != start, seen[n], -degree[n], nodes[n]["qualified_name"]))
             keep = set(ranked[:limit])
-            out_edges = [{"src": e["caller_id"], "dst": e["callee_id"], "edge_kind": "calls",
-                          "origin": e["resolved_by"] or "", "confidence": e["confidence"], "evidence_kind": "static"}
+            out_edges = [{"src": e["caller_id"], "dst": e["callee_id"], "edge_kind": e["edge_kind"],
+                          "origin": e["resolved_by"] or "", "confidence": e["confidence"],
+                          "evidence_kind": e["evidence_kind"]}
                          for e in sub_edges if e["caller_id"] in keep and e["callee_id"] in keep]
             data = {"focus": start, "nodes": [_node_json(nodes[n], layout.repo) for n in ranked[:limit]],
                     "edges": sorted(out_edges, key=lambda e: (e["src"], e["dst"]))}

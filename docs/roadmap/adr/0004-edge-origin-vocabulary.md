@@ -13,7 +13,7 @@
 repowise's changelog shows two recurring classes of fixes. One is false edges from guessing (stdlib shadowing; bare-name tiers answering for the stdlib). The other is mixing signal kinds: co-change was served as a dependency (0.42.0). Its fix was one closed vocabulary with exactly one confidence per origin, plus *no* edge for ambiguity. See `docs/roadmap/research/edge-case-catalog.md`.
 
 ## Decision (draft)
-1. **`origin` is a closed enum** with exactly one confidence each. It is defined once in `graph/origins.py` (new) and stored as `call_edges.origin`; `resolved_by` is renamed.
+1. **`origin` is a closed enum** with exactly one confidence each. It is defined once in `graph/origins.py` and stored in `call_edges.resolved_by` (M1.12.a kept the column name: the reader API already exposes it as `origin`, and a rename would touch every consumer for no behaviour change). Edge kind and evidence kind are stored in `call_edges.edge_kind` / `call_edges.evidence_kind` (migration 0003).
 
    | origin | conf | meaning |
    |---|---|---|
@@ -30,6 +30,7 @@ repowise's changelog shows two recurring classes of fixes. One is false edges fr
    | `receiver_global` | 0.75 | receiver type known, type found repo-wide by unique name |
    | `global_unique` | 0.50 | bare name unique repo-wide, same language, not a builtin, callable |
    | `sql_regex` | 0.60 | table read/write edge from regex fallback when sqlglot cannot parse the statement (M6.8) |
+   | `external_client` | 0.90 | call through a known client library (HTTP/queue/cache/payment SDK) to a synthesized external-system node; edge kind `calls_external`, evidence `framework` (added in M1.12.a) |
 
    This is the **only** canonical origin table. Other docs link here instead of copying it. Origin `framework` yields edge kind `framework_binds`; origin `dispatch` yields edge kind `dispatches_to`.
 
@@ -41,6 +42,11 @@ repowise's changelog shows two recurring classes of fixes. One is false edges fr
    - Impact (M5.2) adds `dispatches_to` edges and `dynamic_hint` evidence as "may" edges and lists `co_change` separately.
    - "Not observed at runtime" is never negative evidence.
 3. **Edge kinds** stay distinct from origins. Canonical list: `calls`, `dispatches_to`, `framework_binds`, `type_use`, `markup_event` (markup event → code-behind handler), `calls_proc` (code → stored procedure), `reads_table`, `writes_table`, `dynamic_hint`, `executes` (test → function, from coverage), `co_change`. Dispatch edges carry `evidence_kind=static`; `--include` filters select by `evidence_kind` only.
+
+## Implementation notes (M1.12.a, 2026-10-13)
+- Old values map as: `index`→`scip`; `exact`→`import_exact` (a markup page naming its code-behind handler or bean → `framework`); `import_scope`→`import_exact` (module matches the file) or `import_module`; `receiver_type`→`receiver_typed`/`receiver_global`; `interface_impl`→`framework`; `short_name` → `self_scope`/`same_file`/`same_package`/`global_unique`, or no edge; `short_name_community` and `unresolved` → no edge.
+- A bare type name (constructor call `new X()`, DI constructor parameter) resolves as `receiver_typed`/`receiver_global` by the same locality rule as receivers.
+- `call_edges.edge_type` (legacy: `direct_call`, `dispatch`, `di_binding`, `external_call`) is kept for the UNIQUE key; `edge_kind` is the ADR-0004 value.
 
 ## Consequences
 - **Expect recall to drop.** No fan-out and no unresolved edges will lower call recall. Precision should rise. M1.12 must report both against the M0.12 baseline and publish unresolved counts per language, never hide them.

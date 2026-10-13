@@ -190,7 +190,7 @@
 - **Out of scope:** new language coverage (M6).
 
 ### M1.12.a Edge contract: resolver, origins, unresolved calls
-- **Status:** In progress (rm/M1.12a-edge-contract, 2026-10-13)
+- **Status:** Done (75dcb6d)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M0.12

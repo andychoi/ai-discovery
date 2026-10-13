@@ -4,101 +4,64 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
 
 ---
 
-## Call Graph Resolution: 4-Stage Graded Confidence
+## Call Graph Resolution: Closed Origin Vocabulary (ADR-0004)
 
-> **Reconciled 2026-05-31 (MED-1):** earlier revisions of this doc described a
-> "7-level" table. The implementation (`graph/call_graph.py:build_call_graph`)
-> is a **4-stage** resolver; the graded confidences below are produced *within*
-> stage 3. This section now matches the code.
+> **Superseded 2026-10-13 (M1.12.a).** The "4-stage graded confidence" cascade
+> below (one origin spanning 0.95–0.6, fan-out to ≤ 8 candidates, a 0.5 edge to
+> the bare name for every unresolved call, A-3 community narrowing) is retired.
+> The resolver now follows [ADR-0004](../roadmap/adr/0004-edge-origin-vocabulary.md);
+> the origin → confidence table lives **only** there and in
+> `src/ai_discovery/graph/origins.py`.
 
 ### Decision
-Graded confidence (a continuum, not boolean match/no-match), assigned by a
-first-match-wins cascade of four resolution stages. Edges are deduped per
-`(caller, callee, edge_type)` keeping the highest confidence.
-
-### Stages (as implemented)
-
-| Stage | Condition | Confidence | `resolved_by` |
-|-------|-----------|-----------|---------------|
-| 0 | **Symbol index (LSP/SCIP/compiler)** — authoritative resolution from a supplied `symbol_index.json`; the only tier that resolves interface/polymorphic dispatch | 1.0 | `index` |
-| 1 | Exact qualified-name match | 1.0 | `exact` |
-| 2 | Import-scoped (receiver matches a caller import) | 0.95 | `import_scope` |
-| 3 | **Receiver-type (DI)** — receiver is a field/ctor-param of a known type `T` and `T` defines the method; pin to `T.method` | 0.93 | `receiver_type` |
-| 4 | Short-name contextual — same class (0.95), same file unique (0.90), same module unique (0.85), unique suffix (0.85), **community narrowing** (unique-in-community 0.80, multiple 0.70), best prefix overlap (0.65–0.75), short-name fan-out (0.6) | 0.95 … 0.6 | `short_name` / `short_name_community` |
-| 5 | Unresolved — no candidate | 0.5 | `unresolved` |
-
-**Stage 3 (receiver-type, HIGH-3, added 2026-05-31)** consumes the field/
-constructor-param types the parsers extract, so `orderService.process()` resolves
-to `OrderService.process` only — instead of the short-name stage fanning out to
-every `process()` in the codebase. It returns no match (falls through) when the
-receiver's type is unknown or the method isn't defined on it (e.g. framework-
-inherited `repository.findAll()`), so it never invents an edge. The receiver is
-matched both literally (Java/C# field `_svc`) and by its final dotted segment
-(Python `self.order_service` → `order_service`). Field-type extraction is
-implemented for **Java, C#, Python, and JS** (field injection, auto-properties,
-typed-`__init__` DI, and JS constructor `this.x = new Y()`). Measured by the
-`di_resolution` dimension of the corpus harness across per-language collision
-fixtures (`tests/corpus/`). JS module-level functional DI (require + call outside
-a class) is the one uncovered pattern — there is no enclosing class to key on.
-
-**Stage-4 community narrowing (A-3, added 2026-06-06)** ports Understand-
-Anything's cross-batch-context idea into the resolver. `build_call_graph` now
-runs two passes: stages 0–3 resolve first, then their high-confidence edges
-(≥ 0.93 — index/exact/import-scope/receiver-type only, so the noisy stage
-never feeds its own input) are collapsed into **file communities** via
-union-find. When short-name resolution then faces a cross-module collision —
-typically an *untyped* receiver that Stage 3 cannot pin (`self.strategy.
-calculate()`) — candidates inside the caller's community are preferred:
-unique-in-community resolves at 0.80 (`resolved_by: short_name_community`),
-multiple community candidates fan out at 0.70 within the community only.
-The filter applies **only as a strict narrowing** (some-but-not-all candidates
-in the community); with no community signal, or all candidates in one
-community, behavior is byte-identical to the pre-A-3 cascade. Gauged by the
-`python-community-collision` corpus fixture (di_resolution 0.0 → 1.0,
-hard-targeted).
-
-**Stage 0 (symbol index, LSP tier, added 2026-05-31)** is the assessment's
-headline architectural recommendation, consumer side: when a repo ships an
-authoritative `symbol_index.json` (a tool-agnostic edge list any SCIP/LSIF/
-compiler/DI-aware exporter can emit), `build_call_graph` trusts it over every
-heuristic. The pipeline loads it via `graph/symbol_index.load_symbol_index`
-(filenames `symbol_index.json` / `.scip.json` / `scip_index.json` at the repo
-root or scan output dir) and passes the resulting `SymbolIndex` into
-`build_call_graph(nodes, symbol_index=…)`; a Stage-0 hit is tagged
-`resolved_by: index` at confidence 1.0. It is the only tier that can resolve
-interface/polymorphic dispatch — which the name/type heuristics fundamentally
-cannot. Absent an index, resolution is fully heuristic (the feature is purely
-additive). Producing the index is left to external tooling; gauged by the
-`lsp-interface-dispatch` corpus fixture.
-
-### Legacy 7-level framing (historical)
-The original prose ranked levels exact → prefix → suffix → external →
-unresolved. Those *signals* still exist, but they are sub-cases of stage 3
-rather than discrete top-level tiers.
+- **One confidence per origin.** Each edge has exactly one origin from a closed
+  enum (`scip`, `import_exact`, `import_module`, `self_scope`, `inherited`,
+  `receiver_typed`, `receiver_global`, `framework`, `dispatch`, `same_file`,
+  `same_package`, `global_unique`, `external_client`, `sql_regex`). The origin
+  fixes the confidence, the edge kind and the evidence kind. Stored in
+  `call_edges.resolved_by` / `edge_kind` / `evidence_kind`.
+- **Ambiguity → no edge.** Two or more candidates in a tier: no edge, a row in
+  `unresolved_calls` with `reason=ambiguous` and `candidate_count`.
+- **Unresolved → no edge.** `not_found`, `builtin`, `dynamic`, `external`,
+  `dispatch_cap`, `di_ambiguous` rows instead of 0.5 edges to bare names.
+- **Name-only guards** (`global_unique`, 0.50): same language family, callable
+  target, name not in the per-language builtin/stdlib-member list, and in
+  Python/JS a receiver-less call never binds to a class method. Java/C#
+  receiver-less calls are `this` calls: they bind only on the enclosing class
+  or its ancestors (`self_scope` / `inherited`), else `not_found`/`external`.
+- **Types:** a receiver whose type is known (field/ctor-param type, or a type
+  name used as a static receiver / constructor call) resolves on that type —
+  `receiver_typed` when the type is visible locally (same file, same package,
+  imported/`using`), `receiver_global` when it is known only by a unique
+  repo-wide name. An interface-typed receiver with one implementing method is
+  `framework` (DI binding); 2–24 implementations give one `dispatch` edge each;
+  more is refused (`dispatch_cap`). A graph-wide pass also adds base-method →
+  override `dispatch` edges.
 
 ### Why
-- **Binary resolution is fragile**: A function might be callable even if we can't find it—it might be dynamically imported, passed as argument, or in an unmapped namespace.
-- **Confidence separates concerns**: Instead of asking "did we find it?", we ask "how confident are we?". The LLM pipeline can then decide: use high-confidence calls in BPMN, flag low-confidence calls for human review.
-- **Real codebases are messy**: Exact qualified-name matches work in ~60% of cases. For the remaining 40%, we need fallback heuristics.
-
-### Scoring Strategy
-
-| Level | Condition | Confidence | When Useful |
-|-------|-----------|-----------|------------|
-| 1 | Exact qualified_name match | 1.0 | Same module, same class or global namespace |
-| 2 | Same class owner prefix | 0.95 | Method calls within same class |
-| 3 | Same file, unique in file | 0.90 | Local functions in same file |
-| 4 | Same module, unique in module | 0.85 | Module-level functions |
-| 5 | Unique suffix match | 0.85 | Uncommon function names (e.g., `validateOrderPayment`) |
-| 6 | Best prefix overlap (>50%) | 0.65–0.75 | Namespace partial match, ambiguous |
-| 7 | Ambiguous short-name / unresolved | 0.50 | External call or dynamic dispatch |
+- One origin with several confidences made confidence meaningless as a filter;
+  fan-out and bare-name edges flowed into slices and BFS as if they were calls
+  (ADR-0004 context; repowise changelog lessons in the edge-case catalog).
+- **A-3 community narrowing is retired:** being wired to a module elsewhere in
+  the graph is not evidence of which same-named method a call reaches. The
+  `python-community-collision` fixture now forbids both candidate edges.
 
 ### Trade-offs
-- **Pro**: Captures real-world messy code; separates what we know from what we guess
-- **Con**: Requires human judgment on which threshold to use; no single "right answer"
+- **Recall drops, precision rises.** Calls that used to fan out or bind by
+  graph locality are now `unresolved_calls` rows. They are reported (scan
+  summary, overview page, bench) — never hidden. The M1.12.b bench run
+  measures the deltas against the M0.12 baseline.
+- Constructor-DI references whose type has no visible import (e.g. a missing
+  `using`, or a CommonJS `require` the JS parser does not record) drop from
+  0.8 to `receiver_global` 0.75; the corpus bars were lowered to 0.75 with a
+  note per fixture.
 
-### Future Tuning
-As we analyze more code, we can refine thresholds based on observed accuracy. For now, **confidence ≥ 0.8** is good for BPMN, **0.6–0.8** is worth manual review, **< 0.6** is likely external/unresolved.
+### History (pre-ADR-0004)
+The 2026-05/06 cascade — stage 0 index (1.0), exact (1.0), import-scope
+(0.95), receiver-type (0.93; HIGH-3), short-name contextual 0.95…0.6 with A-3
+community narrowing, unresolved 0.5 — is in git history (`call_graph.py`
+before M1.12.a). Its HIGH-3 receiver-type and P0-2 interface→impl ideas
+survive as `receiver_typed` and `framework`; Stage 0 survives as `scip`.
 
 ---
 

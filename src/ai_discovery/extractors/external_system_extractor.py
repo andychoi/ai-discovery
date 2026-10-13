@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from ..graph.call_graph import make_edge
 from ..graph.models import CallEdge, CodeNode
 
 # receiver token (lowercased) -> (display name, kind)
@@ -127,15 +128,14 @@ def extract_external_systems(nodes: list[CodeNode]) -> tuple[list[CodeNode], lis
             if key in seen_edges:
                 continue
             seen_edges.add(key)
-            meta = {"resolved_by": "external_system", "client": token, "operation": operation}
+            meta = {"client": token, "operation": operation}
             # For HTTP clients, capture the outbound target URL/path so the
             # cross-repo correlator can match it to a provider's inbound endpoint.
             if kind == "http_api":
                 target = _extract_target(node.source_code, site.get("receiver") or "", operation)
                 if target:
                     meta["target"] = target
-            edges.append(CallEdge(
-                caller=node.qualified_name, callee=qn,
-                edge_type="external_call", confidence=0.9, metadata=meta,
-            ))
+            edge = make_edge(node.qualified_name, qn, "external_client", **meta)
+            edge.edge_type = "external_call"
+            edges.append(edge)
     return list(systems.values()), edges

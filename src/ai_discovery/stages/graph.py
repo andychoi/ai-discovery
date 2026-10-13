@@ -19,7 +19,7 @@ logger = logging.getLogger("ai_discovery.pipeline")
 
 def run(ctx: RunContext) -> None:
     from ..db import get_conn
-    from ..graph.call_graph import build_call_graph
+    from ..graph.call_graph import resolve_calls
     from ..pipeline import _timed, console
 
     resolved, all_nodes, scan_id, db_path = ctx.resolved, ctx.all_nodes, ctx.scan_id, ctx.db_path
@@ -30,10 +30,11 @@ def run(ctx: RunContext) -> None:
     from ..graph.symbol_index import load_symbol_index
     symbol_index = load_symbol_index(resolved.repo_path)
     with _timed("call graph"), console.status("[bold cyan]Building call graph..."):
-        edges = build_call_graph(all_nodes, symbol_index=symbol_index)
-    n_indexed = sum(1 for e in edges if e.metadata.get("resolved_by") == "index")
+        resolution = resolve_calls(all_nodes, symbol_index=symbol_index)
+    edges, unresolved = resolution.edges, resolution.unresolved
+    n_indexed = sum(1 for e in edges if e.metadata.get("resolved_by") == "scip")
     console.print(
-        f"  Call graph: [green]{len(edges)}[/] edges"
+        f"  Call graph: [green]{len(edges)}[/] edges, [yellow]{len(unresolved)}[/] unresolved calls"
         + (f" ([green]{n_indexed}[/] via symbol index)" if symbol_index is not None else "")
     )
 
@@ -115,6 +116,8 @@ def run(ctx: RunContext) -> None:
                 edge.edge_type,
                 edge.confidence,
                 (edge.metadata or {}).get("resolved_by", ""),
+                (edge.metadata or {}).get("edge_kind", "calls"),
+                (edge.metadata or {}).get("evidence_kind", "static"),
             )
             for edge in edges
             if qn_to_id.get(edge.caller) is not None
@@ -127,8 +130,17 @@ def run(ctx: RunContext) -> None:
         # constraint as defense-in-depth on databases that have it.
         conn.execute("DELETE FROM call_edges WHERE scan_id = ?", (scan_id,))
         conn.executemany(
-            "INSERT OR IGNORE INTO call_edges (scan_id, caller_id, callee_id, callee_name, edge_type, confidence, resolved_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO call_edges (scan_id, caller_id, callee_id, callee_name, edge_type, confidence, "
+            "resolved_by, edge_kind, evidence_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             edge_rows,
+        )
+        # ADR-0004: ambiguous / unbindable calls are rows here, never edges.
+        conn.execute("DELETE FROM unresolved_calls WHERE scan_id = ?", (scan_id,))
+        conn.executemany(
+            "INSERT INTO unresolved_calls (scan_id, caller_id, callee_name, reason, candidate_count, file, line) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(scan_id, qn_to_id.get(u.caller), u.callee_name, u.reason, u.candidate_count, u.file, u.line)
+             for u in unresolved],
         )
         conn.commit()
     finally:

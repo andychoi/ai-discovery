@@ -24,12 +24,13 @@ def _interface_dispatch_nodes():
     return [stripe, paypal, run]
 
 
-def test_without_index_interface_dispatch_fans_out():
-    edges = build_call_graph(_interface_dispatch_nodes())
-    callees = {e.callee for e in edges if e.caller == "com.ex.Checkout.run"}
-    # Heuristics can't disambiguate the interface → both impls (the false edge).
-    assert "com.ex.StripeProcessor.process" in callees
-    assert "com.ex.PaypalProcessor.process" in callees
+def test_without_index_interface_dispatch_is_ambiguous():
+    from ai_discovery.graph.call_graph import resolve_calls
+
+    res = resolve_calls(_interface_dispatch_nodes())
+    # Heuristics can't disambiguate an untyped receiver → no edge (ADR-0004), one ambiguous row.
+    assert not [e for e in res.edges if e.caller == "com.ex.Checkout.run"]
+    assert [(u.callee_name, u.reason, u.candidate_count) for u in res.unresolved] == [("process", "ambiguous", 2)]
 
 
 def test_with_index_resolves_to_exact_impl_no_fanout():
@@ -39,7 +40,7 @@ def test_with_index_resolves_to_exact_impl_no_fanout():
     edges = build_call_graph(_interface_dispatch_nodes(), symbol_index=idx)
     run_edges = [(e.callee, e.confidence, e.metadata.get("resolved_by"))
                  for e in edges if e.caller == "com.ex.Checkout.run"]
-    assert ("com.ex.StripeProcessor.process", 1.0, "index") in run_edges
+    assert ("com.ex.StripeProcessor.process", 1.0, "scip") in run_edges
     assert not any(c == "com.ex.PaypalProcessor.process" for c, _, _ in run_edges)
 
 

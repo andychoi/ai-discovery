@@ -134,8 +134,8 @@ def handle():
     save_edges = [e for e in handler_edges if e.callee.endswith(".save")]
     assert len(save_edges) == 1, f"expected 1 edge to save(), got {save_edges}"
     assert save_edges[0].callee == "orders.OrderService.save"
-    assert save_edges[0].metadata["resolved_by"] == "import_scope"
-    assert save_edges[0].confidence >= 0.9
+    assert save_edges[0].metadata["resolved_by"] == "import_exact"
+    assert save_edges[0].confidence == 0.95
 
 
 def test_import_alias_resolves_correctly(tmp_path: Path):
@@ -164,7 +164,7 @@ def handle():
     save_edges = [e for e in handler_edges if e.callee.endswith(".save")]
     assert len(save_edges) == 1
     assert save_edges[0].callee == "orders.OrderService.save"
-    assert save_edges[0].metadata["resolved_by"] == "import_scope"
+    assert save_edges[0].metadata["resolved_by"] == "import_exact"
 
 
 def test_unimported_receiver_falls_through_to_short_name(tmp_path: Path):
@@ -194,7 +194,7 @@ def handle():
     # Short-name stage picks up the single candidate (or falls to unresolved); either way
     # `resolved_by` must not be `import_scope` since there was no relevant import.
     for e in save_edges:
-        assert e.metadata["resolved_by"] != "import_scope"
+        assert e.metadata["resolved_by"] not in ("import_exact", "import_module")
 
 
 def test_exact_qualified_name_match_is_stage_one():
@@ -223,8 +223,8 @@ def test_exact_qualified_name_match_is_stage_one():
     edges = build_call_graph([caller, target])
     util_edges = [e for e in edges if e.callee == "helpers.util"]
     assert util_edges
-    assert util_edges[0].metadata["resolved_by"] == "exact"
-    assert util_edges[0].confidence == 1.0
+    assert util_edges[0].metadata["resolved_by"] == "import_exact"
+    assert util_edges[0].confidence == 0.95
 
 
 def test_metadata_records_resolution_stage_for_unresolved(tmp_path: Path):
@@ -232,11 +232,12 @@ def test_metadata_records_resolution_stage_for_unresolved(tmp_path: Path):
 def handle():
     completely_unknown_thing()
 """)
-    edges = build_call_graph(nodes)
-    unresolved = [e for e in edges if e.callee == "completely_unknown_thing"]
-    assert unresolved
-    assert unresolved[0].metadata["resolved_by"] == "unresolved"
-    assert unresolved[0].confidence == 0.5
+    from ai_discovery.graph.call_graph import resolve_calls
+
+    res = resolve_calls(nodes)
+    # ADR-0004: no edge to a bare name; the call is an unresolved row with a reason
+    assert not [e for e in res.edges if e.callee == "completely_unknown_thing"]
+    assert [(u.callee_name, u.reason) for u in res.unresolved] == [("completely_unknown_thing", "not_found")]
 
 
 def test_backward_compat_nodes_without_call_sites_still_resolve():

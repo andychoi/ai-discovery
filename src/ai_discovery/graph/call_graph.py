@@ -1,281 +1,437 @@
-"""Build call graph from CodeNode.calls references."""
+"""Build call graph from CodeNode.calls / call_sites references.
+
+Resolution follows the closed origin vocabulary of ADR-0004
+(``graph/origins.py``): every edge has exactly one origin, and the origin
+fixes its confidence, edge kind and evidence kind. A call that is ambiguous or
+cannot be bound gets **no edge**; it is returned as an ``UnresolvedCall`` with
+a reason from ``origins.UNRESOLVED_REASONS``.
+"""
 
 from __future__ import annotations
 
+import posixpath
 from collections import defaultdict
-from pathlib import PurePosixPath
+from dataclasses import dataclass, field
 
+from . import origins as O
 from .models import CallEdge, CodeNode, ExecutionEdge, ExecutionNode, Scenario, StateTransition
 
-# P0-3: above this many equally-plausible candidates for a single call, the
-# resolver stops fanning out an edge to every candidate (which is both noise —
-# none is identifiably the real target — and a quadratic edge/memory blow-up on
-# enterprise codebases where names like `save`/`execute`/`handle` collide across
-# hundreds of classes). Instead the call collapses to one unresolved edge.
-_MAX_FANOUT = 8
+_CLASS_TYPES = ("class", "db_model")
+_SELF_RECEIVERS = frozenset({"self", "this", "cls", "Me", "base", "super"})
+# Languages where a receiver-less call inside a method means `this.name()`.
+_IMPLICIT_THIS = frozenset({"java", "csharp", "vbnet"})
+# Languages where a receiver-less call can never reach a class method.
+_NO_IMPLICIT_THIS = frozenset({"python", "javascript", "typescript"})
+_MAX_INHERIT_DEPTH = 4
+_EDGE_TYPE = {"calls": "direct_call", "dispatches_to": "dispatch", "framework_binds": "di_binding"}
 
-# A-3: minimum confidence for an edge to bind two files into the same
-# call-graph community. Only stage 0-3 resolutions qualify (index/exact/
-# import-scope/receiver-type) — the noisy short-name stage must never feed
-# the community map that narrows it (no self-reinforcement).
-_COMMUNITY_MIN_CONFIDENCE = 0.93
+
+@dataclass
+class UnresolvedCall:
+    caller: str
+    callee_name: str
+    reason: str
+    candidate_count: int = 0
+    file: str = ""
+    line: int | None = None
+
+
+@dataclass
+class Resolution:
+    edges: list[CallEdge] = field(default_factory=list)
+    unresolved: list[UnresolvedCall] = field(default_factory=list)
+
+
+def make_edge(caller: str, callee: str, origin_name: str, **meta) -> CallEdge:
+    """A call edge whose confidence/kinds come only from its origin."""
+    o = O.origin(origin_name)
+    return CallEdge(caller=caller, callee=callee, edge_type=_EDGE_TYPE.get(o.edge_kind, o.edge_kind),
+                    confidence=o.confidence,
+                    metadata={"resolved_by": o.name, "edge_kind": o.edge_kind,
+                              "evidence_kind": o.evidence_kind, **meta})
+
+
+def _family(language: str) -> str:
+    return "javascript" if language in ("javascript", "typescript") else language
 
 
 def build_call_graph(nodes: list[CodeNode], symbol_index=None) -> list[CallEdge]:
-    """Build call graph from CodeNode.calls / CodeNode.call_sites references.
+    """Resolved call edges only (see ``resolve_calls`` for unresolved calls)."""
+    return resolve_calls(nodes, symbol_index).edges
 
-    Resolution stages (first match wins, higher confidence earlier):
-      0. Symbol index (LSP/SCIP/compiler) — authoritative   → confidence 1.0
-         resolution when an index is present; resolves the
-         interface/polymorphic dispatch heuristics cannot.
-      1. Exact qualified-name match                       → confidence 1.0
-      2. Import-scoped — receiver matches a caller import → confidence 0.95
-      3. Receiver-type (DI) — receiver is a field/param    → confidence 0.93
-         of a known type; pin the call to that type's method
-      4. Short-name contextual (same class/file/module,   → confidence 0.95 … 0.6
-         then call-graph community narrowing built from
-         the stage 0-3 edges — A-3)
-      5. Unresolved — no match                            → confidence 0.5
 
-    Two passes: stages 0-3 resolve first; their high-confidence edges are
-    collapsed into file communities (union-find); stage 4 then prefers
-    candidates inside the caller's community before fanning out globally.
+def resolve_calls(nodes: list[CodeNode], symbol_index=None) -> Resolution:
+    """Resolve every call site to at most one edge per target, or an unresolved call.
 
-    `symbol_index` (optional SymbolIndex) is the LSP/compiler tier — present only
-    when an authoritative index was supplied; absence leaves resolution fully
-    heuristic. Each edge carries evidence in `metadata["resolved_by"]`.
+    Tiers, first match wins (origin → confidence in ``graph/origins.py``):
+      scip            symbol index (LSP/SCIP/compiler) when one is supplied
+      import_exact    fully-qualified call name, or imported symbol whose module matches its file
+      import_module   module/alias import, member resolved
+      self_scope      ``self``/``this`` (or receiver-less in Java/C#) method on the enclosing class
+      inherited       same, found on an ancestor (≤4 levels, one defining branch)
+      receiver_typed  receiver's declared type (field/param, or a type name) known locally
+      receiver_global receiver's type found only repo-wide by unique name
+      framework       DI: interface-typed receiver, exactly one implementation defines the method
+      dispatch        interface-typed receiver, 2..24 implementations (one edge each)
+      same_file       receiver-less call, unique callee in the caller's file
+      same_package    receiver-less call, unique callee in the caller's package/module
+      global_unique   unique name repo-wide, same language, callable, not a builtin
+    More than one candidate in a tier → no edge, reason ``ambiguous``. Plus a
+    graph-wide ``dispatch`` pass: base-class/interface method → each override.
     """
-    qualified_index: dict[str, CodeNode] = {}
-    short_name_index: dict[str, list[CodeNode]] = defaultdict(list)
-    # HIGH-3: class qualified_name → {field/param name: declared type}. Lets the
-    # receiver-type stage resolve `orderService.process()` to OrderService.process
-    # instead of fanning out across every `process` in the codebase.
-    field_types_by_class: dict[str, dict[str, str]] = {}
-    # P0-2: interface/superclass short-name -> implementing/extending class nodes.
-    # Lets the receiver-type stage resolve an interface-typed injected field
-    # (the common Spring/.NET case: `OrderService` field, `OrderServiceImpl`
-    # bean) to the concrete impl's method instead of dead-ending on the
-    # bodyless interface node or fanning out across same-named methods.
-    impls_by_base: dict[str, list[CodeNode]] = defaultdict(list)
-
+    r = _Resolver(nodes, symbol_index)
     for node in nodes:
-        qualified_index[node.qualified_name] = node
-        short_name_index[node.name].append(node)
-        ftypes = (node.framework_hints or {}).get("field_types")
-        if ftypes:
-            field_types_by_class[node.qualified_name] = ftypes
-        if node.node_type in ("class", "db_model") and node.bases:
-            for base in node.bases:
-                # bases are unqualified, but tolerate a qualified form.
-                impls_by_base[base.rsplit(".", 1)[-1]].append(node)
-
-    edges: list[CallEdge] = []
-    # A-3: stage-4/5 call sites deferred to pass 2, where the community map
-    # (built from pass-1 high-confidence edges) is available for narrowing.
-    pending: list[tuple[CodeNode, str]] = []
-
-    for node in nodes:
-        # Prefer structured call_sites (Python parser emits these). For other
-        # parsers, synthesize site records from the deduped short-name list so
-        # the stage dispatch below stays uniform.
-        sites = node.call_sites if node.call_sites else [
-            {"name": c, "receiver": None} for c in node.calls
-        ]
+        sites = node.call_sites if node.call_sites else [{"name": c, "receiver": None} for c in node.calls]
         if not sites:
             continue
-
-        import_index = _build_import_index(node)
-
+        imports = _build_import_index(node)
         for site in sites:
-            call_name = site.get("name")
-            if not call_name:
-                continue
-            receiver = site.get("receiver")
+            if site.get("name"):
+                r.resolve_site(node, site, imports)
+    r.dispatch_pass()
 
-            # Stage 0: authoritative symbol index (LSP/SCIP/compiler). When an
-            # index resolves this call, trust it over every heuristic — it is the
-            # only tier that can resolve interface/polymorphic dispatch.
-            if symbol_index is not None:
-                indexed = symbol_index.resolve(node.qualified_name, call_name, receiver)
-                if indexed and indexed in qualified_index and indexed != node.qualified_name:
-                    edges.append(
-                        CallEdge(
-                            caller=node.qualified_name,
-                            callee=indexed,
-                            edge_type="direct_call",
-                            confidence=1.0,
-                            metadata={"resolved_by": "index"},
-                        )
-                    )
-                    continue
-
-            # Stage 1: exact qualified-name match
-            if call_name in qualified_index:
-                target = qualified_index[call_name]
-                edges.append(
-                    CallEdge(
-                        caller=node.qualified_name,
-                        callee=target.qualified_name,
-                        edge_type="direct_call",
-                        confidence=1.0,
-                        metadata={"resolved_by": "exact"},
-                    )
-                )
-                continue
-
-            # Stage 2: import-scoped
-            import_resolved = _resolve_via_import(
-                call_name, receiver, import_index, short_name_index
-            )
-            if import_resolved:
-                target, confidence, import_record = import_resolved
-                if target.qualified_name != node.qualified_name:
-                    edges.append(
-                        CallEdge(
-                            caller=node.qualified_name,
-                            callee=target.qualified_name,
-                            edge_type="direct_call",
-                            confidence=confidence,
-                            metadata={
-                                "resolved_by": "import_scope",
-                                "receiver": receiver,
-                                "import": import_record,
-                            },
-                        )
-                    )
-                    continue
-
-            # Stage 3: receiver-type (DI) — pin the call to the receiver's
-            # declared type, eliminating short-name fan-out across same-named
-            # methods. This is the HIGH-3 fix: it consumes the field/param types
-            # the parser already extracts.
-            type_resolved = _resolve_via_receiver_type(
-                node, call_name, receiver, field_types_by_class,
-                qualified_index, short_name_index, impls_by_base,
-            )
-            if type_resolved is not None:
-                target, confidence, reason = type_resolved
-                if target.qualified_name != node.qualified_name:
-                    edges.append(
-                        CallEdge(
-                            caller=node.qualified_name,
-                            callee=target.qualified_name,
-                            edge_type="direct_call",
-                            confidence=confidence,
-                            metadata={"resolved_by": reason, "receiver": receiver},
-                        )
-                    )
-                    continue
-
-            # Stages 4-5 are deferred: short-name resolution benefits from the
-            # community map, which needs all pass-1 edges first.
-            pending.append((node, call_name))
-
-    # Pass 2 — stage 4 (short-name contextual, community-narrowed) + stage 5.
-    file_community = _file_communities(edges, qualified_index)
-    for node, call_name in pending:
-        resolved = _resolve_contextual_targets(
-            node, call_name, short_name_index, file_community
-        )
-        if resolved:
-            for target, confidence, reason in resolved:
-                if target.qualified_name == node.qualified_name:
-                    continue
-                edges.append(
-                    CallEdge(
-                        caller=node.qualified_name,
-                        callee=target.qualified_name,
-                        edge_type="direct_call",
-                        confidence=confidence,
-                        metadata={"resolved_by": reason},
-                    )
-                )
-            continue
-
-        # Stage 5: unresolved
-        edges.append(
-            CallEdge(
-                caller=node.qualified_name,
-                callee=call_name,
-                edge_type="direct_call",
-                confidence=0.5,
-                metadata={"resolved_by": "unresolved"},
-            )
-        )
-
-    # Dedup (MED-3): the same (caller, callee, edge_type) triple can be emitted
-    # by multiple call sites — a method called twice, or short-name fan-out
-    # reaching one target via two sites — which inflates apparent coupling.
-    # Keep the highest-confidence edge per triple (preserving its evidence).
+    # Dedup (MED-3): one edge per (caller, callee, edge_type), keeping the
+    # highest confidence; one unresolved record per (caller, name).
     deduped: dict[tuple[str, str, str], CallEdge] = {}
-    for e in edges:
+    for e in r.edges:
         k = (e.caller, e.callee, e.edge_type)
         cur = deduped.get(k)
         if cur is None or e.confidence > cur.confidence:
             deduped[k] = e
-    return list(deduped.values())
-
-
-def _resolve_via_receiver_type(
-    caller: CodeNode,
-    call_name: str,
-    receiver: str | None,
-    field_types_by_class: dict[str, dict[str, str]],
-    qualified_index: dict[str, CodeNode],
-    short_name_index: dict[str, list[CodeNode]],
-    impls_by_base: dict[str, list[CodeNode]] | None = None,
-) -> tuple[CodeNode, float, str] | None:
-    """Resolve `receiver.call_name()` via the receiver's declared type (HIGH-3).
-
-    If `receiver` is a field / constructor-param of the caller's enclosing class
-    with a known type `T`, and `T` defines `call_name`, return that method node
-    tagged `receiver_type` (confidence 0.93).
-
-    P0-2 interface->impl: if `T` is an interface or abstract base that declares no
-    `call_name` body, but exactly one concrete class implementing/extending `T`
-    defines `call_name`, resolve to that impl's method tagged `interface_impl`
-    (confidence 0.90). This is the common Spring/.NET case where a field is typed
-    as the interface (`OrderService`) but the bean is the impl (`OrderServiceImpl`).
-    When *multiple* impls define `call_name` (genuine polymorphism) we do not
-    guess — return None and let the short-name stage handle it.
-
-    Returns None when the receiver type is unknown or the method isn't found —
-    so resolution falls through to the short-name stage unchanged (e.g.
-    `repo.findAll()` where findAll is a framework-inherited method absent from
-    source stays unresolved, exactly as before).
-    """
-    if not receiver:
-        return None
-    # `caller` is a method node; its enclosing class qn is the name minus the
-    # final segment (com.x.CheckoutController.view -> com.x.CheckoutController).
-    class_qn = caller.qualified_name.rsplit(".", 1)[0]
-    field_types = field_types_by_class.get(class_qn)
-    if not field_types:
-        return None
-    # Match the receiver against a known field/param. Try the literal receiver
-    # (C# `_orderService`) then its final segment, so member-access receivers
-    # like Python's `self.order_service` resolve via the `order_service` field.
-    type_name = field_types.get(receiver) or field_types.get(receiver.rsplit(".", 1)[-1])
-    if not type_name:
-        return None
-    for type_node in short_name_index.get(type_name, []):
-        if type_node.node_type not in ("class", "db_model"):
+    resolved_pairs = {(e.caller, e.metadata.get("call")) for e in deduped.values()}
+    seen: set[tuple[str, str]] = set()
+    unresolved: list[UnresolvedCall] = []
+    for u in r.unresolved:
+        k = (u.caller, u.callee_name)
+        if k in seen or k in resolved_pairs:
             continue
-        target = qualified_index.get(f"{type_node.qualified_name}.{call_name}")
-        if target is not None:
-            return (target, 0.93, "receiver_type")
+        seen.add(k)
+        unresolved.append(u)
+    return Resolution(list(deduped.values()), unresolved)
 
-    # Interface->impl fallback: the declared type defines no such method body.
-    # Resolve to a concrete implementer iff exactly one defines call_name.
-    if impls_by_base:
-        impl_targets: dict[str, CodeNode] = {}
-        for impl in impls_by_base.get(type_name, []):
-            t = qualified_index.get(f"{impl.qualified_name}.{call_name}")
-            if t is not None:
-                impl_targets[t.qualified_name] = t
+
+class _Resolver:
+    def __init__(self, nodes: list[CodeNode], symbol_index=None):
+        self.symbol_index = symbol_index
+        self.qualified: dict[str, CodeNode] = {}
+        self.by_name: dict[str, list[CodeNode]] = defaultdict(list)
+        # HIGH-3: class qualified_name → {field/param name: declared type}.
+        self.field_types: dict[str, dict[str, str]] = {}
+        # P0-2: interface/base short name → implementing/extending class nodes.
+        self.impls: dict[str, list[CodeNode]] = defaultdict(list)
+        self.members: dict[str, list[CodeNode]] = defaultdict(list)   # owner qn → direct members
+        for node in nodes:
+            self.qualified[node.qualified_name] = node
+            if "." in node.qualified_name:
+                self.members[node.qualified_name.rsplit(".", 1)[0]].append(node)
+            self.by_name[node.name].append(node)
+            ftypes = (node.framework_hints or {}).get("field_types")
+            if ftypes:
+                self.field_types[node.qualified_name] = ftypes
+            if node.node_type in _CLASS_TYPES and node.bases:
+                for base in node.bases:
+                    self.impls[base.rsplit(".", 1)[-1]].append(node)
+        self.edges: list[CallEdge] = []
+        self.unresolved: list[UnresolvedCall] = []
+
+    # ── recording ────────────────────────────────────────────────────────
+    def _edge(self, caller: CodeNode, target: CodeNode, origin_name: str, call: str, **meta) -> None:
+        if target.qualified_name != caller.qualified_name:
+            self.edges.append(make_edge(caller.qualified_name, target.qualified_name, origin_name,
+                                        call=call, **meta))
+
+    def _miss(self, caller: CodeNode, site: dict, name: str, reason: str, count: int = 0) -> None:
+        self.unresolved.append(UnresolvedCall(caller.qualified_name, name, reason, count, caller.file_path,
+                                              site.get("line") or caller.line_start or None))
+
+    # ── per-site resolution ──────────────────────────────────────────────
+    def resolve_site(self, caller: CodeNode, site: dict, imports: dict[str, dict]) -> None:
+        call_ref = site["name"]
+        receiver = site.get("receiver")
+
+        if self.symbol_index is not None:
+            indexed = self.symbol_index.resolve(caller.qualified_name, call_ref, receiver)
+            if indexed and indexed in self.qualified and indexed != caller.qualified_name:
+                self._edge(caller, self.qualified[indexed], "scip", call_ref)
+                return
+
+        if call_ref in self.qualified:
+            # a markup page naming its code-behind handler / bean class is a framework binding
+            origin_name = "framework" if caller.node_type == "ui_component" else "import_exact"
+            self._edge(caller, self.qualified[call_ref], origin_name, call_ref)
+            return
+
+        name = call_ref
+        if "." in call_ref and not receiver:
+            # `PaymentService.charge` from a deduped calls list: split the receiver off.
+            receiver, name = call_ref.rsplit(".", 1)
+
+        if name in O.DYNAMIC_CALLS:
+            return self._miss(caller, site, call_ref, "dynamic")
+
+        if self._via_import(caller, site, name, receiver, imports, call_ref):
+            return
+
+        if receiver and receiver in _SELF_RECEIVERS:
+            return self._self_scope(caller, site, name, call_ref, explicit=True)
+        if not receiver:
+            if self._resolve_type(name):
+                return self._type_reference(caller, site, name, imports, call_ref)
+            if _family(caller.language) in _IMPLICIT_THIS and self._self_scope(caller, site, name, call_ref,
+                                                                               explicit=False):
+                return
+            if self._local(caller, site, name, call_ref):
+                return
+            if _family(caller.language) in _IMPLICIT_THIS:
+                # a bare Java/C# call outside the class hierarchy is a static
+                # import or inherited from a type outside the repo
+                return self._miss(caller, site, call_ref, "external" if self._has_foreign_base(caller)
+                                  else "not_found")
+        elif self._via_receiver_type(caller, site, name, receiver, imports, call_ref):
+            return
+
+        self._global(caller, site, name, receiver, imports, call_ref)
+
+    def _via_import(self, caller, site, name, receiver, imports, call_ref) -> bool:
+        """Receiver head (or the bare name itself) is an imported binding."""
+        if receiver:
+            imp = imports.get(receiver.split(".")[0])
+        else:
+            imp = imports.get(name)
+            if imp is not None and imp.get("name") != name and imp.get("alias") != name:
+                imp = None
+        if imp is None:
+            return False
+        module = imp.get("module") or ""
+        imported = imp.get("name")
+        exact: list[CodeNode] = []
+        loose: list[CodeNode] = []
+        for cand in self.by_name.get(name, []):
+            qn = cand.qualified_name
+            if receiver and imported:
+                # `from M import Cls` + `Cls.name()`
+                if qn.endswith(f".{imported}.{name}") or qn == f"{imported}.{name}":
+                    (exact if _module_matches_file(module, cand.file_path, caller.file_path) else loose).append(cand)
+            elif receiver:
+                # `import M` + `M.name()`
+                tail = module.split(".")[-1] if module else ""
+                if qn == f"{module}.{name}" or (tail and qn == f"{tail}.{name}"):
+                    loose.append(cand)
+            else:
+                # `from M import name` + `name()`
+                if (qn.endswith(f".{name}") or qn == name) and _module_matches_file(module, cand.file_path,
+                                                                                    caller.file_path):
+                    exact.append(cand)
+        for group, origin_name in ((exact, "import_exact"), (loose, "import_module")):
+            if len(group) == 1:
+                self._edge(caller, group[0], origin_name, call_ref, receiver=receiver, **{"import": imp})
+                return True
+            if len(group) > 1:
+                self._miss(caller, site, call_ref, "ambiguous", len(group))
+                return True
+        return False
+
+    def _class_of(self, caller: CodeNode) -> CodeNode | None:
+        owner = self.qualified.get(caller.qualified_name.rsplit(".", 1)[0])
+        return owner if owner is not None and owner.node_type in _CLASS_TYPES else None
+
+    def _self_scope(self, caller, site, name, call_ref, *, explicit: bool) -> bool:
+        cls = self._class_of(caller)
+        if cls is not None:
+            target = self.qualified.get(f"{cls.qualified_name}.{name}")
+            if target is not None and target.qualified_name != caller.qualified_name:
+                self._edge(caller, target, "self_scope", call_ref)
+                return True
+            found = self._on_ancestors(cls, name)
+            if len(found) == 1:
+                self._edge(caller, found[0], "inherited", call_ref)
+                return True
+            if len(found) > 1:
+                self._miss(caller, site, call_ref, "ambiguous", len(found))
+                return True
+        if explicit:
+            foreign = cls is not None and self._has_foreign_base(caller)
+            self._miss(caller, site, call_ref, "external" if foreign else "not_found")
+            return True
+        return False
+
+    def _resolve_type(self, short: str) -> list[CodeNode]:
+        return [n for n in self.by_name.get(short.rsplit(".", 1)[-1], []) if n.node_type in _CLASS_TYPES]
+
+    def _on_ancestors(self, cls: CodeNode, name: str) -> list[CodeNode]:
+        """Method *name* on the nearest ancestors of *cls* that define it."""
+        frontier, seen = [cls], {cls.qualified_name}
+        for _ in range(_MAX_INHERIT_DEPTH):
+            parents: list[CodeNode] = []
+            for c in frontier:
+                for base in c.bases or []:
+                    types = self._resolve_type(base)
+                    if len(types) == 1 and types[0].qualified_name not in seen:
+                        seen.add(types[0].qualified_name)
+                        parents.append(types[0])
+            found = {t.qualified_name: t for p in parents
+                     if (t := self.qualified.get(f"{p.qualified_name}.{name}")) is not None}
+            if found:
+                return list(found.values())
+            frontier = parents
+            if not frontier:
+                break
+        return []
+
+    def _has_foreign_base(self, caller: CodeNode) -> bool:
+        cls = self._class_of(caller)
+        return cls is not None and any(not self._resolve_type(b) for b in cls.bases or [])
+
+    def _is_local_type(self, caller: CodeNode, t: CodeNode, imports: dict[str, dict]) -> bool:
+        if t.file_path == caller.file_path:
+            return True
+        pkg = t.qualified_name.rsplit(".", 1)[0]
+        if caller.qualified_name.startswith(pkg + "."):
+            return True
+        for imp in imports.values():
+            module = imp.get("module") or ""
+            if imp.get("name") == t.name and (not module or t.qualified_name in (f"{module}.{t.name}", t.name)
+                                              or _module_matches_file(module, t.file_path)):
+                return True
+            if not imp.get("name") and module == pkg:   # C# `using Ns;`, Java `import pkg.*`
+                return True
+        return False
+
+    def _type_reference(self, caller, site, name, imports, call_ref) -> None:
+        """A bare type name: constructor call (`new X()`, `X()`) or a DI constructor parameter."""
+        types = [t for t in self._resolve_type(name) if t.qualified_name != caller.qualified_name]
+        local = [t for t in types if self._is_local_type(caller, t, imports)]
+        if len(local) == 1:
+            self._edge(caller, local[0], "receiver_typed", call_ref)
+        elif len(types) == 1:
+            self._edge(caller, types[0], "receiver_global", call_ref)
+        else:
+            self._miss(caller, site, call_ref, "ambiguous" if types else "not_found", len(types))
+
+    def _via_receiver_type(self, caller, site, name, receiver, imports, call_ref) -> bool:
+        """Receiver is a typed field/param of the enclosing class, or a type name itself."""
+        cls = self._class_of(caller)
+        ftypes = self.field_types.get(cls.qualified_name, {}) if cls is not None else {}
+        type_name = ftypes.get(receiver) or ftypes.get(receiver.rsplit(".", 1)[-1])
+        if not type_name:
+            # static call on a type name: `OrderService.create()` (JS/C#/Java statics)
+            if receiver[:1].isupper() and self._resolve_type(receiver):
+                type_name = receiver
+            else:
+                return False
+        types = self._resolve_type(type_name)
+        if not types:
+            # interfaces are often not nodes (the C# parser emits none): go
+            # straight to the implementations; a type with none is outside
+            # the repo → let the global tier decide
+            return self._via_implementations(caller, site, name, type_name.rsplit(".", 1)[-1], receiver,
+                                             call_ref, bases=None)
+        local = [t for t in types if self._is_local_type(caller, t, imports)]
+        if len(local) == 1:
+            t, origin_name = local[0], "receiver_typed"
+        elif len(types) == 1:
+            t, origin_name = types[0], "receiver_global"
+        else:
+            self._miss(caller, site, call_ref, "di_ambiguous", len(types))
+            return True
+
+        target = self.qualified.get(f"{t.qualified_name}.{name}")
+        if target is not None:
+            self._edge(caller, target, origin_name, call_ref, receiver=receiver)
+            return True
+        found = self._on_ancestors(t, name)
+        if len(found) == 1:
+            self._edge(caller, found[0], "inherited", call_ref, receiver=receiver)
+            return True
+        return self._via_implementations(caller, site, name, t.name, receiver, call_ref, bases=t.bases or [])
+
+    def _via_implementations(self, caller, site, name, type_short, receiver, call_ref, *, bases) -> bool:
+        """P0-2 interface → implementation(s) defining *name*.
+
+        ``bases`` is the declared type's base list, or None when the type is
+        not a node (then no implementation means "not ours": return False).
+        """
+        impl_targets = {x.qualified_name: x for impl in self.impls.get(type_short, [])
+                        if (x := self.qualified.get(f"{impl.qualified_name}.{name}")) is not None}
+        if not impl_targets and bases is None:
+            return False
         if len(impl_targets) == 1:
-            return (next(iter(impl_targets.values())), 0.90, "interface_impl")
-    return None
+            self._edge(caller, next(iter(impl_targets.values())), "framework", call_ref, receiver=receiver)
+        elif len(impl_targets) > O.DISPATCH_CAP:
+            self._miss(caller, site, call_ref, "dispatch_cap", len(impl_targets))
+        elif impl_targets:
+            for x in impl_targets.values():
+                self._edge(caller, x, "dispatch", call_ref, receiver=receiver)
+        else:
+            # e.g. `orderRepository.findAll()` inherited from a framework base type
+            foreign = any(not self._resolve_type(b) for b in bases or [])
+            self._miss(caller, site, call_ref, "external" if foreign else "not_found")
+        return True
+
+    def _bindable(self, caller: CodeNode, target: CodeNode) -> bool:
+        """Name-only tiers: same language, a callable target, and — in languages
+        without implicit ``this`` — never a class method from a bare call."""
+        if target.qualified_name == caller.qualified_name:
+            return False
+        if _family(target.language) != _family(caller.language) or target.node_type not in O.CALLABLE_TYPES:
+            return False
+        if _family(caller.language) in _NO_IMPLICIT_THIS:
+            owner = self.qualified.get(target.qualified_name.rsplit(".", 1)[0])
+            if owner is not None and owner.node_type in _CLASS_TYPES:
+                return False
+        return True
+
+    def _local(self, caller, site, name, call_ref) -> bool:
+        """Receiver-less call: unique callee in the same file, then the same package."""
+        cands = [t for t in self.by_name.get(name, []) if self._bindable(caller, t)]
+        same_file = [t for t in cands if t.file_path == caller.file_path]
+        if len(same_file) == 1:
+            self._edge(caller, same_file[0], "same_file", call_ref)
+            return True
+        if len(same_file) > 1:
+            self._miss(caller, site, call_ref, "ambiguous", len(same_file))
+            return True
+        for prefix in _module_prefixes(caller.qualified_name):
+            same_pkg = [t for t in cands if t.qualified_name == f"{prefix}.{name}"]
+            if len(same_pkg) == 1:
+                self._edge(caller, same_pkg[0], "same_package", call_ref)
+                return True
+            if len(same_pkg) > 1:
+                self._miss(caller, site, call_ref, "ambiguous", len(same_pkg))
+                return True
+        return False
+
+    def _global(self, caller, site, name, receiver, imports, call_ref) -> None:
+        """Last tier: the bare name, unique repo-wide, guarded (ADR-0004 short-name guards)."""
+        if O.is_builtin(_family(caller.language), name):
+            return self._miss(caller, site, call_ref, "builtin")
+        cands = [t for t in self.by_name.get(name, []) if t.qualified_name != caller.qualified_name
+                 and _family(t.language) == _family(caller.language) and t.node_type in O.CALLABLE_TYPES]
+        if receiver is None:
+            cands = [t for t in cands if self._bindable(caller, t)]
+        if len(cands) == 1:
+            self._edge(caller, cands[0], "global_unique", call_ref, **({"receiver": receiver} if receiver else {}))
+        elif cands:
+            self._miss(caller, site, call_ref, "ambiguous", len(cands))
+        else:
+            head = (receiver or "").split(".")[0]
+            self._miss(caller, site, call_ref, "external" if head and head in imports else "not_found")
+
+    # ── graph-wide dispatch edges ────────────────────────────────────────
+    def dispatch_pass(self) -> None:
+        """Base/interface method → each override in a repo subclass (``dispatch``)."""
+        for base_name, impls in self.impls.items():
+            bases = self._resolve_type(base_name)
+            if len(bases) != 1:
+                continue
+            base_methods = [n for n in self.members.get(bases[0].qualified_name, [])
+                            if n.node_type in O.CALLABLE_TYPES and n.node_type not in _CLASS_TYPES]
+            for m in base_methods:
+                overrides = [o for impl in impls
+                             if (o := self.qualified.get(f"{impl.qualified_name}.{m.name}")) is not None]
+                if 0 < len(overrides) <= O.DISPATCH_CAP:
+                    for o in overrides:
+                        self.edges.append(make_edge(m.qualified_name, o.qualified_name, "dispatch", call=m.name))
 
 
 def _build_import_index(caller: CodeNode) -> dict[str, dict]:
@@ -303,60 +459,15 @@ def _build_import_index(caller: CodeNode) -> dict[str, dict]:
     return index
 
 
-def _resolve_via_import(
-    call_name: str,
-    receiver: str | None,
-    import_index: dict[str, dict],
-    short_name_index: dict[str, list[CodeNode]],
-) -> tuple[CodeNode, float, dict] | None:
-    """Stage 2: resolve via the caller's imports.
-
-    Handles the canonical case: `from svc.orders import OrderService` +
-    `OrderService.save(x)` → target is the `save` method owned by the
-    imported class, even though other classes in the repo also expose `save`.
-    """
-    if not receiver:
-        return None
-    head = receiver.split(".")[0]
-    imp = import_index.get(head)
-    if imp is None:
-        return None
-
-    candidates = short_name_index.get(call_name, [])
-    if not candidates:
-        return None
-
-    module = imp.get("module") or ""
-    imported_name = imp.get("name")  # the Y in `from X import Y`
-
-    ranked: list[tuple[CodeNode, float]] = []
-    for cand in candidates:
-        qn = cand.qualified_name
-        if imported_name:
-            # Receiver is a class/object imported from a module.
-            owner_match = (
-                qn.endswith(f".{imported_name}.{call_name}")
-                or qn == f"{imported_name}.{call_name}"
-            )
-            if not owner_match:
-                continue
-            file_conf = 0.95 if _module_matches_file(module, cand.file_path) else 0.85
-            ranked.append((cand, file_conf))
-        else:
-            # Plain `import M` — calling `M.foo()` targets a module-level fn.
-            tail = module.split(".")[-1] if module else ""
-            if qn == f"{module}.{call_name}" or (tail and qn == f"{tail}.{call_name}"):
-                ranked.append((cand, 0.95))
-
-    if not ranked:
-        return None
-    ranked.sort(key=lambda x: x[1], reverse=True)
-    target, confidence = ranked[0]
-    return (target, confidence, imp)
+_JS_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue")
 
 
-def _module_matches_file(module: str, file_path: str) -> bool:
+def _module_matches_file(module: str, file_path: str, importer: str = "") -> bool:
     """Heuristic: module `svc.orders` matches `.../svc/orders.py` or `.../svc/orders/__init__.py`.
+
+    A relative JS/TS specifier (`./author.mapper`, `../services/x`) is resolved
+    against the importing file's directory and matched with the usual
+    extensions or an `index` file.
 
     Tolerates shorter tails (e.g. `orders` matches `.../orders.py`) so the
     check still helps when callers use short relative imports or when the
@@ -366,6 +477,10 @@ def _module_matches_file(module: str, file_path: str) -> bool:
     """
     if not module:
         return False
+    if module.startswith(".") and "/" in module and importer:
+        base = posixpath.normpath(posixpath.join(posixpath.dirname(importer.replace("\\", "/")), module))
+        posix = posixpath.normpath(file_path.replace("\\", "/"))
+        return any(posix == base + ext or posix == f"{base}/index{ext}" for ext in ("", *_JS_EXTS))
     parts = module.split(".")
     posix = file_path.replace("\\", "/")
     for n in range(len(parts), 0, -1):
@@ -378,154 +493,6 @@ def _module_matches_file(module: str, file_path: str) -> bool:
     return False
 
 
-def _file_communities(
-    edges: list[CallEdge], qualified_index: dict[str, CodeNode]
-) -> dict[str, str]:
-    """Union-find file communities from high-confidence (stage 0-3) edges.
-
-    A-3: two files belong to one community when a ≥ _COMMUNITY_MIN_CONFIDENCE
-    edge connects nodes in them. The map lets short-name resolution prefer
-    candidates the caller's file is already provably wired to, instead of
-    fanning out across every same-named method in the repo. Files with no
-    qualifying edges are absent from the map (no community — no narrowing).
-    """
-    parent: dict[str, str] = {}
-
-    def find(x: str) -> str:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]  # path halving
-            x = parent[x]
-        return x
-
-    def union(a: str, b: str) -> None:
-        parent.setdefault(a, a)
-        parent.setdefault(b, b)
-        root_a, root_b = find(a), find(b)
-        if root_a != root_b:
-            parent[root_b] = root_a
-
-    for edge in edges:
-        if edge.confidence < _COMMUNITY_MIN_CONFIDENCE:
-            continue
-        caller_node = qualified_index.get(edge.caller)
-        callee_node = qualified_index.get(edge.callee)
-        if caller_node is None or callee_node is None:
-            continue
-        union(caller_node.file_path, callee_node.file_path)
-
-    return {f: find(f) for f in parent}
-
-
-def _resolve_contextual_targets(
-    caller: CodeNode,
-    call_ref: str,
-    short_name_index: dict[str, list[CodeNode]],
-    file_community: dict[str, str] | None = None,
-) -> list[tuple[CodeNode, float, str]]:
-    candidates = list(short_name_index.get(call_ref, []))
-    if not candidates:
-        if "." in call_ref:
-            suffix_matches = _suffix_matches(call_ref, short_name_index)
-            if len(suffix_matches) == 1:
-                return [(suffix_matches[0], 0.85, "short_name")]
-            if 1 < len(suffix_matches) <= _MAX_FANOUT:
-                return [(target, 0.7, "short_name") for target in suffix_matches if target.qualified_name != caller.qualified_name]
-            # > _MAX_FANOUT suffix matches: too ambiguous — collapse (see below).
-        return []
-
-    same_class = _same_class_matches(caller, call_ref, candidates)
-    if same_class:
-        return [(target, 0.95, "short_name") for target in same_class]
-
-    same_file = [target for target in candidates if target.file_path == caller.file_path]
-    if len(same_file) == 1:
-        return [(same_file[0], 0.9, "short_name")]
-    if len(same_file) > 1:
-        return [(target, 0.75, "short_name") for target in same_file if target.qualified_name != caller.qualified_name]
-
-    same_module = _same_module_matches(caller, call_ref, candidates)
-    if len(same_module) == 1:
-        return [(same_module[0], 0.85, "short_name")]
-    if len(same_module) > 1:
-        return [(target, 0.7, "short_name") for target in same_module if target.qualified_name != caller.qualified_name]
-
-    # A-3: call-graph community narrowing. Applies only as a STRICT narrowing —
-    # when the caller's community contains some but not all candidates. With no
-    # community signal (or all/none of the candidates in it), resolution falls
-    # through to the existing heuristics unchanged.
-    if file_community:
-        caller_comm = file_community.get(caller.file_path)
-        if caller_comm is not None:
-            others_all = [t for t in candidates if t.qualified_name != caller.qualified_name]
-            in_comm = [
-                t for t in others_all
-                if file_community.get(t.file_path) == caller_comm
-            ]
-            if in_comm and len(in_comm) < len(others_all):
-                if len(in_comm) == 1:
-                    return [(in_comm[0], 0.8, "short_name_community")]
-                if len(in_comm) <= _MAX_FANOUT:
-                    return [(t, 0.7, "short_name_community") for t in in_comm]
-
-    if len(candidates) == 1:
-        return [(candidates[0], 0.8, "short_name")]
-
-    ranked = _rank_by_prefix_overlap(caller, candidates)
-    if ranked and ranked[0][1] > 0:
-        best_score = ranked[0][1]
-        best = [target for target, score in ranked if score == best_score and target.qualified_name != caller.qualified_name]
-        if len(best) == 1:
-            return [(best[0], 0.75, "short_name")]
-        if 0 < len(best) <= _MAX_FANOUT:
-            return [(target, 0.65, "short_name") for target in best]
-
-    others = [target for target in candidates if target.qualified_name != caller.qualified_name]
-    # P0-3: collapse rather than fan out when the ambiguous set is large. An empty
-    # return falls through to the Stage-5 unresolved edge (a single edge to the
-    # raw call name at 0.5), preserving the "ambiguous call" signal without the
-    # quadratic edge blow-up.
-    if len(others) > _MAX_FANOUT:
-        return []
-    return [(target, 0.6, "short_name") for target in others]
-
-
-def _same_class_matches(caller: CodeNode, call_ref: str, candidates: list[CodeNode]) -> list[CodeNode]:
-    owner = _class_owner_prefix(caller.qualified_name)
-    if not owner:
-        return []
-    expected = f"{owner}.{call_ref}"
-    return [target for target in candidates if target.qualified_name == expected]
-
-
-def _same_module_matches(caller: CodeNode, call_ref: str, candidates: list[CodeNode]) -> list[CodeNode]:
-    module_prefixes = _module_prefixes(caller.qualified_name)
-    for prefix in module_prefixes:
-        expected = f"{prefix}.{call_ref}"
-        matches = [target for target in candidates if target.qualified_name == expected]
-        if matches:
-            return matches
-    return []
-
-
-def _suffix_matches(call_ref: str, short_name_index: dict[str, list[CodeNode]]) -> list[CodeNode]:
-    suffix = f".{call_ref}"
-    matches: list[CodeNode] = []
-    seen: set[str] = set()
-    for nodes in short_name_index.values():
-        for node in nodes:
-            if node.qualified_name.endswith(suffix) and node.qualified_name not in seen:
-                matches.append(node)
-                seen.add(node.qualified_name)
-    return matches
-
-
-def _class_owner_prefix(qualified_name: str) -> str | None:
-    parts = qualified_name.split(".")
-    if len(parts) >= 3:
-        return ".".join(parts[:-1])
-    return None
-
-
 def _module_prefixes(qualified_name: str) -> list[str]:
     parts = qualified_name.split(".")
     if len(parts) <= 1:
@@ -535,24 +502,6 @@ def _module_prefixes(qualified_name: str) -> list[str]:
     for idx in range(max(1, len(parts) - 2), 0, -1):
         prefixes.append(".".join(parts[:idx]))
     return prefixes
-
-
-def _rank_by_prefix_overlap(caller: CodeNode, candidates: list[CodeNode]) -> list[tuple[CodeNode, int]]:
-    caller_parts = caller.qualified_name.split(".")
-    ranked: list[tuple[CodeNode, int]] = []
-    for target in candidates:
-        target_parts = target.qualified_name.split(".")
-        overlap = 0
-        for left, right in zip(caller_parts, target_parts):
-            if left != right:
-                break
-            overlap += 1
-        # Prefer same directory when prefix overlap ties.
-        if PurePosixPath(target.file_path).parent == PurePosixPath(caller.file_path).parent:
-            overlap += 1
-        ranked.append((target, overlap))
-    ranked.sort(key=lambda item: item[1], reverse=True)
-    return ranked
 
 
 _ENTRY_TYPES = frozenset({"endpoint", "batch_job", "cli_command", "event_consumer"})

@@ -35,7 +35,7 @@ def test_page_resolves_edge_to_usebean_class():
         source_code="", line_start=1, line_end=2,
     )
     edges = build_call_graph([page, bean])
-    assert any(e.callee == "com.acme.UserBean" and e.metadata.get("resolved_by") == "exact"
+    assert any(e.callee == "com.acme.UserBean" and e.metadata.get("resolved_by") == "framework"
                for e in edges if e.caller == page.qualified_name)
 
 

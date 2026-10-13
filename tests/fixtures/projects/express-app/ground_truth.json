@@ -16,14 +16,14 @@
   ],
   "_entities_note": "Mongoose schemas (new mongoose.Schema({...}) + mongoose.model('Name', schema)) are now extracted as db_model entities — the gap this harness surfaced is closed; entities is a hard target.",
   "relationships": [],
-  "_key_call_edges_note": "Route handlers delegate to injected service singletons; service->model calls (find/save) are Mongoose methods absent from source, correctly unresolved. Caller names are anonymous route handlers, so matched on callee + confidence.",
+  "_key_call_edges_note": "Route handlers delegate to injected service singletons; service->model calls (find/save) are Mongoose methods absent from source, correctly unresolved. Caller names are anonymous route handlers, so matched on callee + confidence. Bar is 0.75 (ADR-0004 origin receiver_global): the services are bound with CommonJS require(), which the JS parser does not record as an import, so the receiver type is known only by its unique repo-wide name.",
   "key_call_edges": [
-    {"callee_suffix": "OrderService.getAllOrders",     "min_confidence": 0.8},
-    {"callee_suffix": "OrderService.getOrder",          "min_confidence": 0.8},
-    {"callee_suffix": "OrderService.createOrder",        "min_confidence": 0.8},
-    {"callee_suffix": "ProductService.getAllProducts",   "min_confidence": 0.8},
-    {"callee_suffix": "ProductService.searchProducts",   "min_confidence": 0.8},
-    {"callee_suffix": "ProductService.getProduct",       "min_confidence": 0.8},
-    {"callee_suffix": "ProductService.createProduct",    "min_confidence": 0.8}
+    {"callee_suffix": "OrderService.getAllOrders",     "min_confidence": 0.75},
+    {"callee_suffix": "OrderService.getOrder",          "min_confidence": 0.75},
+    {"callee_suffix": "OrderService.createOrder",        "min_confidence": 0.75},
+    {"callee_suffix": "ProductService.getAllProducts",   "min_confidence": 0.75},
+    {"callee_suffix": "ProductService.searchProducts",   "min_confidence": 0.75},
+    {"callee_suffix": "ProductService.getProduct",       "min_confidence": 0.75},
+    {"callee_suffix": "ProductService.createProduct",    "min_confidence": 0.75}
   ]
 }

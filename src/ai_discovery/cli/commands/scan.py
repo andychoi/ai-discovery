@@ -70,7 +70,7 @@ def _summary(layout, scan_id: Optional[int], cfg, status: str) -> dict[str, Any]
             "files": files,
             "symbols": q("SELECT COUNT(*) FROM code_nodes WHERE scan_id = ?"),
             "edges": q("SELECT COUNT(*) FROM call_edges WHERE scan_id = ?"),
-            "unresolved_edges": q("SELECT COUNT(*) FROM call_edges WHERE scan_id = ? AND resolved_by = 'unresolved'"),
+            "unresolved_calls": _unresolved_calls(conn, scan_id),
             "domains": q("SELECT COUNT(*) FROM domains WHERE scan_id = ?"),
             "screens": q("SELECT COUNT(*) FROM screen_specs WHERE scan_id = ?"),
             "docs": q("SELECT COUNT(*) FROM generated_docs WHERE scan_id = ?"),
@@ -106,11 +106,19 @@ def _summary(layout, scan_id: Optional[int], cfg, status: str) -> dict[str, Any]
             continue
         deg.append({"kind": kind, "count": n, "stage": stage,
                     "message": messages.get(kind, f"{stage}: {kind} ({{n}})").format(n=n)})
-    if out["counts"]["unresolved_edges"]:
-        n = out["counts"]["unresolved_edges"]
+    if out["counts"]["unresolved_calls"]:
+        n = out["counts"]["unresolved_calls"]
         deg.append({"kind": "unresolved_calls", "count": n,
                     "message": f"{n} call(s) could not be resolved to a definition"})
     return out
+
+
+def _unresolved_calls(conn: sqlite3.Connection, scan_id: int) -> int:
+    """Calls the resolver refused to bind (ADR-0004: rows, never edges)."""
+    try:
+        return conn.execute("SELECT COUNT(*) FROM unresolved_calls WHERE scan_id = ?", (scan_id,)).fetchone()[0]
+    except sqlite3.OperationalError:   # store older than migration 0002
+        return 0
 
 
 def _whats_next(app: typer.Typer, prose: bool, failed_hooks: int) -> list[str]:
@@ -211,7 +219,7 @@ def register(app: typer.Typer) -> None:
             console.print(f"\n[bold green]scan {title}[/]  [dim]{summary['db']}[/]", highlight=False)
             if c:
                 console.print(f"  {c['files']} files, {c['symbols']} symbols, {c['edges']} edges "
-                              f"({c['unresolved_edges']} unresolved), {c['domains']} domains, "
+                              f"({c['unresolved_calls']} unresolved calls), {c['domains']} domains, "
                               f"{c['screens']} screens, {c['docs']} docs", highlight=False)
                 sp = summary["spend"]
                 mode = "prose" if use_prose else "structure only"

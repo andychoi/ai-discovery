@@ -1,124 +1,12 @@
 {
   "call_edges": [
     [
-      "Controllers/OrdersController.cs",
-      "CreateOrder",
-      "CreatedAtAction",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Controllers/OrdersController.cs",
-      "CreateOrder",
-      "nameof",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Controllers/OrdersController.cs",
-      "GetOrder",
-      "Ok",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Controllers/OrdersController.cs",
-      "GetOrders",
-      "Ok",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Controllers/ProductsController.cs",
-      "CreateProduct",
-      "CreatedAtAction",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Controllers/ProductsController.cs",
-      "CreateProduct",
-      "nameof",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Controllers/ProductsController.cs",
-      "GetProduct",
-      "Ok",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Controllers/ProductsController.cs",
-      "GetProducts",
-      "Ok",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
       "Controllers/ProductsController.cs",
       "ProductsController",
       "ProductService",
       "direct_call",
-      "short_name",
-      0.8
-    ],
-    [
-      "Services/ProductService.cs",
-      "GetAllProducts",
-      "GetAllAsync",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Services/ProductService.cs",
-      "GetProduct",
-      "GetByIdAsync",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "Services/ProductService.cs",
-      "ProductService",
-      "repository",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "WebForms/Default.aspx",
-      "Default",
-      "MyApp.Default.btnSave_Click",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "WebForms/Default.aspx",
-      "Default",
-      "MyApp.Default.lnkCancel_Click",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "WebForms/Pages/Customer.aspx",
-      "Customer",
-      "MyApp.Pages.Customer.grid_RowCommand",
-      "direct_call",
-      "unresolved",
-      0.5
+      "receiver_global",
+      0.75
     ]
   ],
   "doc_files": [
@@ -169,7 +57,7 @@
   ],
   "table_counts": {
     "business_flows": 3,
-    "call_edges": 15,
+    "call_edges": 1,
     "code_nodes": 17,
     "current_scan": 1,
     "db_relationship": 0,
@@ -189,7 +77,7 @@
     "review_claims": 0,
     "scan_runs": 1,
     "scenario_flows": 6,
-    "schema_migrations": 2,
+    "schema_migrations": 3,
     "schema_version": 1,
     "screen_mappings": 0,
     "screen_review_claims": 0,
@@ -198,7 +86,7 @@
     "screens": 0,
     "stage_runs": 15,
     "state_transitions": 0,
-    "unresolved_calls": 0,
+    "unresolved_calls": 14,
     "vec_meta": 0
   }
 }

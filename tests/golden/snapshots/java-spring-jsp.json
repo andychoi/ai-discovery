@@ -1,19 +1,11 @@
 {
   "call_edges": [
     [
-      "src/main/java/com/example/batch/OrderExportJob.java",
-      "exportOrders",
-      "println",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
       "src/main/java/com/example/controller/CustomerController.java",
       "get",
       "getCustomer",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
     ],
     [
@@ -21,7 +13,7 @@
       "list",
       "getCustomers",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
     ],
     [
@@ -29,7 +21,7 @@
       "create",
       "createOrder",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
     ],
     [
@@ -37,7 +29,7 @@
       "get",
       "getOrder",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
     ],
     [
@@ -45,7 +37,7 @@
       "list",
       "getOrders",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
     ],
     [
@@ -53,7 +45,7 @@
       "create",
       "createProduct",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
     ],
     [
@@ -61,7 +53,7 @@
       "get",
       "getProduct",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
     ],
     [
@@ -69,7 +61,7 @@
       "list",
       "getAllProducts",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
     ],
     [
@@ -77,112 +69,8 @@
       "update",
       "createProduct",
       "direct_call",
-      "receiver_type",
+      "receiver_typed",
       0.93
-    ],
-    [
-      "src/main/java/com/example/service/CustomerService.java",
-      "getCustomer",
-      "findById",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/CustomerService.java",
-      "getCustomer",
-      "orElse",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/CustomerService.java",
-      "getCustomers",
-      "findAll",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/OrderService.java",
-      "createOrder",
-      "save",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/OrderService.java",
-      "getOrder",
-      "findById",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/OrderService.java",
-      "getOrder",
-      "orElse",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/OrderService.java",
-      "getOrders",
-      "findAll",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/ProductService.java",
-      "createProduct",
-      "save",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/ProductService.java",
-      "getAllProducts",
-      "findAll",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/ProductService.java",
-      "getProduct",
-      "findById",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/java/com/example/service/ProductService.java",
-      "getProduct",
-      "orElse",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/webapp/WEB-INF/views/customer/list.jsp",
-      "list",
-      "com.acme.CustomerService",
-      "direct_call",
-      "unresolved",
-      0.5
-    ],
-    [
-      "src/main/webapp/WEB-INF/views/login.jsp",
-      "login",
-      "com.acme.UserBean",
-      "direct_call",
-      "unresolved",
-      0.5
     ]
   ],
   "doc_files": [
@@ -280,7 +168,7 @@
   ],
   "table_counts": {
     "business_flows": 10,
-    "call_edges": 23,
+    "call_edges": 9,
     "code_nodes": 42,
     "current_scan": 1,
     "db_relationship": 3,
@@ -300,7 +188,7 @@
     "review_claims": 0,
     "scan_runs": 1,
     "scenario_flows": 5,
-    "schema_migrations": 2,
+    "schema_migrations": 3,
     "schema_version": 1,
     "screen_mappings": 0,
     "screen_review_claims": 0,
@@ -309,7 +197,7 @@
     "screens": 0,
     "stage_runs": 15,
     "state_transitions": 0,
-    "unresolved_calls": 0,
+    "unresolved_calls": 14,
     "vec_meta": 0
   }
 }

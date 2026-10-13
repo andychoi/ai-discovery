@@ -33,7 +33,7 @@ def test_page_resolves_edge_to_codebehind_handler():
         source_code="", line_start=1, line_end=2,
     )
     edges = build_call_graph([page, handler])
-    assert any(e.callee == "MyApp.Default.btnSave_Click" and e.metadata.get("resolved_by") == "exact"
+    assert any(e.callee == "MyApp.Default.btnSave_Click" and e.metadata.get("resolved_by") == "framework"
                for e in edges if e.caller == page.qualified_name)
 
 

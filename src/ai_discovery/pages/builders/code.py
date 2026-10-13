@@ -13,6 +13,7 @@ only the files with the most incoming calls get pages) and ``max_hub_symbols``
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -67,6 +68,11 @@ class Snapshot:
                 self.callers[callee].add(caller)
         self.domains = conn.execute(
             "SELECT name, node_count, entry_points FROM domains WHERE scan_id = ? ORDER BY name", (sid,)).fetchall()
+        try:  # ADR-0004: calls the resolver refused to bind (migration 0002 table)
+            self.unresolved_calls = conn.execute(
+                "SELECT COUNT(*) FROM unresolved_calls WHERE scan_id = ?", (sid,)).fetchone()[0]
+        except sqlite3.OperationalError:
+            self.unresolved_calls = 0
         self.screen_count = conn.execute(
             "SELECT COUNT(*) FROM screen_specs WHERE scan_id = ?", (sid,)).fetchone()[0]
         self._line_counts: dict[str, Optional[int]] = {}
@@ -190,15 +196,14 @@ def build_overview(ctx: BuildContext):
 
     facts = {
         "languages": dict(sorted(langs.items())), "files": len(files), "symbols": len(snap.nodes),
-        "edges": len(snap.edges), "resolved_edges": resolved, "domains": [d[0] for d in snap.domains],
+        "edges": len(snap.edges), "resolved_edges": resolved, "unresolved_calls": snap.unresolved_calls, "domains": [d[0] for d in snap.domains],
         "screens": snap.screen_count, "entry_points": len(entries), "external_systems": externals,
     }
     sections = [
         Section("Summary", "\n".join([
             f"- **Files:** {len(files)} ({', '.join(f'{k} {v}' for k, v in sorted(langs.items())) or 'none'})",
             f"- **Symbols:** {len(snap.nodes)}",
-            f"- **Calls:** {len(snap.edges)} ({resolved} resolved to a definition, "
-            f"{len(snap.edges) - resolved} unresolved)",
+            f"- **Calls:** {resolved} resolved to a definition, {snap.unresolved_calls} unresolved",
             f"- **Screens:** {snap.screen_count}",
         ])),
         Section("Domains", _domains_table(snap.domains)),

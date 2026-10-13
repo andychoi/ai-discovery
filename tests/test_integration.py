@@ -27,9 +27,13 @@ app = FastAPI()
 @app.get("/orders/{order_id}")
 def get_order(order_id: int):
     """Retrieve an order by ID."""
-    if order_id <= 0:
+    if not _valid(order_id):
         raise HTTPException(status_code=400, detail="Invalid order ID")
     return {"order_id": order_id, "status": "pending"}
+
+
+def _valid(order_id: int) -> bool:
+    return order_id > 0
 '''
 
 _CSHARP_FILE = '''\
@@ -260,6 +264,9 @@ def test_full_pipeline(tmp_path):
     # call_edges — should have at least one edge
     edges = conn.execute("SELECT * FROM call_edges").fetchall()
     assert len(edges) >= 1, f"Expected >=1 call edge, got {len(edges)}"
+    # ADR-0004: unbindable calls (HTTPException, outside the repo) are rows, not edges
+    assert all(e["resolved_by"] != "unresolved" for e in edges)
+    assert conn.execute("SELECT COUNT(*) FROM unresolved_calls").fetchone()[0] >= 1
 
     # domains — should have at least one domain
     domains = conn.execute("SELECT * FROM domains").fetchall()
