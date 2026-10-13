@@ -204,7 +204,7 @@
 - **Out of scope:** slice/BFS following rules, bench comparison, ADR acceptance (M1.12.b).
 
 ### M1.12.b Edge contract: slices/BFS + bench + ADR acceptance
-- **Status:** Planned
+- **Status:** In progress (rm/M1.12b-slices-bench, 2026-10-13)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M1.12.a
