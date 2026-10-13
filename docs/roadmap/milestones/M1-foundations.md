@@ -145,17 +145,37 @@
 - **Out of scope:** budget/cost/cache (M1.11).
 
 ### M1.11 `llm/` budget, cost, retry, cache, estimator
-- **Status:** Planned
+- **Status:** Blocked (split 2026-10-13 into M1.11.a + M1.11.b; mark Done when both are)
+- **Size:** M
+- **Lane:** B
+- **Depends on:** M1.11.a, M1.11.b
+- **Owns:** see M1.11.a / M1.11.b
+- **Acceptance:** the union of M1.11.a and M1.11.b.
+- **Verify:** `pytest -q tests -k "budget or cost or llm_cache"`
+- **Out of scope:** cost gate UI (M2.4).
+
+### M1.11.a `llm/` retry policy, cost accounting, shim removal
+- **Status:** In progress (rm/M1.11a-retry-cost, 2026-10-13)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.10, M1.5, M1.7
-- **Owns:** `src/ai_discovery/llm/{budget,cost,cache,estimate,retry}.py` (new); shim removal across `src/ai_discovery/`
+- **Owns:** `src/ai_discovery/llm/{retry,cost}.py` (new), `src/ai_discovery/llm/transport.py`, `src/ai_discovery/llm/invoke.py`, `src/ai_discovery/ai/llm_client.py`, `src/ai_discovery/shared/` (shim removal), LLM tests
 - **Acceptance:**
-  - Cost accounting sums all usage fields incl. cache read/write tokens; per-model price table tested.
-  - Retry: 429 honours Retry-After (capped), 5xx/network bounded retries, 4xx fail fast; per-item retry, never whole-batch.
+  - Retry: 429 honours Retry-After (capped), 5xx/408/529/network bounded retries, other 4xx fail fast; classification by status code / exception type, not substrings; per call (never whole batch).
+  - Cost accounting sums input, output, cache-read and cache-write tokens with per-model prices (cache multipliers per family); price table tested.
+  - `rg "shared.llm_|shared import llm_" src/` → empty (shims removed).
+- **Verify:** `pytest -q tests -k "retry or cost or llm"`
+- **Out of scope:** response cache, estimator, prompt caching (M1.11.b); persisting cache-token counts (needs an `llm_costs` migration, lane A).
+
+### M1.11.b `llm/` response cache, estimator, prompt caching
+- **Status:** Planned
+- **Size:** M
+- **Lane:** B
+- **Depends on:** M1.11.a
+- **Owns:** `src/ai_discovery/llm/{cache,estimate,budget}.py` (new), `src/ai_discovery/llm/invoke.py`, `src/ai_discovery/llm/transport.py`
+- **Acceptance:**
   - Response cache in `llm_cache`, key per ADR-0002; repeat → cache hit, $0.
   - `estimate(stages)` returns a cost range used by M2.4; Anthropic prompt caching on stable system prefixes.
-  - `rg "shared.llm_|shared import llm_" src/` → empty.
 - **Verify:** `pytest -q tests -k "budget or cost or llm_cache"`
 - **Out of scope:** cost gate UI (M2.4).
 
