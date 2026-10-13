@@ -85,7 +85,7 @@
 - **Out of scope:** behaviour changes.
 
 ### M1.8 StageRunner + fingerprints
-- **Status:** Planned
+- **Status:** In progress (rm/M1.8-stage-runner, 2026-10-12)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M1.7, M1.5
