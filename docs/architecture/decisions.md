@@ -92,6 +92,20 @@ Depth ≤ 5 means: (Entry) → (Hop 1) → (Hop 2) → ... → (Hop 5) = max 6 l
 2. Break into multiple scenarios (entry points at intermediate steps)
 3. Mark long-hop edges as async/delayed
 
+
+### Following rules (M1.12.b, ADR-0004 §2)
+- Slices, alternate paths and the backward entry-point walk (`graph/entry_point_linker.py`)
+  follow only edges that pass `origins.followable`: evidence `static|framework|scip`, edge kind
+  `calls|dispatches_to|framework_binds|calls_external`, origin confidence ≥ 0.75. Name-only
+  `global_unique` (0.50) edges are never walked; they stay in the graph for search and pages.
+- A node is visited once (the visited set is filled at enqueue time).
+- Every point where a slice stops records one reason in `Scenario.stop_reasons`:
+  `db_boundary`, `external_boundary` (synthesized `external::` systems and EXTERNAL_API/QUEUE
+  hints), `depth_cap`, `cycle` (all followable callees already in the slice), `dynamic_dispatch`
+  (the node has `dynamic`/`dispatch_cap`/`di_ambiguous` unresolved calls), `unresolved_call`
+  (calls exist but none can be followed), else `leaf_no_callees`.
+- Depth stays 5 here; the depth-8 / 50-flows-per-entry flow tracer is M6.12.
+
 ---
 
 ## MANUAL Node Injection Heuristics

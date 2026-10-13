@@ -12,7 +12,7 @@ def run(ctx: RunContext) -> None:
 
     with _with_checkpoint(ctx.db_path, ctx.scan_id, 8, "execution_slices"):
         with _timed("execution slices"), console.status("[bold cyan]Building execution slices..."):
-            slice_builder = ExecutionSliceBuilder(ctx.all_nodes, ctx.edges)
+            slice_builder = ExecutionSliceBuilder(ctx.all_nodes, ctx.edges, ctx.unresolved)
             ctx.scenarios = slice_builder.build_all_scenarios()
         console.print(f"  Execution slices: [green]{len(ctx.scenarios)}[/] scenarios identified")
 
@@ -22,7 +22,7 @@ def rehydrate(ctx: RunContext) -> None:
     from ..pipeline import console
 
     console.print("[dim]Phase 8 (execution_slices): rebuilding (cheap)...[/]")
-    slice_builder = ExecutionSliceBuilder(ctx.all_nodes, ctx.edges)
+    slice_builder = ExecutionSliceBuilder(ctx.all_nodes, ctx.edges, ctx.unresolved)
     ctx.scenarios = slice_builder.build_all_scenarios()
 
 

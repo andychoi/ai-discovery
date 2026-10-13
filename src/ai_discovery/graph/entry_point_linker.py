@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 
 from .models import CallEdge, CodeNode, StateTransition
+from .origins import followable
 
 _ENTRY_NODE_TYPES_TO_KIND: dict[str, str] = {
     "endpoint": "API",
@@ -43,7 +44,8 @@ def link_entry_points(
     nodes_by_qn: dict[str, CodeNode] = {n.qualified_name: n for n in nodes}
     reverse_adj: dict[str, list[CallEdge]] = defaultdict(list)
     for edge in edges:
-        reverse_adj[edge.callee].append(edge)
+        if followable(edge):   # ADR-0004: no name-only guesses on the path to an entry point
+            reverse_adj[edge.callee].append(edge)
 
     for transition in transitions:
         if not transition.trigger_function:

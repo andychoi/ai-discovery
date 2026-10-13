@@ -150,12 +150,20 @@ def test_confidence_is_min_along_path():
     ]
     edges = [
         _edge("ctrl.approve", "svc.approve", conf=0.9),
-        _edge("svc.approve", "repo.save", conf=0.6),
+        _edge("svc.approve", "repo.save", conf=0.75),
     ]
     t = _transition("repo.save")
     link_entry_points([t], nodes, edges)
     assert len(t.entry_points) == 1
-    assert t.entry_points[0]["confidence"] == 0.6
+    assert t.entry_points[0]["confidence"] == 0.75
+
+
+def test_edge_below_flow_floor_is_not_walked():
+    """ADR-0004: edges under 0.75 (or name-only origins) never link an entry point."""
+    nodes = [_node("ctrl.approve", node_type="endpoint"), _node("repo.save")]
+    t = _transition("repo.save")
+    link_entry_points([t], nodes, [_edge("ctrl.approve", "repo.save", conf=0.6)])
+    assert t.entry_points == []
 
 
 def test_hop_cap_prevents_runaway():
@@ -191,3 +199,20 @@ def test_transition_without_trigger_is_skipped():
     t = StateTransition(entity="Order", field="status", to_state="x", trigger_function=None)
     link_entry_points([t], [], [])
     assert t.entry_points == []
+
+
+def test_backward_walk_ignores_name_only_edges():
+    from ai_discovery.graph.call_graph import make_edge
+    from ai_discovery.graph.entry_point_linker import link_entry_points
+    from ai_discovery.graph.models import CodeNode, StateTransition
+
+    def node(qn, nt):
+        return CodeNode(file_path="a.py", language="python", node_type=nt, name=qn.split(".")[-1],
+                        qualified_name=qn, source_code="", line_start=1, line_end=2)
+
+    nodes = [node("a.api", "endpoint"), node("a.job", "batch_job"), node("a.ship", "method")]
+    edges = [make_edge("a.api", "a.ship", "receiver_typed"), make_edge("a.job", "a.ship", "global_unique")]
+    t = StateTransition(entity="Order", entity_id="Order", field="status", to_state="SHIPPED",
+                        trigger_function="a.ship")
+    link_entry_points([t], nodes, edges)
+    assert [e["qualified_name"] for e in t.entry_points] == ["a.api"]

@@ -607,3 +607,54 @@ def test_interface_without_node_resolves_through_implementations():
     edges = build_call_graph(nodes)
     assert [(e.caller, e.callee, e.metadata["resolved_by"]) for e in edges] == [
         ("App.Ctl.Go", "App.Service.Run", "framework")]
+
+
+def test_library_import_never_binds_to_repo_symbol():
+    """`from flask_babel import get_locale` + `get_locale()` must not reach the repo's
+    own `get_locale`, nor `current_app.es.index()` the repo's `index` view."""
+    caller = CodeNode(file_path="app/routes.py", language="python", node_type="function", name="before",
+                      qualified_name="routes.before", source_code="", line_start=1, line_end=4,
+                      call_sites=[{"name": "get_locale", "receiver": None},
+                                  {"name": "index", "receiver": "current_app.elasticsearch"}],
+                      imports=[{"module": "flask_babel", "name": "get_locale", "alias": None},
+                               {"module": "flask", "name": "current_app", "alias": None}])
+    nodes = [caller,
+             CodeNode(file_path="app/__init__.py", language="python", node_type="function", name="get_locale",
+                      qualified_name="app.get_locale", source_code="", line_start=1, line_end=2),
+             CodeNode(file_path="app/views.py", language="python", node_type="function", name="index",
+                      qualified_name="views.index", source_code="", line_start=1, line_end=2)]
+    res = resolve_calls(nodes)
+    assert res.edges == []
+    assert sorted((u.callee_name, u.reason) for u in res.unresolved) == [
+        ("get_locale", "external"), ("index", "external")]
+
+
+def test_super_call_binds_only_to_an_ancestor():
+    nodes = [
+        CodeNode(file_path="f.py", language="python", node_type="class", name="EditForm", qualified_name="f.EditForm",
+                 source_code="", line_start=1, line_end=9, bases=["FlaskForm"]),
+        CodeNode(file_path="f.py", language="python", node_type="method", name="__init__",
+                 qualified_name="f.EditForm.__init__", source_code="", line_start=2, line_end=3,
+                 call_sites=[{"name": "__init__", "receiver": "super()"}]),
+        CodeNode(file_path="f.py", language="python", node_type="class", name="SearchForm",
+                 qualified_name="f.SearchForm", source_code="", line_start=10, line_end=19),
+        CodeNode(file_path="f.py", language="python", node_type="method", name="__init__",
+                 qualified_name="f.SearchForm.__init__", source_code="", line_start=11, line_end=12),
+    ]
+    res = resolve_calls(nodes)
+    assert res.edges == []
+    assert [(u.callee_name, u.reason) for u in res.unresolved] == [("__init__", "external")]
+
+
+def test_method_call_on_object_never_binds_to_a_class():
+    """EF Core `modelBuilder.Entity("Order", …)` is not the repo's `Entity` base class."""
+    nodes = [
+        CodeNode(file_path="M.cs", language="csharp", node_type="method", name="BuildTargetModel",
+                 qualified_name="Mig.Snap.BuildTargetModel", source_code="", line_start=1, line_end=9,
+                 call_sites=[{"name": "Entity", "receiver": "modelBuilder"}]),
+        CodeNode(file_path="E.cs", language="csharp", node_type="class", name="Entity",
+                 qualified_name="SeedWork.Entity", source_code="", line_start=1, line_end=9),
+    ]
+    res = resolve_calls(nodes)
+    assert res.edges == []
+    assert [(u.callee_name, u.reason) for u in res.unresolved] == [("Entity", "not_found")]

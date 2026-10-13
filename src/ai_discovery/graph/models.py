@@ -165,6 +165,8 @@ class Scenario:
     external_interfaces: list[str] = field(default_factory=list)
     domain: str | None = None
     confidence: float = 1.0
+    # M1.12.b: node id → why the slice stopped there (origins.STOP_REASONS)
+    stop_reasons: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

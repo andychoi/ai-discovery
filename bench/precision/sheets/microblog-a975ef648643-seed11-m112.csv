@@ -1,0 +1,90 @@
+language,origin,caller,caller_file,caller_line,callee_name,resolved_to,resolved_file,resolved_line,confidence,verdict,reason
+python,external_client,__init__.create_app,app/__init__.py,31,external::redis,external::redis,,0,0.9,correct,(M0.12) Redis.from_url(REDIS_URL) in create_app
+python,external_client,__init__.get_locale,app/__init__.py,17,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,routes.explore,app/main/routes.py,56,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,routes.index,app/main/routes.py,28,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,routes.login,app/auth/routes.py,15,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,routes.messages,app/main/routes.py,201,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,routes.notifications,app/main/routes.py,232,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,routes.search,app/main/routes.py,167,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,routes.translate_text,app/main/routes.py,158,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,routes.user,app/main/routes.py,73,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,translate.translate,app/translate.py,6,external::requests,external::requests,,0,0.9,correct,(M0.12) requests.post to Microsoft Translator API
+python,external_client,users.create_user,app/api/users.py,46,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,users.get_followers,app/api/users.py,27,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,users.get_following,app/api/users.py,37,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,users.get_users,app/api/users.py,18,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,external_client,users.update_user,app/api/users.py,66,external::request,external::request,,0,0.9,correct,(M0.12) uses flask request (args/get_json) in body
+python,global_unique,auth.verify_password,app/api/auth.py,12,models.User.check_password,models.User.check_password,app/models.py,137,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,email.send_password_reset_email,app/auth/email.py,6,models.User.get_reset_password_token,models.User.get_reset_password_token,app/models.py,181,0.5,correct,(M0.12) user.get_reset_password_token(); user is User
+python,global_unique,models.PaginatedAPIMixin.to_collection_dict,app/models.py,65,models.User.to_dict,models.User.to_dict,app/models.py,231,0.5,correct,"Only User uses PaginatedAPIMixin; items are Users, so to_dict is User.to_dict"
+python,global_unique,routes.login,app/auth/routes.py,15,models.User.check_password,models.User.check_password,app/models.py,137,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,routes.notifications,app/main/routes.py,232,models.Notification.get_data,models.Notification.get_data,app/models.py,334,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,routes.register,app/auth/routes.py,40,models.User.set_password,models.User.set_password,app/models.py,134,0.5,correct,user is User; user.set_password calls User.set_password
+python,global_unique,routes.reset_password,app/auth/routes.py,73,models.User.set_password,models.User.set_password,app/models.py,134,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,routes.send_message,app/main/routes.py,183,models.User.add_notification,models.User.add_notification,app/models.py,202,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,routes.send_message,app/main/routes.py,183,models.User.unread_message_count,models.User.unread_message_count,app/models.py,195,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,tasks._set_task_progress,app/tasks.py,15,models.User.add_notification,models.User.add_notification,app/models.py,202,0.5,correct,(M0.12) task.user (User) .add_notification(...)
+python,global_unique,tests.UserModelCase.test_avatar,tests.py,33,models.User.avatar,models.User.avatar,app/models.py,140,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,tests.UserModelCase.test_follow,tests.py,39,models.User.followers_count,models.User.followers_count,app/models.py,156,0.5,correct,u2 is User; followers_count defined on User
+python,global_unique,tests.UserModelCase.test_follow,tests.py,39,models.User.following_count,models.User.following_count,app/models.py,161,0.5,correct,(M0.12) u1.following_count(); u1 is User
+python,global_unique,tests.UserModelCase.test_follow,tests.py,39,models.User.is_following,models.User.is_following,app/models.py,152,0.5,correct,u1 is User; is_following defined on User
+python,global_unique,tests.UserModelCase.test_follow_posts,tests.py,66,models.User.following_posts,models.User.following_posts,app/models.py,166,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,tests.UserModelCase.test_password_hashing,tests.py,27,models.User.check_password,models.User.check_password,app/models.py,137,0.5,correct,(M0.12) u.check_password(); u is User
+python,global_unique,tests.UserModelCase.test_password_hashing,tests.py,27,models.User.set_password,models.User.set_password,app/models.py,134,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,tokens.get_token,app/api/tokens.py,8,models.User.get_token,models.User.get_token,app/models.py,259,0.5,correct,current_user() from verify_password returns User; User.get_token
+python,global_unique,tokens.revoke_token,app/api/tokens.py,16,models.User.revoke_token,models.User.revoke_token,app/models.py,269,0.5,correct,current_user() returns User from verify_token; User.revoke_token
+python,global_unique,users.create_user,app/api/users.py,46,models.User.from_dict,models.User.from_dict,app/models.py,252,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,users.create_user,app/api/users.py,46,models.User.to_dict,models.User.to_dict,app/models.py,231,0.5,correct,(M0.12) user = User(); user.to_dict()
+python,global_unique,users.get_user,app/api/users.py,12,models.User.to_dict,models.User.to_dict,app/models.py,231,0.5,correct,"(M0.12) db.get_or_404(User, id).to_dict()"
+python,global_unique,users.update_user,app/api/users.py,66,models.User.from_dict,models.User.from_dict,app/models.py,252,0.5,correct,Receiver/import type verified in source; target matches resolved_to
+python,global_unique,users.update_user,app/api/users.py,66,models.User.to_dict,models.User.to_dict,app/models.py,231,0.5,correct,"(M0.12) user = db.get_or_404(User,...); user.to_dict()"
+python,import_exact,auth.basic_auth_error,app/api/auth.py,19,errors.error_response,errors.error_response,app/api/errors.py,6,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,auth.token_auth_error,app/api/auth.py,29,errors.error_response,errors.error_response,app/api/errors.py,6,0.95,correct,(M0.12) error_response imported from app.api.errors
+python,import_exact,auth.verify_token,app/api/auth.py,24,models.User.check_token,models.User.check_token,app/models.py,274,0.95,correct,(M0.12) User.check_token(token); User imported from app.models
+python,import_exact,email.send_password_reset_email,app/auth/email.py,6,email.send_email,email.send_email,app/email.py,12,0.95,correct,(M0.12) from app.email import send_email
+python,import_exact,models.SearchableMixin.after_commit,app/models.py,41,search.add_to_index,search.add_to_index,app/search.py,4,0.95,correct,(M0.12) add_to_index imported from app.search
+python,import_exact,models.SearchableMixin.after_commit,app/models.py,41,search.remove_from_index,search.remove_from_index,app/search.py,13,0.95,correct,(M0.12) remove_from_index imported from app.search
+python,import_exact,routes.before_request,app/main/routes.py,17,forms.SearchForm,forms.SearchForm,app/main/forms.py,39,0.95,correct,SearchForm imported from app.main.forms and instantiated
+python,import_exact,routes.edit_profile,app/main/routes.py,99,forms.EditProfileForm,forms.EditProfileForm,app/main/forms.py,11,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,routes.follow,app/main/routes.py,116,forms.EmptyForm,forms.EmptyForm,app/main/forms.py,29,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,routes.index,app/main/routes.py,28,forms.PostForm,forms.PostForm,app/main/forms.py,33,0.95,correct,PostForm imported from app.main.forms and instantiated
+python,import_exact,routes.index,app/main/routes.py,28,models.Post,models.Post,app/models.py,287,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,routes.register,app/auth/routes.py,40,forms.RegistrationForm,forms.RegistrationForm,app/auth/forms.py,17,0.95,correct,(M0.12) RegistrationForm imported from app.auth.forms
+python,import_exact,routes.register,app/auth/routes.py,40,models.User,models.User,app/models.py,98,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,routes.reset_password,app/auth/routes.py,73,forms.ResetPasswordForm,forms.ResetPasswordForm,app/auth/forms.py,44,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,routes.reset_password,app/auth/routes.py,73,models.User.verify_reset_password_token,models.User.verify_reset_password_token,app/models.py,187,0.95,correct,(M0.12) User.verify_reset_password_token(token) static method
+python,import_exact,routes.reset_password_request,app/auth/routes.py,56,email.send_password_reset_email,email.send_password_reset_email,app/auth/email.py,6,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,routes.reset_password_request,app/auth/routes.py,56,forms.ResetPasswordRequestForm,forms.ResetPasswordRequestForm,app/auth/forms.py,39,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,routes.send_message,app/main/routes.py,183,forms.MessageForm,forms.MessageForm,app/main/forms.py,50,0.95,correct,MessageForm imported from app.main.forms and instantiated
+python,import_exact,routes.send_message,app/main/routes.py,183,models.Message,models.Message,app/models.py,303,0.95,correct,Message imported from app.models and instantiated
+python,import_exact,routes.translate_text,app/main/routes.py,158,translate.translate,translate.translate,app/translate.py,6,0.95,correct,(M0.12) from app.translate import translate
+python,import_exact,routes.user_popup,app/main/routes.py,91,forms.EmptyForm,forms.EmptyForm,app/main/forms.py,29,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,tests.UserModelCase.setUp,tests.py,16,__init__.create_app,__init__.create_app,app/__init__.py,31,0.95,correct,(M0.12) create_app imported from app
+python,import_exact,tests.UserModelCase.test_avatar,tests.py,33,models.User,models.User,app/models.py,98,0.95,correct,"(M0.12) User(...) constructor, imported from app.models"
+python,import_exact,tests.UserModelCase.test_follow,tests.py,39,models.User,models.User,app/models.py,98,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,tests.UserModelCase.test_follow_posts,tests.py,66,models.Post,models.Post,app/models.py,287,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,tests.UserModelCase.test_follow_posts,tests.py,66,models.User,models.User,app/models.py,98,0.95,correct,"(M0.12) User(...) constructor, imported from app.models"
+python,import_exact,tests.UserModelCase.test_password_hashing,tests.py,27,models.User,models.User,app/models.py,98,0.95,correct,"(M0.12) User(...) constructor, imported from app.models"
+python,import_exact,users.create_user,app/api/users.py,46,errors.bad_request,errors.bad_request,app/api/errors.py,13,0.95,correct,(M0.12) bad_request imported from app.api.errors
+python,import_exact,users.create_user,app/api/users.py,46,models.User,models.User,app/models.py,98,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,import_exact,users.update_user,app/api/users.py,66,errors.bad_request,errors.bad_request,app/api/errors.py,13,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,inherited,routes.search,app/main/routes.py,167,models.SearchableMixin.search,models.SearchableMixin.search,app/models.py,21,0.9,correct,Post inherits SearchableMixin.search classmethod
+python,inherited,users.get_followers,app/api/users.py,27,models.PaginatedAPIMixin.to_collection_dict,models.PaginatedAPIMixin.to_collection_dict,app/models.py,65,0.9,correct,User inherits PaginatedAPIMixin.to_collection_dict staticmethod
+python,inherited,users.get_following,app/api/users.py,37,models.PaginatedAPIMixin.to_collection_dict,models.PaginatedAPIMixin.to_collection_dict,app/models.py,65,0.9,correct,(M0.12) User.to_collection_dict inherited from PaginatedAPIMixin
+python,inherited,users.get_users,app/api/users.py,18,models.PaginatedAPIMixin.to_collection_dict,models.PaginatedAPIMixin.to_collection_dict,app/models.py,65,0.9,correct,(M0.12) User.to_collection_dict inherited from PaginatedAPIMixin
+python,receiver_typed,models.User.add_notification,app/models.py,202,models.Notification,models.Notification,app/models.py,324,0.93,correct,Receiver/import type verified in source; target matches resolved_to
+python,receiver_typed,models.User.launch_task,app/models.py,209,models.Task,models.Task,app/models.py,338,0.93,correct,Receiver/import type verified in source; target matches resolved_to
+python,same_file,errors.bad_request,app/api/errors.py,13,errors.error_response,errors.error_response,app/api/errors.py,6,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,same_file,errors.handle_exception,app/api/errors.py,18,errors.error_response,errors.error_response,app/api/errors.py,6,0.95,correct,(M0.12) same-module error_response(e.code)
+python,same_file,handlers.internal_error,app/errors/handlers.py,20,handlers.wants_json_response,handlers.wants_json_response,app/errors/handlers.py,7,0.95,correct,(M0.12) same-module wants_json_response() call
+python,same_file,handlers.not_found_error,app/errors/handlers.py,13,handlers.wants_json_response,handlers.wants_json_response,app/errors/handlers.py,7,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,same_file,tasks.export_posts,app/tasks.py,28,tasks._set_task_progress,tasks._set_task_progress,app/tasks.py,15,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,self_scope,models.Task.get_progress,app/models.py,354,models.Task.get_rq_job,models.Task.get_rq_job,app/models.py,347,0.95,correct,(M0.12) self.get_rq_job() on Task
+python,self_scope,models.User.follow,app/models.py,144,models.User.is_following,models.User.is_following,app/models.py,152,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,self_scope,models.User.from_dict,app/models.py,252,models.User.set_password,models.User.set_password,app/models.py,134,0.95,correct,(M0.12) self.set_password(...) on User
+python,self_scope,models.User.to_dict,app/models.py,231,models.User.avatar,models.User.avatar,app/models.py,140,0.95,correct,(M0.12) self.avatar(128)
+python,self_scope,models.User.to_dict,app/models.py,231,models.User.followers_count,models.User.followers_count,app/models.py,156,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,self_scope,models.User.to_dict,app/models.py,231,models.User.following_count,models.User.following_count,app/models.py,161,0.95,correct,Receiver/import type verified in source; target matches resolved_to
+python,self_scope,models.User.to_dict,app/models.py,231,models.User.posts_count,models.User.posts_count,app/models.py,226,0.95,correct,(M0.12) self.posts_count()
+python,self_scope,models.User.unfollow,app/models.py,148,models.User.is_following,models.User.is_following,app/models.py,152,0.95,correct,(M0.12) self.is_following(user)

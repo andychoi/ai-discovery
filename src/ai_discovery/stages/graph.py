@@ -146,6 +146,7 @@ def run(ctx: RunContext) -> None:
     finally:
         conn.close()
     ctx.edges = edges
+    ctx.unresolved = unresolved
 
     # HIGH-8: write this repo's interface surface (inbound endpoints +
     # outbound HTTP targets) so `discover federate` can correlate
@@ -165,10 +166,11 @@ def run(ctx: RunContext) -> None:
 
 
 def rehydrate(ctx: RunContext) -> None:
-    from ..graph.call_graph import build_call_graph
+    from ..graph.call_graph import resolve_calls
     from ..graph.symbol_index import load_symbol_index
 
-    ctx.edges = build_call_graph(ctx.all_nodes, symbol_index=load_symbol_index(ctx.resolved.repo_path))
+    resolution = resolve_calls(ctx.all_nodes, symbol_index=load_symbol_index(ctx.resolved.repo_path))
+    ctx.edges, ctx.unresolved = resolution.edges, resolution.unresolved
 
 
 def execute(ctx: RunContext) -> None:

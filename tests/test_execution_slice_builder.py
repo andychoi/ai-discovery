@@ -298,3 +298,64 @@ def test_primary_path_entry_with_no_callees():
     a = _node("a", node_type="endpoint")
     scenario = ExecutionSliceBuilder([a], []).build_scenario(a)
     assert scenario.primary_path == ["orders.a"]
+
+
+# ---------------------------------------------------------------------------
+# M1.12.b following rules (ADR-0004 §2) and stop reasons
+# ---------------------------------------------------------------------------
+
+def _qn_edge(caller: str, callee: str, origin: str) -> CallEdge:
+    from ai_discovery.graph.call_graph import make_edge
+
+    return make_edge(f"orders.{caller}", f"orders.{callee}", origin)
+
+
+def test_slice_never_walks_name_only_edges():
+    nodes = [_node("checkout", "endpoint"), _node("save"), _node("guess")]
+    edges = [_qn_edge("checkout", "save", "self_scope"), _qn_edge("checkout", "guess", "global_unique")]
+    sc = ExecutionSliceBuilder(nodes, edges).build_scenario(nodes[0])
+    assert [n.id for n in sc.nodes] == ["orders.checkout", "orders.save"]
+    assert all(e.to_node != "orders.guess" for e in sc.edges)
+
+
+def test_stop_reasons():
+    from ai_discovery.graph.call_graph import UnresolvedCall
+    from ai_discovery.graph.origins import STOP_REASONS
+
+    nodes = [
+        _node("entry", "endpoint"),
+        _node("repo", boundaries=[{"type": "DB"}]),
+        _node("loop"),
+        _node("blind"),
+        _node("dyn"),
+        _node("leaf"),
+    ]
+    edges = [_qn_edge("entry", t, "self_scope") for t in ("repo", "loop", "blind", "dyn", "leaf")]
+    edges.append(_qn_edge("loop", "entry", "self_scope"))
+    edges.append(_qn_edge("blind", "leaf", "global_unique"))          # present but not followable
+    unresolved = [UnresolvedCall("orders.dyn", "invoke", "dynamic")]
+    sc = ExecutionSliceBuilder(nodes, edges, unresolved).build_scenario(nodes[0])
+    assert sc.stop_reasons == {
+        "orders.repo": "db_boundary",
+        "orders.loop": "cycle",
+        "orders.blind": "unresolved_call",
+        "orders.dyn": "dynamic_dispatch",
+        "orders.leaf": "leaf_no_callees",
+    }
+    assert set(sc.stop_reasons.values()) <= STOP_REASONS
+
+
+def test_depth_cap_and_external_boundary():
+    nodes = [_node(f"n{i}") for i in range(4)]
+    nodes[0].node_type = "endpoint"
+    edges = [_qn_edge(f"n{i}", f"n{i + 1}", "self_scope") for i in range(3)]
+    sc = ExecutionSliceBuilder(nodes, edges).build_scenario(nodes[0], max_depth=2)
+    assert sc.stop_reasons == {"orders.n2": "depth_cap"}
+    assert "orders.n3" not in {n.id for n in sc.nodes}
+
+    from ai_discovery.graph.call_graph import make_edge
+
+    ext = [make_edge("orders.n0", "external::stripe", "external_client")]
+    sc = ExecutionSliceBuilder(nodes[:1], ext).build_scenario(nodes[0])
+    assert sc.stop_reasons == {"external::stripe": "external_boundary"}
+    assert [n.type for n in sc.nodes] == ["ENTRY", "EXTERNAL_API"]

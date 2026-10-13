@@ -10,7 +10,7 @@ a reason from ``origins.UNRESOLVED_REASONS``.
 from __future__ import annotations
 
 import posixpath
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 from . import origins as O
@@ -131,6 +131,8 @@ class _Resolver:
             if node.node_type in _CLASS_TYPES and node.bases:
                 for base in node.bases:
                     self.impls[base.rsplit(".", 1)[-1]].append(node)
+        self.files = sorted({n.file_path for n in nodes if n.file_path})
+        self._import_cache: dict[tuple, bool] = {}
         self.edges: list[CallEdge] = []
         self.unresolved: list[UnresolvedCall] = []
 
@@ -172,6 +174,9 @@ class _Resolver:
         if self._via_import(caller, site, name, receiver, imports, call_ref):
             return
 
+        if receiver and (receiver.startswith("super(") or receiver in ("super", "base")):
+            # `super().m()` / `base.M()`: only an ancestor can answer
+            return self._inherited_only(caller, site, name, call_ref)
         if receiver and receiver in _SELF_RECEIVERS:
             return self._self_scope(caller, site, name, call_ref, explicit=True)
         if not receiver:
@@ -229,7 +234,26 @@ class _Resolver:
             if len(group) > 1:
                 self._miss(caller, site, call_ref, "ambiguous", len(group))
                 return True
+        if not self._import_in_repo(imp, caller.file_path):
+            # bound by an import from a library (`from flask_babel import get_locale`,
+            # `current_app.x.index()`): a same-named repo symbol must never answer for it
+            self._miss(caller, site, call_ref, "external")
+            return True
         return False
+
+    def _import_in_repo(self, imp: dict, importer: str) -> bool:
+        """Does this import refer to code in the repository (vs. a library)?"""
+        module = imp.get("module") or ""
+        key = (module, imp.get("name"), importer if module.startswith(".") else "")
+        hit = self._import_cache.get(key)
+        if hit is None:
+            name = imp.get("name")
+            hit = (module.startswith(".")
+                   or any(qn in self.qualified or qn in self.members
+                          for qn in (module, f"{module}.{name}" if name else module, name or ""))
+                   or any(_module_matches_file(module, f, importer) for f in self.files))
+            self._import_cache[key] = hit
+        return hit
 
     def _class_of(self, caller: CodeNode) -> CodeNode | None:
         owner = self.qualified.get(caller.qualified_name.rsplit(".", 1)[0])
@@ -254,6 +278,16 @@ class _Resolver:
             self._miss(caller, site, call_ref, "external" if foreign else "not_found")
             return True
         return False
+
+    def _inherited_only(self, caller, site, name, call_ref) -> None:
+        cls = self._class_of(caller)
+        found = self._on_ancestors(cls, name) if cls is not None else []
+        if len(found) == 1:
+            self._edge(caller, found[0], "inherited", call_ref)
+        elif found:
+            self._miss(caller, site, call_ref, "ambiguous", len(found))
+        else:
+            self._miss(caller, site, call_ref, "external" if self._has_foreign_base(caller) else "not_found")
 
     def _resolve_type(self, short: str) -> list[CodeNode]:
         return [n for n in self.by_name.get(short.rsplit(".", 1)[-1], []) if n.node_type in _CLASS_TYPES]
@@ -409,6 +443,9 @@ class _Resolver:
                  and _family(t.language) == _family(caller.language) and t.node_type in O.CALLABLE_TYPES]
         if receiver is None:
             cands = [t for t in cands if self._bindable(caller, t)]
+        else:
+            # `obj.Entity(...)` is a method call, never a constructor of a repo class
+            cands = [t for t in cands if t.node_type not in _CLASS_TYPES]
         if len(cands) == 1:
             self._edge(caller, cands[0], "global_unique", call_ref, **({"receiver": receiver} if receiver else {}))
         elif cands:
@@ -530,11 +567,21 @@ def identify_scenarios(nodes: list[CodeNode]) -> list[CodeNode]:
 class ExecutionSliceBuilder:
     """Builds bounded execution slices starting from entry points."""
 
-    def __init__(self, nodes: list[CodeNode], call_edges: list[CallEdge]):
+    def __init__(self, nodes: list[CodeNode], call_edges: list[CallEdge],
+                 unresolved: list[UnresolvedCall] | None = None):
         self.nodes = {n.qualified_name: n for n in nodes}
+        # ADR-0004 following rule: only static/framework/scip edges at or above
+        # the floor are walked; name-only guesses (global_unique) never are.
         self.edges_by_caller = defaultdict(list)
+        self.skipped_by_caller: dict[str, int] = defaultdict(int)
         for edge in call_edges:
-            self.edges_by_caller[edge.caller].append(edge)
+            if O.followable(edge):
+                self.edges_by_caller[edge.caller].append(edge)
+            else:
+                self.skipped_by_caller[edge.caller] += 1
+        self.unresolved_by_caller: dict[str, set[str]] = defaultdict(set)
+        for u in unresolved or []:
+            self.unresolved_by_caller[u.caller].add(u.reason)
 
     def build_all_scenarios(self) -> list[Scenario]:
         entry_points = identify_scenarios(list(self.nodes.values()))
@@ -560,19 +607,14 @@ class ExecutionSliceBuilder:
             domain=entry.domain,
         )
 
-        visited: set[str] = set()
+        visited: set[str] = {entry.qualified_name}
         # BFS queue: (node_name, depth, prev_exec_node)
-        queue: list[tuple[str, int, ExecutionNode | None]] = [
-            (entry.qualified_name, 0, None)
-        ]
+        queue: deque[tuple[str, int, ExecutionNode | None]] = deque([(entry.qualified_name, 0, None)])
         # Track state writes for read-after-write scoring: field -> value
         state_writes: dict[str, str] = {}
 
         while queue:
-            node_name, depth, prev_exec = queue.pop(0)
-            if node_name in visited or depth > max_depth:
-                continue
-            visited.add(node_name)
+            node_name, depth, prev_exec = queue.popleft()
 
             node = self.nodes.get(node_name)
             exec_node = self._create_execution_node(node_name, node)
@@ -589,10 +631,22 @@ class ExecutionSliceBuilder:
             scenario.nodes.append(exec_node)
 
             if not node:
+                scenario.stop_reasons[node_name] = self._leaf_stop(node_name, exec_node)
                 continue
 
             # Collect callees for branching detection
             callees = self.edges_by_caller.get(node_name, [])
+            if depth >= max_depth:
+                if callees:
+                    scenario.stop_reasons.setdefault(node_name, "depth_cap")
+                else:
+                    scenario.stop_reasons.setdefault(node_name, self._leaf_stop(node_name, exec_node))
+                continue
+            new = [e for e in callees if e.callee not in visited]
+            if callees and not new:
+                scenario.stop_reasons.setdefault(node_name, "cycle")
+            elif not callees:
+                scenario.stop_reasons.setdefault(node_name, self._leaf_stop(node_name, exec_node))
             for edge in callees:
                 # Determine edge type: CALL (default), ASYNC, or CONDITIONAL
                 edge_type = self._infer_edge_type(node, edge, callees)
@@ -602,7 +656,9 @@ class ExecutionSliceBuilder:
                     edge_type=edge_type,
                     confidence=edge.confidence,
                 ))
-                queue.append((edge.callee, depth + 1, exec_node))
+                if edge.callee not in visited:
+                    visited.add(edge.callee)
+                    queue.append((edge.callee, depth + 1, exec_node))
 
             # Detect conditional branches (multiple callees = gateway)
             if len(callees) > 1:
@@ -615,6 +671,19 @@ class ExecutionSliceBuilder:
         ))
 
         return scenario
+
+    def _leaf_stop(self, node_name: str, exec_node: ExecutionNode) -> str:
+        """Why a node with no followable callees ends the slice."""
+        if exec_node.type == "DB":
+            return "db_boundary"
+        if exec_node.type in ("EXTERNAL_API", "QUEUE"):
+            return "external_boundary"
+        reasons = self.unresolved_by_caller.get(node_name, set())
+        if reasons & {"dynamic", "dispatch_cap", "di_ambiguous"}:
+            return "dynamic_dispatch"
+        if reasons - {"builtin"} or self.skipped_by_caller.get(node_name):
+            return "unresolved_call"      # calls exist but none can be followed
+        return "leaf_no_callees"
 
     @staticmethod
     def _score_node(
@@ -654,6 +723,10 @@ class ExecutionSliceBuilder:
 
     def _create_execution_node(self, node_name: str, node: CodeNode | None) -> ExecutionNode:
         """Convert a CodeNode into an ExecutionNode, enriching with hints."""
+        if not node and node_name.startswith("external::"):
+            # synthesized external-system node (external_client edge)
+            return ExecutionNode(id=node_name, type="EXTERNAL_API", name=node_name.split("::", 1)[1],
+                                 qualified_name=node_name, confidence=O.confidence("external_client"))
         if not node:
             # Unresolved/External
             return ExecutionNode(

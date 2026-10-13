@@ -1,0 +1,57 @@
+{
+  "cost_usd": 0,
+  "date": "2026-10-13",
+  "docs": 0,
+  "edges_by_resolved_by": {
+    "global_unique": 140,
+    "inherited": 9,
+    "receiver_typed": 26,
+    "self_scope": 34
+  },
+  "edges_total": 209,
+  "files": {
+    "indexed": 43,
+    "skipped": {
+      "no_symbols": 8,
+      "unsupported_extension": 81
+    },
+    "top_unsupported_extensions": {
+      "(none)": 6,
+      ".html": 12,
+      ".png": 4,
+      ".properties": 16,
+      ".scss": 4,
+      ".sql": 7,
+      ".svg": 3,
+      ".txt": 4,
+      ".xml": 3,
+      ".yml": 7
+    }
+  },
+  "ground_truth": {
+    "status": "no_ground_truth"
+  },
+  "mode": "keyless",
+  "nodes_by_kind": {
+    "class": 41,
+    "db_model": 6,
+    "endpoint": 17,
+    "external_system": 2,
+    "method": 182
+  },
+  "ok": true,
+  "pages_hook": "144 pages, 144 indexed",
+  "repo": "spring-petclinic-local",
+  "scan_status": "completed",
+  "screens": 0,
+  "sha": "500158f732419217507c7656904b8e6aa1bcc0d6",
+  "source": "local",
+  "stack": "java-spring",
+  "tool": "ai-discovery",
+  "unresolved": {
+    "edges_without_target": 0,
+    "unresolved_calls_rows": 1057
+  },
+  "void": false,
+  "wall_seconds": 0.64
+}

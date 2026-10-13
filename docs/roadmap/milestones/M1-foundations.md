@@ -180,7 +180,7 @@
 - **Out of scope:** cost gate UI (M2.4).
 
 ### M1.12 Edge contract
-- **Status:** Blocked (split 2026-10-13 into M1.12.a + M1.12.b; mark Done when both are)
+- **Status:** Done (75dcb6d, dc3438d)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M1.12.a, M1.12.b
@@ -204,7 +204,7 @@
 - **Out of scope:** slice/BFS following rules, bench comparison, ADR acceptance (M1.12.b).
 
 ### M1.12.b Edge contract: slices/BFS + bench + ADR acceptance
-- **Status:** In progress (rm/M1.12b-slices-bench, 2026-10-13)
+- **Status:** Done (dc3438d)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M1.12.a

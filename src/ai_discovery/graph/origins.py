@@ -123,4 +123,32 @@ CALLABLE_TYPES = frozenset({"method", "function", "endpoint", "batch_job", "cli_
 
 
 def is_builtin(language: str, name: str) -> bool:
+    if language == "python" and name.startswith("__") and name.endswith("__"):
+        return True     # dunder protocol methods (`__init__`, `__enter__`, …)
     return name in BUILTINS.get(language, _COMMON_MEMBERS)
+
+
+# ── Following rules (ADR-0004 §2, M1.12.b) ──────────────────────────────────
+# Execution slices, flow BFS and entry-point linking follow only these
+# evidence kinds, and only origins at or above the floor: `global_unique`
+# (0.50) — a name-only guess — is never walked by default.
+FLOW_EVIDENCE = frozenset({"static", "framework", "scip"})
+FLOW_MIN_CONFIDENCE = 0.75
+FLOW_EDGE_KINDS = frozenset({"calls", "dispatches_to", "framework_binds", "calls_external"})
+
+# One stop reason per slice leaf (design/graph-accuracy.md §8).
+STOP_REASONS = frozenset({"leaf_no_callees", "depth_cap", "cycle", "unresolved_call", "dynamic_dispatch",
+                          "external_boundary", "db_boundary"})
+
+
+def followable(edge, *, min_confidence: float = FLOW_MIN_CONFIDENCE,
+               evidence: frozenset[str] = FLOW_EVIDENCE) -> bool:
+    """True when a flow/slice/BFS may walk *edge* (a ``CallEdge``)."""
+    meta = edge.metadata or {}
+    origin_name = meta.get("resolved_by")
+    if origin_name not in ORIGINS:
+        # an edge built without an origin (tests, adapters): judge by confidence alone
+        return edge.confidence >= min_confidence
+    o = ORIGINS[origin_name]
+    return (o.evidence_kind in evidence and o.edge_kind in FLOW_EDGE_KINDS
+            and o.confidence >= min_confidence)
