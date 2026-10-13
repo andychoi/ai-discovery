@@ -1,9 +1,10 @@
-"""Discovery LLM client — routes invocation through shared.llm_router.
+"""Discovery LLM client — routes invocation through the ``ai_discovery.llm`` invoke path.
 
-Adds Discovery-specific cost tracking and tier mapping on top of the shared
-multi-provider router (bedrock | ollama | mlx-gemma | mlx-qwen | openai |
-gemini | anthropic | aigw | omlx | openrouter). Config comes from DiscoveryConfig (YAML > env >
-defaults) and is registered with the router via ``llm_router.configure()``.
+Adds Discovery-specific cost tracking and tier mapping on top of the
+multi-provider ``llm`` package (bedrock | ollama | mlx-gemma | mlx-qwen | openai |
+gemini | anthropic | aigw | omlx | openrouter). Config comes from DiscoveryConfig
+(YAML > env > defaults); each call builds ``LLMSettings`` from this client's own
+config (M1.10.a — no module-global router config).
 
 The structured-output path (``invoke_structured``) calls the shared invoke
 layer directly — Bedrock via ``converse_bedrock`` and Anthropic via
@@ -23,23 +24,18 @@ from ..config import DiscoveryConfig
 
 log = logging.getLogger(__name__)
 
-from ai_discovery.shared import llm_router
-from ai_discovery.shared.model_defaults import MODELS, rates_for_model
-from ai_discovery.shared.llm_invoke import (
+from ai_discovery import llm as _llm
+from ai_discovery.llm.catalog import MODELS, rates_for_model
+from ai_discovery.llm.transport import (
     converse_bedrock, invoke_anthropic_structured, invoke_openai_compat_structured,
     warm_ollama, unload_ollama,
 )
 from ai_discovery.shared.json_extract import extract_json_object
 
-# Discovery tier → router tier. The router's configure() flattening encodes
-# the same prod-flag logic as DiscoveryConfig.get_model (expert ≡ tier3p if
-# prod else tier3d), so model resolution is identical on both paths.
-_ROUTER_TIER = {
-    "tier1": "fast",
-    "tier2": "standard",
-    "tier3": "expert",
-    "screen": "standard",  # screen uses the tier2 model (see get_model)
-}
+# Discovery tier → role → router tier (llm.TIER_ROLE / ROLE_ROUTER_TIER). The
+# settings flattening encodes the same prod-flag logic as DiscoveryConfig.get_model
+# (expert ≡ tier3p if prod else tier3d), so model resolution is identical on both paths.
+_ROUTER_TIER = {tier: _llm.ROLE_ROUTER_TIER[role] for tier, role in _llm.TIER_ROLE.items()}
 
 
 @dataclass
@@ -124,7 +120,12 @@ class LLMClient:
         self._truncations: dict[str, int] = {}
         self._truncations_lock = threading.Lock()
 
-    _OLLAMA_LIKE = frozenset({"ollama", "mlx-gemma", "mlx-qwen"})
+    _OLLAMA_LIKE = frozenset(name for name, spec in _llm.PROVIDERS.items() if spec.protocol == "ollama")
+
+    def settings(self):
+        """``LLMSettings`` for this client's config (built per call: the config object may be
+        adjusted after the client is created, e.g. by the CLI)."""
+        return _llm.settings_from_config(self._config)
 
     def _tier1_num_ctx(self, tier: str) -> int | None:
         """Tier1 summarizes many small chunks — cap context window to avoid
@@ -141,7 +142,7 @@ class LLMClient:
         return None
 
     def invoke(self, tier: str, prompt: str, max_tokens: int = 4096) -> LLMResponse:
-        """Invoke LLM for given tier — dispatched through shared.llm_router."""
+        """Invoke LLM for given tier — dispatched through ``llm.invoke_text``."""
         if self._config.provider not in MODELS:
             raise ValueError(
                 f"Unknown provider {self._config.provider!r} — expected one of "
@@ -151,9 +152,8 @@ class LLMClient:
         if router_tier is None:
             raise ValueError(f"Invalid tier {tier!r}, must be one of {sorted(_ROUTER_TIER)}")
 
-        llm_router.configure(self._config)
-        meta = llm_router.invoke_llm_with_meta(
-            router_tier, prompt, max_tokens,
+        meta = _llm.invoke_text(
+            self.settings(), router_tier, prompt, max_tokens,
             enable_thinking=True,  # preserve the pre-router invoke_ollama default
             num_ctx=self._tier1_num_ctx(tier),
         )
@@ -201,8 +201,8 @@ class LLMClient:
         """
         model = self._config.get_model(tier)
 
-        if llm_router._is_openai_compat(self._config.provider):
-            from ai_discovery.shared.llm_router import max_tokens_field_for
+        if _llm.is_openai_compat(self._config.provider):
+            from ai_discovery.llm import max_tokens_field_for
             base_url, api_key = self._config.get_endpoint()
             try:
                 data, text, tok_in, tok_out = invoke_openai_compat_structured(
@@ -509,11 +509,10 @@ class LLMClient:
         )
 
         # Advisor pre-call uses the active tier3 (expert) model on whatever
-        # provider is configured — routed through the shared router, so all
+        # provider is configured — routed through the llm invoke path, so all
         # providers (including openai/gemini/anthropic) get advisor support.
-        llm_router.configure(self._config)
-        meta = llm_router.invoke_llm_with_meta("expert", advisor_prompt, 256,
-                                               enable_thinking=True)
+        meta = _llm.invoke_text(self.settings(), "expert", advisor_prompt, 256,
+                                enable_thinking=True)
         self._track_cost("advisor", meta["model_id"],
                          meta["input_tokens"], meta["output_tokens"])
 
@@ -532,16 +531,15 @@ class LLMClient:
         models); otherwise honor the embedding provider as-is (e.g. chat on
         anthropic, embed on local ollama)."""
         ep = self._config.rag.embedding_provider
-        if ep == "bedrock" or llm_router._is_openai_compat(ep):
+        if ep == "bedrock" or _llm.is_openai_compat(ep):
             return ep
         if self._config.provider in self._OLLAMA_LIKE:
             return self._config.provider
         return ep
 
     def get_embedding(self, text: str) -> list[float]:
-        """Get embedding vector — dispatched through shared.llm_router."""
-        llm_router.configure(self._config)
-        return llm_router.get_embedding(text, provider=self._embedding_provider())
+        """Get embedding vector — dispatched through ``llm.embed``."""
+        return _llm.embed(self.settings(), text, provider=self._embedding_provider())
 
     def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Batch embedding — one HTTP round-trip per batch where the backend
@@ -554,8 +552,7 @@ class LLMClient:
         call site)."""
         if not texts:
             return []
-        llm_router.configure(self._config)
-        return llm_router.get_embeddings_batch(texts, provider=self._embedding_provider())
+        return _llm.embed_batch(self.settings(), texts, provider=self._embedding_provider())
 
     def _embedding_model_for(self, provider: str) -> str:
         """Return the embedding model ID for the active ollama-compatible provider."""

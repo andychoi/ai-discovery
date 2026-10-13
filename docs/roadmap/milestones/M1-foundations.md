@@ -120,7 +120,7 @@
 - **Out of scope:** budget/cost/cache (M1.11).
 
 ### M1.10.a `llm/` package: provider registry, capability matrix, one invoke path
-- **Status:** In progress (rm/M1.10a-llm-package, 2026-10-13)
+- **Status:** Done (fe24c8f)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M0.7

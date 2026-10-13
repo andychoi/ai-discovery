@@ -1,8 +1,8 @@
 """Tests for the multi-provider LLM client.
 
-LLMClient routes plain text invocation through shared.llm_router, which
-imports the invoke functions as module-level names — so patches target the
-llm_router module namespace. The Bedrock structured-output path
+LLMClient routes plain text invocation through the llm package (ai_discovery.llm.invoke), which
+calls the wire functions through the transport module — so patches target
+ai_discovery.llm.transport. The Bedrock structured-output path
 (invoke_structured) still binds converse_bedrock in the llm_client namespace.
 """
 
@@ -13,10 +13,10 @@ import pytest
 from ai_discovery.ai.llm_client import LLMClient
 from ai_discovery.config import DiscoveryConfig
 
-_BEDROCK_TARGET = "ai_discovery.shared.llm_router.invoke_bedrock"
-_OLLAMA_TARGET = "ai_discovery.shared.llm_router.invoke_ollama"
-_OPENAI_TARGET = "ai_discovery.shared.llm_router.invoke_openai_compat"
-_ANTHROPIC_TARGET = "ai_discovery.shared.llm_router.invoke_anthropic"
+_BEDROCK_TARGET = "ai_discovery.llm.transport.invoke_bedrock"
+_OLLAMA_TARGET = "ai_discovery.llm.transport.invoke_ollama"
+_OPENAI_TARGET = "ai_discovery.llm.transport.invoke_openai_compat"
+_ANTHROPIC_TARGET = "ai_discovery.llm.transport.invoke_anthropic"
 
 
 def test_invoke_bedrock_tier1():
@@ -178,7 +178,7 @@ def test_embedding_provider_bedrock(monkeypatch):
     cfg = DiscoveryConfig(provider="ollama")
     cfg.rag.embedding_provider = "bedrock"
     client = LLMClient(cfg)
-    with patch("ai_discovery.shared.llm_router.embed_bedrock",
+    with patch("ai_discovery.llm.transport.embed_bedrock",
                return_value=[0.1]) as mock_embed:
         assert client.get_embedding("hello") == [0.1]
         assert mock_embed.call_args.args[0] == cfg.rag.bedrock_model
@@ -188,7 +188,7 @@ def test_embedding_active_ollama_like_provider():
     cfg = DiscoveryConfig(provider="ollama")
     cfg.rag.embedding_provider = "ollama"
     client = LLMClient(cfg)
-    with patch("ai_discovery.shared.llm_router.embed_ollama",
+    with patch("ai_discovery.llm.transport.embed_ollama",
                return_value=[0.2]) as mock_embed:
         assert client.get_embedding("hello") == [0.2]
         assert mock_embed.call_args.args[0] == cfg.rag.ollama_model
@@ -200,7 +200,7 @@ def test_embedding_openai_provider_while_chatting_anthropic():
     cfg = DiscoveryConfig(provider="anthropic")
     cfg.rag.embedding_provider = "openai"
     client = LLMClient(cfg)
-    with patch("ai_discovery.shared.llm_router.embed_openai_compat",
+    with patch("ai_discovery.llm.transport.embed_openai_compat",
                return_value=[0.3]):
         assert client.get_embedding("hello") == [0.3]
 
@@ -211,7 +211,7 @@ def test_embedding_anthropic_active_with_ollama_fallback():
     cfg = DiscoveryConfig(provider="anthropic")
     cfg.rag.embedding_provider = "ollama"
     client = LLMClient(cfg)
-    with patch("ai_discovery.shared.llm_router.embed_ollama",
+    with patch("ai_discovery.llm.transport.embed_ollama",
                return_value=[0.4]):
         assert client.get_embedding("hello") == [0.4]
 
@@ -232,7 +232,7 @@ def test_embeddings_batch_routes(monkeypatch):
                 ]}
         return R()
 
-    import ai_discovery.shared.llm_router  # noqa: F401 — patched below
+    import ai_discovery.llm.transport  # noqa: F401 — patched below
     with patch("httpx.post", side_effect=fake_post):
         vecs = client.get_embeddings(["a", "b"])
     assert vecs == [[0.0], [1.0]]

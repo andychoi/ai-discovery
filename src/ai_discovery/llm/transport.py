@@ -1,0 +1,611 @@
+"""Low-level LLM invocation — no DB or config dependencies.
+
+Provides raw Bedrock and Ollama invoke/embed functions used by both
+the DocHub llm_router (config-aware) and the Discovery CLI (standalone).
+
+Two Bedrock APIs are supported:
+- invoke_bedrock()   — Messages API (text-in text-out, simple prompts)
+- converse_bedrock() — Converse API (multi-turn, tool use, structured I/O)
+
+For local Apple Silicon inference, Ollama uses the MLX backend automatically.
+For advanced use (LoRA, custom embeddings), see ai-mlx-server which exposes
+the same OpenAI-compatible API — just point OLLAMA_URL at it.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import random
+import time
+
+import httpx
+
+_log = logging.getLogger(__name__)
+
+# ── Retry config for transient Bedrock errors ──
+_MAX_RETRIES = 3
+_BASE_DELAY = 0.5  # seconds; exponential backoff: 0.5, 1.0, 2.0 + jitter
+
+# Error codes / substrings considered transient (safe to retry)
+_TRANSIENT_PATTERNS = ("ThrottlingException", "TooManyRequestsException",
+                       "ServiceUnavailableException", "ReadTimeoutError",
+                       "ConnectTimeoutError", "RequestTimeout")
+
+
+def _is_transient(error: Exception) -> bool:
+    """Return True if the error is transient and worth retrying."""
+    err_str = str(error)
+    return any(p in err_str for p in _TRANSIENT_PATTERNS)
+
+
+def _log_llm_error(provider: str, model_id: str, error: str) -> None:
+    """Best-effort: log LLM failure to activity_log for health tracking."""
+    try:
+        from ai_discovery.shared.log_writer import log_activity
+        log_activity(
+            None, None, "llm_error",
+            f"{provider} invocation failed ({model_id}): {error[:200]}",
+            username="system",
+            metadata={"provider": provider, "model": model_id},
+        )
+    except Exception:
+        pass  # Best-effort only
+
+
+def invoke_bedrock(
+    model_id: str, prompt: str, max_tokens: int = 4096,
+    region: str = "us-west-2",
+) -> tuple[str, int, int]:
+    """Invoke a Bedrock model directly. Returns (text, tokens_in, tokens_out)."""
+    import boto3
+    from botocore.config import Config
+
+    client = boto3.client(
+        "bedrock-runtime", region_name=region,
+        config=Config(read_timeout=300, connect_timeout=10),
+    )
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    })
+    last_err: Exception | None = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            response = client.invoke_model(modelId=model_id, body=body)
+            result = json.loads(response["body"].read())
+            text = result["content"][0]["text"]
+            tok_in = result.get("usage", {}).get("input_tokens", 0)
+            tok_out = result.get("usage", {}).get("output_tokens", 0)
+            return text, tok_in, tok_out
+        except Exception as e:
+            last_err = e
+            if attempt < _MAX_RETRIES and _is_transient(e):
+                delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.3)
+                _log.warning("Bedrock invoke attempt %d/%d failed: %s, retrying in %.1fs",
+                             attempt + 1, _MAX_RETRIES, e, delay)
+                time.sleep(delay)
+                continue
+            _log_llm_error("bedrock", model_id, str(e))
+            raise RuntimeError(f"Bedrock invocation failed (model={model_id}): {e}") from e
+    # Should not reach here, but safety net
+    _log_llm_error("bedrock", model_id, str(last_err))
+    raise RuntimeError(f"Bedrock invocation failed after {_MAX_RETRIES} retries (model={model_id}): {last_err}") from last_err
+
+
+def converse_bedrock(
+    model_id: str,
+    messages: list[dict],
+    *,
+    system: str = "",
+    max_tokens: int = 4096,
+    tools: list[dict] | None = None,
+    tool_choice: dict | None = None,
+    region: str = "us-west-2",
+) -> dict:
+    """Invoke Bedrock Converse API — supports multi-turn and tool use.
+
+    Args:
+        model_id: Bedrock model ID (e.g. "us.anthropic.claude-sonnet-4-20250514-v1:0")
+        messages: Converse-format messages, each with role + content blocks.
+                  Content blocks: [{"text": "..."}, {"toolUse": {...}}, {"toolResult": {...}}]
+        system: Optional system prompt.
+        max_tokens: Max output tokens.
+        tools: Optional list of toolSpec definitions for tool use.
+        tool_choice: Optional Converse toolChoice, e.g. {"tool": {"name": "..."}}
+                     to force the model to emit that tool's input (schema-valid
+                     JSON), {"any": {}}, or {"auto": {}}. Ignored unless tools set.
+        region: AWS region.
+
+    Returns:
+        {
+            "content": [{"text": "..."}, {"toolUse": {"toolUseId", "name", "input"}}],
+            "stop_reason": "end_turn" | "tool_use" | "max_tokens",
+            "usage": {"input_tokens": N, "output_tokens": N},
+        }
+    """
+    import boto3
+    from botocore.config import Config
+
+    client = boto3.client(
+        "bedrock-runtime", region_name=region,
+        config=Config(read_timeout=300, connect_timeout=10),
+    )
+
+    kwargs: dict = {
+        "modelId": model_id,
+        "messages": messages,
+        "inferenceConfig": {"maxTokens": max_tokens},
+    }
+    if system:
+        kwargs["system"] = [{"text": system}]
+    if tools:
+        tool_config: dict = {"tools": tools}
+        if tool_choice:
+            tool_config["toolChoice"] = tool_choice
+        kwargs["toolConfig"] = tool_config
+
+    last_err: Exception | None = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            response = client.converse(**kwargs)
+            output = response.get("output", {}).get("message", {})
+            return {
+                "content": output.get("content", []),
+                "stop_reason": response.get("stopReason", "end_turn"),
+                "usage": {
+                    "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+                    "output_tokens": response.get("usage", {}).get("outputTokens", 0),
+                },
+            }
+        except Exception as e:
+            last_err = e
+            if attempt < _MAX_RETRIES and _is_transient(e):
+                delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.3)
+                _log.warning("Bedrock converse attempt %d/%d failed: %s, retrying in %.1fs",
+                             attempt + 1, _MAX_RETRIES, e, delay)
+                time.sleep(delay)
+                continue
+            _log_llm_error("bedrock", model_id, str(e))
+            raise RuntimeError(f"Bedrock converse failed (model={model_id}): {e}") from e
+    _log_llm_error("bedrock", model_id, str(last_err))
+    raise RuntimeError(f"Bedrock converse failed after {_MAX_RETRIES} retries (model={model_id}): {last_err}") from last_err
+
+
+def invoke_ollama(
+    model: str, prompt: str, max_tokens: int = 4096,
+    base_url: str = "http://localhost:11434",
+    enable_thinking: bool = True,
+    num_ctx: int | None = None,
+    api_key: str = "",
+) -> tuple[str, int, int]:
+    """Invoke an Ollama model directly. Returns (text, tokens_in, tokens_out).
+
+    Per-request timeout defaults to 600s (10 min) to accommodate large local
+    models (e.g. gemma4:31b generating 4k tokens on Apple Silicon). Override
+    with env var OLLAMA_INVOKE_TIMEOUT (seconds).
+
+    If ``num_ctx`` is set, the request caps the model's context window at that
+    token count. This dramatically reduces KV-cache VRAM for small-context
+    tasks (e.g. Discovery tier1 summarizes chunks ≤2K tokens — forcing
+    num_ctx=4096 cuts memory vs. the model's default 32K).
+
+    Routing: when ``num_ctx`` is provided we use Ollama's native ``/api/chat``
+    endpoint because the OpenAI-compatible ``/v1/chat/completions`` endpoint
+    silently drops ``options.num_ctx`` (same class of issue as ``keep_alive``
+    — see the warm_ollama comment below). Without num_ctx we stay on the
+    OpenAI path to preserve existing behavior for all other callers."""
+    try:
+        import os
+        import re
+        timeout = float(os.environ.get("OLLAMA_INVOKE_TIMEOUT", "600"))
+
+        # Build the options dict once — both endpoints accept it under the
+        # same key, we just route it differently.
+        options: dict = {}
+        if not enable_thinking and "qwen" in model.lower():
+            options["think"] = False
+        if num_ctx is not None:
+            options["num_ctx"] = int(num_ctx)
+
+        # Optional Bearer auth — used by ai-mlx-server when MLX_API_KEY is set.
+        # Native Ollama ignores the header, so it's safe to pass unconditionally.
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+
+        if num_ctx is not None:
+            # Native /api/chat path: reliably honors options.num_ctx.
+            # Response shape: {"message": {"content": "..."},
+            #                  "prompt_eval_count": N, "eval_count": N}
+            payload: dict = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "options": {"num_predict": max_tokens, **options},
+            }
+            resp = httpx.post(f"{base_url}/api/chat", json=payload, timeout=timeout, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data.get("message", {}).get("content", "")
+            tok_in = int(data.get("prompt_eval_count", len(prompt) // 4))
+            tok_out = int(data.get("eval_count", len(raw) // 4))
+        else:
+            # OpenAI-compatible path (default — unchanged behavior).
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "max_tokens": max_tokens,
+            }
+            if options:
+                payload["options"] = options
+            resp = httpx.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data["choices"][0]["message"]["content"]
+            tok_in = data.get("usage", {}).get("prompt_tokens", len(prompt) // 4)
+            tok_out = data.get("usage", {}).get("completion_tokens", len(raw) // 4)
+
+        # Strip <think>…</think> reasoning blocks (Qwen3.5 etc.)
+        text = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+        text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
+        text = text.strip()
+        return text, tok_in, tok_out
+    except Exception as e:
+        _log_llm_error("ollama", model, str(e))
+        raise RuntimeError(f"Ollama invocation failed (model={model} at {base_url}): {e}") from e
+
+
+def embed_bedrock(
+    model_id: str, text: str, region: str = "us-west-2",
+) -> list[float]:
+    """Get embedding vector via Bedrock. Returns list of floats."""
+    import boto3
+
+    try:
+        client = boto3.client("bedrock-runtime", region_name=region)
+        body = json.dumps({"inputText": text})
+        response = client.invoke_model(
+            modelId=model_id, body=body,
+            accept="application/json", contentType="application/json",
+        )
+        return json.loads(response["body"].read())["embedding"]
+    except Exception as e:
+        raise RuntimeError(f"Bedrock embedding failed (model={model_id}): {e}") from e
+
+
+def embed_ollama(
+    model: str, text: str, base_url: str = "http://localhost:11434",
+    api_key: str = "",
+) -> list[float]:
+    """Get embedding vector via Ollama. Returns list of floats.
+
+    Timeout defaults to 120s (to tolerate cold-load of the embedding model).
+    Override with env var OLLAMA_EMBED_TIMEOUT (seconds).
+
+    Optional ``api_key`` adds an ``Authorization: Bearer …`` header — used by
+    ai-mlx-server when MLX_API_KEY is set. Native Ollama ignores it."""
+    try:
+        import os
+        timeout = float(os.environ.get("OLLAMA_EMBED_TIMEOUT", "120"))
+        payload = {"model": model, "input": text}
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        resp = httpx.post(f"{base_url}/v1/embeddings", json=payload, timeout=timeout, headers=headers)
+        resp.raise_for_status()
+        return resp.json()["data"][0]["embedding"]
+    except Exception as e:
+        raise RuntimeError(f"Ollama embedding failed (model={model}): {e}") from e
+
+
+def embed_ollama_batch(
+    model: str, texts: list[str], base_url: str = "http://localhost:11434",
+    api_key: str = "",
+) -> list[list[float]]:
+    """Batch variant of :func:`embed_ollama`. Ollama's OpenAI-compatible
+    /v1/embeddings endpoint accepts an array under ``input`` and returns one
+    embedding per element, ordered. Cuts per-request overhead ~10–30× on
+    large chunk sets.
+
+    Returns embeddings in the same order as *texts*. Raises on any failure —
+    caller decides whether to fall back to per-text calls."""
+    if not texts:
+        return []
+    try:
+        import os
+        timeout = float(os.environ.get("OLLAMA_EMBED_TIMEOUT", "120"))
+        # Scale timeout by batch size — large batches take longer end-to-end.
+        timeout = max(timeout, 30 + 0.5 * len(texts))
+        payload = {"model": model, "input": texts}
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        resp = httpx.post(f"{base_url}/v1/embeddings", json=payload, timeout=timeout, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()["data"]
+        # Ollama preserves input order and returns ``index`` — use it defensively
+        # in case a future version ever reorders.
+        sorted_data = sorted(data, key=lambda d: d.get("index", 0))
+        return [d["embedding"] for d in sorted_data]
+    except Exception as e:
+        raise RuntimeError(f"Ollama batch embedding failed (model={model}, n={len(texts)}): {e}") from e
+
+
+# ── OpenAI-compatible cloud providers (OpenAI, Gemini, …) ──────────────────
+# Same wire shape as invoke_ollama's default path, but base_url carries the
+# full API prefix (e.g. https://api.openai.com/v1 or
+# https://generativelanguage.googleapis.com/v1beta/openai) and we append
+# /chat/completions | /embeddings. Bearer auth is required.
+
+
+def _openai_compat_chat(
+    model: str, prompt: str, max_tokens: int,
+    base_url: str, api_key: str, max_tokens_field: str,
+    extra_payload: dict | None = None,
+) -> tuple[str, int, int]:
+    """POST an OpenAI-compatible chat-completions request with retries.
+
+    Returns (text, tokens_in, tokens_out). Shared by invoke_openai_compat
+    and invoke_openai_compat_structured (which adds ``response_format``).
+    """
+    import os
+    timeout = float(os.environ.get("OPENAI_COMPAT_INVOKE_TIMEOUT", "600"))
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+        max_tokens_field: max_tokens,
+        **(extra_payload or {}),
+    }
+    last_err: Exception | None = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            resp = httpx.post(url, json=payload, timeout=timeout, headers=headers)
+            if resp.status_code in (429, 500, 502, 503, 529) and attempt < _MAX_RETRIES:
+                raise RuntimeError(f"TooManyRequestsException: HTTP {resp.status_code}")
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["choices"][0]["message"]["content"] or ""
+            tok_in = data.get("usage", {}).get("prompt_tokens", len(prompt) // 4)
+            tok_out = data.get("usage", {}).get("completion_tokens", len(text) // 4)
+            return text.strip(), tok_in, tok_out
+        except Exception as e:
+            last_err = e
+            if attempt < _MAX_RETRIES and _is_transient(e):
+                delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.3)
+                _log.warning("OpenAI-compat invoke attempt %d/%d failed: %s, retrying in %.1fs",
+                             attempt + 1, _MAX_RETRIES, e, delay)
+                time.sleep(delay)
+                continue
+            _log_llm_error("openai-compat", model, str(e))
+            raise RuntimeError(
+                f"OpenAI-compatible invocation failed (model={model} at {base_url}): {e}"
+            ) from e
+    _log_llm_error("openai-compat", model, str(last_err))
+    raise RuntimeError(
+        f"OpenAI-compatible invocation failed after {_MAX_RETRIES} retries "
+        f"(model={model} at {base_url}): {last_err}"
+    ) from last_err
+
+
+def invoke_openai_compat(
+    model: str, prompt: str, max_tokens: int = 4096,
+    base_url: str = "https://api.openai.com/v1",
+    api_key: str = "",
+    max_tokens_field: str = "max_completion_tokens",
+) -> tuple[str, int, int]:
+    """Invoke an OpenAI-compatible chat-completions endpoint.
+
+    Returns (text, tokens_in, tokens_out).
+
+    ``max_tokens_field`` names the output-cap parameter: OpenAI's gpt-5
+    family rejects ``max_tokens`` in favor of ``max_completion_tokens``;
+    Gemini's compatibility layer uses ``max_tokens``.
+
+    Per-request timeout defaults to 600s; override with env var
+    OPENAI_COMPAT_INVOKE_TIMEOUT (seconds). Transient errors (429/5xx,
+    timeouts) retry with exponential backoff like invoke_bedrock.
+    """
+    return _openai_compat_chat(model, prompt, max_tokens, base_url, api_key,
+                               max_tokens_field)
+
+
+def invoke_openai_compat_structured(
+    model: str, prompt: str, schema: dict, *,
+    schema_name: str = "emit", schema_description: str = "",
+    max_tokens: int = 4096,
+    base_url: str = "https://api.openai.com/v1",
+    api_key: str = "",
+    max_tokens_field: str = "max_completion_tokens",
+) -> tuple[dict | None, str, int, int]:
+    """Schema-enforced invocation via the OpenAI-compatible
+    ``response_format: json_schema`` channel (OpenAI structured outputs;
+    Gemini's compatibility layer supports the same field).
+
+    Returns (data, text, tokens_in, tokens_out). ``data`` is the parsed JSON
+    object when the response content is valid JSON; ``None`` otherwise, with
+    ``text`` carrying the raw content for tolerant parsing. ``strict`` is
+    deliberately not set — strict mode requires ``additionalProperties:
+    false`` throughout, which existing Discovery schemas don't guarantee.
+    """
+    import json as _json
+    json_schema: dict = {"name": schema_name, "schema": schema}
+    if schema_description:
+        json_schema["description"] = schema_description
+    text, tok_in, tok_out = _openai_compat_chat(
+        model, prompt, max_tokens, base_url, api_key, max_tokens_field,
+        extra_payload={"response_format": {"type": "json_schema",
+                                           "json_schema": json_schema}},
+    )
+    try:
+        data = _json.loads(text)
+        if not isinstance(data, dict):
+            data = None
+    except ValueError:
+        data = None
+    return data, text, tok_in, tok_out
+
+
+def embed_openai_compat(
+    model: str, text: str,
+    base_url: str = "https://api.openai.com/v1",
+    api_key: str = "",
+) -> list[float]:
+    """Get an embedding vector via an OpenAI-compatible /embeddings endpoint.
+
+    Timeout defaults to 120s; override with env var
+    OPENAI_COMPAT_EMBED_TIMEOUT (seconds).
+    """
+    try:
+        import os
+        timeout = float(os.environ.get("OPENAI_COMPAT_EMBED_TIMEOUT", "120"))
+        url = f"{base_url.rstrip('/')}/embeddings"
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        # Single-element list: OpenAI-spec allows a bare string, but ai-gateway
+        # only accepts the array form.
+        resp = httpx.post(url, json={"model": model, "input": [text]},
+                          timeout=timeout, headers=headers)
+        resp.raise_for_status()
+        return resp.json()["data"][0]["embedding"]
+    except Exception as e:
+        raise RuntimeError(
+            f"OpenAI-compatible embedding failed (model={model} at {base_url}): {e}"
+        ) from e
+
+
+# ── Anthropic direct (api.anthropic.com via the anthropic SDK) ─────────────
+
+
+def _anthropic_client(api_key: str = "", base_url: str = ""):
+    """Build an Anthropic SDK client (lazy optional import — same pattern as
+    the native advisor in ai/llm_client.py). With no ``api_key`` the SDK
+    resolves ANTHROPIC_API_KEY from the environment."""
+    try:
+        import anthropic
+    except ImportError:
+        raise RuntimeError(
+            "Anthropic provider requires the 'anthropic' package: pip install anthropic"
+        )
+    kwargs: dict = {}
+    if api_key:
+        kwargs["api_key"] = api_key
+    if base_url and base_url != "https://api.anthropic.com":
+        kwargs["base_url"] = base_url
+    return anthropic.Anthropic(**kwargs)
+
+
+def _anthropic_usage(response) -> tuple[int, int]:
+    tok_in = getattr(response.usage, "input_tokens", 0) or 0
+    tok_out = getattr(response.usage, "output_tokens", 0) or 0
+    return int(tok_in), int(tok_out)
+
+
+def invoke_anthropic(
+    model: str, prompt: str, max_tokens: int = 4096,
+    api_key: str = "", base_url: str = "",
+) -> tuple[str, int, int]:
+    """Invoke the Anthropic Messages API directly. Returns (text, tokens_in, tokens_out).
+
+    Uses the official ``anthropic`` SDK (optional dependency). The SDK
+    auto-retries 429/5xx with exponential backoff.
+    """
+    client = _anthropic_client(api_key, base_url)
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(
+            block.text for block in response.content
+            if getattr(block, "type", None) == "text"
+        )
+        tok_in, tok_out = _anthropic_usage(response)
+        return text.strip(), tok_in, tok_out
+    except Exception as e:
+        _log_llm_error("anthropic", model, str(e))
+        raise RuntimeError(f"Anthropic invocation failed (model={model}): {e}") from e
+
+
+def invoke_anthropic_structured(
+    model: str, prompt: str, schema: dict, *,
+    tool_name: str = "emit", tool_description: str = "",
+    max_tokens: int = 4096,
+    api_key: str = "", base_url: str = "",
+) -> tuple[dict | None, str, int, int]:
+    """Schema-enforced invocation via Anthropic tool use with a forced
+    ``tool_choice`` — the native counterpart of the Bedrock Converse path.
+
+    Returns (data, text, tokens_in, tokens_out). ``data`` is the tool input
+    dict when the model called the tool (shaped by *schema*); ``None``
+    otherwise, in which case ``text`` carries the prose for tolerant parsing.
+    """
+    client = _anthropic_client(api_key, base_url)
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            tools=[{
+                "name": tool_name,
+                "description": tool_description or "Return the structured result.",
+                "input_schema": schema,
+            }],
+            tool_choice={"type": "tool", "name": tool_name},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        data: dict | None = None
+        texts: list[str] = []
+        for block in response.content:
+            block_type = getattr(block, "type", None)
+            if (data is None and block_type == "tool_use"
+                    and getattr(block, "name", "") == tool_name
+                    and isinstance(getattr(block, "input", None), dict)):
+                data = block.input
+            elif block_type == "text":
+                texts.append(block.text)
+        tok_in, tok_out = _anthropic_usage(response)
+        return data, "".join(texts).strip(), tok_in, tok_out
+    except Exception as e:
+        _log_llm_error("anthropic", model, str(e))
+        raise RuntimeError(
+            f"Anthropic structured invocation failed (model={model}): {e}"
+        ) from e
+
+
+# ── Ollama keep-alive helpers ──────────────────────────────────────────────
+# The OpenAI-compat endpoints (/v1/chat/completions, /v1/embeddings) silently
+# ignore Ollama's `keep_alive` parameter. To pin or evict a model we have to
+# hit the native /api/generate endpoint with an empty prompt.
+
+def warm_ollama(model: str, base_url: str, keep_alive: str = "30m",
+                api_key: str = "") -> bool:
+    """Load `model` into Ollama and pin it in memory for `keep_alive`.
+    Returns True on success, False on failure (non-fatal — caller can proceed)."""
+    try:
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        resp = httpx.post(
+            f"{base_url}/api/generate",
+            json={"model": model, "prompt": "", "keep_alive": keep_alive, "stream": False},
+            timeout=300,  # cold-loading a 31b model can take a while
+            headers=headers,
+        )
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        _log_llm_error("ollama", model, f"warm failed: {e}")
+        return False
+
+
+def unload_ollama(model: str, base_url: str) -> bool:
+    """Evict `model` from Ollama memory immediately (keep_alive=0).
+    Returns True on success, False on failure (non-fatal)."""
+    try:
+        resp = httpx.post(
+            f"{base_url}/api/generate",
+            json={"model": model, "prompt": "", "keep_alive": 0, "stream": False},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        _log_llm_error("ollama", model, f"unload failed: {e}")
+        return False

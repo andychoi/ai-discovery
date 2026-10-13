@@ -12,20 +12,23 @@ import types
 
 import pytest
 
+from ai_discovery import llm
 from ai_discovery.config import DiscoveryConfig
-from ai_discovery.shared import llm_invoke, llm_router
-from ai_discovery.shared.model_defaults import MODELS
+from ai_discovery.llm import transport
+from ai_discovery.llm import transport as llm_invoke  # wire calls (was shared.llm_invoke)
+from ai_discovery.llm.catalog import MODELS
+from ai_discovery.llm.settings import _ENV_MAP, settings_from_config
 
 
 @pytest.fixture(autouse=True)
-def _clean_router_state(monkeypatch):
-    llm_router.configure(None)
-    llm_router.reset_config()
-    for env_var in llm_router._ENV_MAP.values():
+def _clean_env(monkeypatch):
+    for env_var in _ENV_MAP.values():
         monkeypatch.delenv(env_var, raising=False)
-    yield
-    llm_router.configure(None)
-    llm_router.reset_config()
+
+
+def _s(provider: str):
+    """Explicit settings for *provider* (replaces the removed router save_config)."""
+    return settings_from_config(None, {"provider": provider})
 
 
 # ── model_defaults ────────────────────────────────────────────────────────────
@@ -335,14 +338,14 @@ def test_invoke_openai_compat_structured_gemini_max_tokens_field(monkeypatch):
 
 
 def test_max_tokens_field_for():
-    assert llm_router.max_tokens_field_for("openai") == "max_completion_tokens"
-    assert llm_router.max_tokens_field_for("gemini") == "max_tokens"
+    assert llm.max_tokens_field_for("openai") == "max_completion_tokens"
+    assert llm.max_tokens_field_for("gemini") == "max_tokens"
 
 
 # ── model_defaults.rates_for_model ($/1M tokens, per model family) ───────────
 
 
-from ai_discovery.shared.model_defaults import rates_for_model  # noqa: E402
+from ai_discovery.llm.catalog import rates_for_model  # noqa: E402
 
 
 @pytest.mark.parametrize("model,expected", [
@@ -381,13 +384,12 @@ def test_rates_for_model_unknown_cloud_uses_conservative_default():
     assert rates_for_model("some-future-model", provider="openai") == (3.0, 15.0)
 
 
-# ── llm_router: resolution + dispatch ────────────────────────────────────────
+# ── llm: resolution + dispatch ────────────────────────────────────────
 
 
 @pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic", "aigw", "omlx", "openrouter"])
 def test_resolve_tier_target_new_providers(provider):
-    llm_router.save_config({"provider": provider})
-    p, model, base_url = llm_router.resolve_tier_target("fast")
+    p, model, base_url = llm.resolve_tier_target(_s(provider), "fast")
     assert p == provider
     assert model == MODELS[provider]["fast"]
     assert base_url == MODELS[provider]["url"]
@@ -395,8 +397,7 @@ def test_resolve_tier_target_new_providers(provider):
 
 @pytest.mark.parametrize("provider", ["openai", "gemini", "anthropic", "aigw", "omlx", "openrouter"])
 def test_resolve_model_id_new_providers(provider):
-    llm_router.save_config({"provider": provider})
-    assert llm_router.resolve_model_id("standard") == MODELS[provider]["standard"]
+    assert _s(provider).model("standard") == MODELS[provider]["standard"]
 
 
 def test_invoke_llm_routes_openai(monkeypatch):
@@ -408,10 +409,9 @@ def test_invoke_llm_routes_openai(monkeypatch):
                      max_tokens_field=max_tokens_field)
         return "ok", 1, 2
 
-    monkeypatch.setattr(llm_router, "invoke_openai_compat", fake_invoke)
+    monkeypatch.setattr(transport, "invoke_openai_compat", fake_invoke)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    llm_router.save_config({"provider": "openai"})
-    out = llm_router.invoke_llm("fast", "Hi")
+    out = llm.invoke_text(_s("openai"), "fast", "Hi")["text"]
     assert out == "ok"
     assert calls["model"] == MODELS["openai"]["fast"]
     assert calls["base_url"] == MODELS["openai"]["url"]
@@ -426,9 +426,8 @@ def test_invoke_llm_routes_gemini_with_max_tokens_field(monkeypatch):
         calls.update(max_tokens_field=max_tokens_field)
         return "ok", 1, 2
 
-    monkeypatch.setattr(llm_router, "invoke_openai_compat", fake_invoke)
-    llm_router.save_config({"provider": "gemini"})
-    llm_router.invoke_llm("fast", "Hi")
+    monkeypatch.setattr(transport, "invoke_openai_compat", fake_invoke)
+    llm.invoke_text(_s("gemini"), "fast", "Hi")["text"]
     assert calls["max_tokens_field"] == "max_tokens"
 
 
@@ -439,33 +438,30 @@ def test_invoke_llm_routes_anthropic(monkeypatch):
         calls.update(model=model)
         return "ok", 1, 2
 
-    monkeypatch.setattr(llm_router, "invoke_anthropic", fake_invoke)
-    llm_router.save_config({"provider": "anthropic"})
-    out = llm_router.invoke_llm("expert", "Hi")
+    monkeypatch.setattr(transport, "invoke_anthropic", fake_invoke)
+    out = llm.invoke_text(_s("anthropic"), "expert", "Hi")["text"]
     assert out == "ok"
     assert calls["model"] == MODELS["anthropic"]["expert"]
 
 
 def test_get_embedding_anthropic_raises():
-    llm_router.save_config({"provider": "anthropic"})
     with pytest.raises(RuntimeError, match="embedding"):
-        llm_router.get_embedding("hello")
+        llm.embed(_s("anthropic"), "hello")
 
 
 def test_get_embedding_openai_routes(monkeypatch):
     monkeypatch.setattr(
-        llm_router, "embed_openai_compat",
+        transport, "embed_openai_compat",
         lambda model, text, base_url="", api_key="": [0.5],
     )
-    llm_router.save_config({"provider": "openai"})
-    assert llm_router.get_embedding("hello") == [0.5]
+    assert llm.embed(_s("openai"), "hello") == [0.5]
 
 
 def test_env_overrides_new_providers(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.setenv("LLM_FAST_OPENAI_MODEL", "env-model")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://proxy.example/v1")
-    config = llm_router.get_config()
+    config = settings_from_config(None).values
     assert config["provider"] == "openai"
     assert config["tier.fast.openai_model"] == "env-model"
     assert config["openai.url"] == "https://proxy.example/v1"
@@ -497,14 +493,13 @@ def test_discovery_config_get_endpoint(provider):
     assert base_url == MODELS[provider]["url"]
 
 
-def test_configure_flattens_new_providers():
+def test_settings_flatten_new_providers():
     cfg = DiscoveryConfig()
     cfg.provider = "openai"
     cfg.openai.tier1 = "dc-fast"
     cfg.gemini.base_url = "https://gem.example/openai"
     cfg.anthropic.tier3p = "dc-opus"
-    llm_router.configure(cfg)
-    config = llm_router.get_config()
+    config = settings_from_config(cfg).values
     assert config["provider"] == "openai"
     assert config["tier.fast.openai_model"] == "dc-fast"
     assert config["gemini.url"] == "https://gem.example/openai"
@@ -553,10 +548,9 @@ def test_invoke_llm_routes_gateway_providers(monkeypatch, provider, url, key_env
                      max_tokens_field=max_tokens_field)
         return "ok", 1, 2
 
-    monkeypatch.setattr(llm_router, "invoke_openai_compat", fake_invoke)
+    monkeypatch.setattr(transport, "invoke_openai_compat", fake_invoke)
     monkeypatch.setenv(key_env, "sk-virtual")
-    llm_router.save_config({"provider": provider})
-    assert llm_router.invoke_llm("fast", "Hi") == "ok"
+    assert llm.invoke_text(_s(provider), "fast", "Hi")["text"] == "ok"
     assert calls == {"model": MODELS[provider]["fast"], "base_url": url,
                      "api_key": "sk-virtual", "max_tokens_field": "max_tokens"}
 
@@ -582,9 +576,8 @@ def test_get_embedding_aigw_routes(monkeypatch):
         seen.update(model=model, base_url=base_url)
         return [0.25]
 
-    monkeypatch.setattr(llm_router, "embed_openai_compat", fake_embed)
-    llm_router.save_config({"provider": "aigw"})
-    assert llm_router.get_embedding("hello") == [0.25]
+    monkeypatch.setattr(transport, "embed_openai_compat", fake_embed)
+    assert llm.embed(_s("aigw"), "hello") == [0.25]
     assert seen == {"model": MODELS["aigw"]["embedding"],
                     "base_url": MODELS["aigw"]["url"]}
 
@@ -604,7 +597,7 @@ def test_openrouter_embedding_model_and_key(monkeypatch, key_env):
         seen.update(model=model, base_url=base_url, api_key=api_key)
         return [0.1]
 
-    monkeypatch.setattr(llm_router, "embed_openai_compat", fake_embed)
+    monkeypatch.setattr(transport, "embed_openai_compat", fake_embed)
     monkeypatch.setenv(key_env, "or-key")
     monkeypatch.setenv("DISCOVERY_EMBEDDING_PROVIDER", "openrouter")
     monkeypatch.setenv("DISCOVERY_EMBEDDING_MODEL", "liquid/lfm-2.5-embedding-350m:free")
