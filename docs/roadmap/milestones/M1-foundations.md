@@ -155,7 +155,7 @@
 - **Out of scope:** cost gate UI (M2.4).
 
 ### M1.11.a `llm/` retry policy, cost accounting, shim removal
-- **Status:** In progress (rm/M1.11a-retry-cost, 2026-10-13)
+- **Status:** Done (1054762)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.10, M1.5, M1.7

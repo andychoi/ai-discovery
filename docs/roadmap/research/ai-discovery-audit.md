@@ -49,7 +49,7 @@ File paths are relative to `src/ai_discovery/` unless they start with a top-leve
 | 27 | Tier-1 reuse key lacks model and prompt version | `ai/summarizer.py:566-572` | S2 | M0.7 — fixed a37eff1 |
 | 28 | Tier-2 flows and Tier-3 rollups are never reused across scans | `ai/rollup.py:631-660`, `ai/flow_analyzer.py:547-584` | S2 | M3.7 |
 | 29 | Oversized non-class functions are sent to the LLM whole | `ai/chunker.py:94-127` | S3 | M3.7 |
-| 30 | Retry is substring-based, 3 tries, 0.5 s base; Retry-After ignored | `shared/llm_invoke.py:26-40,363` | S3 | M1.11 |
+| 30 | Retry is substring-based, 3 tries, 0.5 s base; Retry-After ignored | `shared/llm_invoke.py:26-40,363` | S3 | M1.11.a — fixed 1054762 |
 | 31 | No pre-run cost estimate; no prompt caching; no response cache | — | S2 | M1.11, M2.4 |
 | 32 | `shared/llm_router.configure()` sets a **module-global** config, so a server can't safely serve two projects | `shared/llm_router.py:289-297` | S3 | M1.10 |
 | 33 | Three LLM layers (~1,985 LOC): `ai/llm_client.py` → `shared/llm_router.py` → `shared/llm_invoke.py`; two tier-naming schemes (`tier1/2/3d/3p` vs `fast/standard/expert/heavy/deep` in `shared/model_defaults.py`) | — | S3 | M1.10 |

@@ -16,27 +16,36 @@ from __future__ import annotations
 
 import json
 import logging
-import random
-import time
 
 import httpx
 
 _log = logging.getLogger(__name__)
 
-# ── Retry config for transient Bedrock errors ──
-_MAX_RETRIES = 3
-_BASE_DELAY = 0.5  # seconds; exponential backoff: 0.5, 1.0, 2.0 + jitter
-
-# Error codes / substrings considered transient (safe to retry)
-_TRANSIENT_PATTERNS = ("ThrottlingException", "TooManyRequestsException",
-                       "ServiceUnavailableException", "ReadTimeoutError",
-                       "ConnectTimeoutError", "RequestTimeout")
+# Retries: every wire call goes through retry.call_with_retry (M1.11.a) —
+# classified by status code / exception type, Retry-After honoured on 429.
+from .retry import call_with_retry  # noqa: E402
 
 
-def _is_transient(error: Exception) -> bool:
-    """Return True if the error is transient and worth retrying."""
-    err_str = str(error)
-    return any(p in err_str for p in _TRANSIENT_PATTERNS)
+class TextResult(tuple):
+    """``(text, tokens_in, tokens_out)`` that also carries cache token counts.
+
+    Still unpacks as a 3-tuple (callers and test doubles that return plain
+    tuples keep working); ``tokens_in`` is the *uncached* input.
+    """
+
+    def __new__(cls, text: str, tokens_in: int, tokens_out: int, *,
+                cache_read: int = 0, cache_write: int = 0):
+        obj = super().__new__(cls, (text, int(tokens_in or 0), int(tokens_out or 0)))
+        obj.cache_read = int(cache_read or 0)
+        obj.cache_write = int(cache_write or 0)
+        return obj
+
+
+def _post_json(url: str, payload: dict, timeout: float, headers: dict | None) -> dict:
+    """POST and return the JSON body; HTTP errors raise ``httpx.HTTPStatusError`` (classified by retry)."""
+    resp = httpx.post(url, json=payload, timeout=timeout, headers=headers)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _log_llm_error(provider: str, model_id: str, error: str) -> None:
@@ -70,28 +79,21 @@ def invoke_bedrock(
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     })
-    last_err: Exception | None = None
-    for attempt in range(_MAX_RETRIES + 1):
-        try:
-            response = client.invoke_model(modelId=model_id, body=body)
-            result = json.loads(response["body"].read())
-            text = result["content"][0]["text"]
-            tok_in = result.get("usage", {}).get("input_tokens", 0)
-            tok_out = result.get("usage", {}).get("output_tokens", 0)
-            return text, tok_in, tok_out
-        except Exception as e:
-            last_err = e
-            if attempt < _MAX_RETRIES and _is_transient(e):
-                delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.3)
-                _log.warning("Bedrock invoke attempt %d/%d failed: %s, retrying in %.1fs",
-                             attempt + 1, _MAX_RETRIES, e, delay)
-                time.sleep(delay)
-                continue
-            _log_llm_error("bedrock", model_id, str(e))
-            raise RuntimeError(f"Bedrock invocation failed (model={model_id}): {e}") from e
-    # Should not reach here, but safety net
-    _log_llm_error("bedrock", model_id, str(last_err))
-    raise RuntimeError(f"Bedrock invocation failed after {_MAX_RETRIES} retries (model={model_id}): {last_err}") from last_err
+
+    def _call() -> TextResult:
+        response = client.invoke_model(modelId=model_id, body=body)
+        result = json.loads(response["body"].read())
+        usage = result.get("usage", {})
+        return TextResult(result["content"][0]["text"], usage.get("input_tokens", 0),
+                          usage.get("output_tokens", 0),
+                          cache_read=usage.get("cache_read_input_tokens", 0),
+                          cache_write=usage.get("cache_creation_input_tokens", 0))
+
+    try:
+        return call_with_retry(_call, what=f"Bedrock invoke ({model_id})")
+    except Exception as e:
+        _log_llm_error("bedrock", model_id, str(e))
+        raise RuntimeError(f"Bedrock invocation failed (model={model_id}): {e}") from e
 
 
 def converse_bedrock(
@@ -146,31 +148,26 @@ def converse_bedrock(
             tool_config["toolChoice"] = tool_choice
         kwargs["toolConfig"] = tool_config
 
-    last_err: Exception | None = None
-    for attempt in range(_MAX_RETRIES + 1):
-        try:
-            response = client.converse(**kwargs)
-            output = response.get("output", {}).get("message", {})
-            return {
-                "content": output.get("content", []),
-                "stop_reason": response.get("stopReason", "end_turn"),
-                "usage": {
-                    "input_tokens": response.get("usage", {}).get("inputTokens", 0),
-                    "output_tokens": response.get("usage", {}).get("outputTokens", 0),
-                },
-            }
-        except Exception as e:
-            last_err = e
-            if attempt < _MAX_RETRIES and _is_transient(e):
-                delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.3)
-                _log.warning("Bedrock converse attempt %d/%d failed: %s, retrying in %.1fs",
-                             attempt + 1, _MAX_RETRIES, e, delay)
-                time.sleep(delay)
-                continue
-            _log_llm_error("bedrock", model_id, str(e))
-            raise RuntimeError(f"Bedrock converse failed (model={model_id}): {e}") from e
-    _log_llm_error("bedrock", model_id, str(last_err))
-    raise RuntimeError(f"Bedrock converse failed after {_MAX_RETRIES} retries (model={model_id}): {last_err}") from last_err
+    def _call() -> dict:
+        response = client.converse(**kwargs)
+        output = response.get("output", {}).get("message", {})
+        usage = response.get("usage", {})
+        return {
+            "content": output.get("content", []),
+            "stop_reason": response.get("stopReason", "end_turn"),
+            "usage": {
+                "input_tokens": usage.get("inputTokens", 0),
+                "output_tokens": usage.get("outputTokens", 0),
+                "cache_read_tokens": usage.get("cacheReadInputTokens", 0),
+                "cache_write_tokens": usage.get("cacheWriteInputTokens", 0),
+            },
+        }
+
+    try:
+        return call_with_retry(_call, what=f"Bedrock converse ({model_id})")
+    except Exception as e:
+        _log_llm_error("bedrock", model_id, str(e))
+        raise RuntimeError(f"Bedrock converse failed (model={model_id}): {e}") from e
 
 
 def invoke_ollama(
@@ -223,9 +220,8 @@ def invoke_ollama(
                 "stream": False,
                 "options": {"num_predict": max_tokens, **options},
             }
-            resp = httpx.post(f"{base_url}/api/chat", json=payload, timeout=timeout, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+            data = call_with_retry(lambda: _post_json(f"{base_url}/api/chat", payload, timeout, headers),
+                                   what=f"Ollama chat ({model})")
             raw = data.get("message", {}).get("content", "")
             tok_in = int(data.get("prompt_eval_count", len(prompt) // 4))
             tok_out = int(data.get("eval_count", len(raw) // 4))
@@ -239,9 +235,9 @@ def invoke_ollama(
             }
             if options:
                 payload["options"] = options
-            resp = httpx.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+            data = call_with_retry(
+                lambda: _post_json(f"{base_url}/v1/chat/completions", payload, timeout, headers),
+                what=f"Ollama chat ({model})")
             raw = data["choices"][0]["message"]["content"]
             tok_in = data.get("usage", {}).get("prompt_tokens", len(prompt) // 4)
             tok_out = data.get("usage", {}).get("completion_tokens", len(raw) // 4)
@@ -265,10 +261,10 @@ def embed_bedrock(
     try:
         client = boto3.client("bedrock-runtime", region_name=region)
         body = json.dumps({"inputText": text})
-        response = client.invoke_model(
+        response = call_with_retry(lambda: client.invoke_model(
             modelId=model_id, body=body,
             accept="application/json", contentType="application/json",
-        )
+        ), what=f"Bedrock embedding ({model_id})")
         return json.loads(response["body"].read())["embedding"]
     except Exception as e:
         raise RuntimeError(f"Bedrock embedding failed (model={model_id}): {e}") from e
@@ -290,9 +286,9 @@ def embed_ollama(
         timeout = float(os.environ.get("OLLAMA_EMBED_TIMEOUT", "120"))
         payload = {"model": model, "input": text}
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
-        resp = httpx.post(f"{base_url}/v1/embeddings", json=payload, timeout=timeout, headers=headers)
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+        data = call_with_retry(lambda: _post_json(f"{base_url}/v1/embeddings", payload, timeout, headers),
+                               what=f"Ollama embedding ({model})")
+        return data["data"][0]["embedding"]
     except Exception as e:
         raise RuntimeError(f"Ollama embedding failed (model={model}): {e}") from e
 
@@ -356,35 +352,21 @@ def _openai_compat_chat(
         max_tokens_field: max_tokens,
         **(extra_payload or {}),
     }
-    last_err: Exception | None = None
-    for attempt in range(_MAX_RETRIES + 1):
-        try:
-            resp = httpx.post(url, json=payload, timeout=timeout, headers=headers)
-            if resp.status_code in (429, 500, 502, 503, 529) and attempt < _MAX_RETRIES:
-                raise RuntimeError(f"TooManyRequestsException: HTTP {resp.status_code}")
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["choices"][0]["message"]["content"] or ""
-            tok_in = data.get("usage", {}).get("prompt_tokens", len(prompt) // 4)
-            tok_out = data.get("usage", {}).get("completion_tokens", len(text) // 4)
-            return text.strip(), tok_in, tok_out
-        except Exception as e:
-            last_err = e
-            if attempt < _MAX_RETRIES and _is_transient(e):
-                delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.3)
-                _log.warning("OpenAI-compat invoke attempt %d/%d failed: %s, retrying in %.1fs",
-                             attempt + 1, _MAX_RETRIES, e, delay)
-                time.sleep(delay)
-                continue
-            _log_llm_error("openai-compat", model, str(e))
-            raise RuntimeError(
-                f"OpenAI-compatible invocation failed (model={model} at {base_url}): {e}"
-            ) from e
-    _log_llm_error("openai-compat", model, str(last_err))
-    raise RuntimeError(
-        f"OpenAI-compatible invocation failed after {_MAX_RETRIES} retries "
-        f"(model={model} at {base_url}): {last_err}"
-    ) from last_err
+    try:
+        data = call_with_retry(lambda: _post_json(url, payload, timeout, headers),
+                               what=f"OpenAI-compatible chat ({model})")
+        text = data["choices"][0]["message"]["content"] or ""
+        usage = data.get("usage") or {}
+        prompt_tokens = usage.get("prompt_tokens", len(prompt) // 4)
+        cached = int(((usage.get("prompt_tokens_details") or {}).get("cached_tokens")) or 0)
+        tok_out = usage.get("completion_tokens", len(text) // 4)
+        # prompt_tokens includes cached tokens on OpenAI-shape APIs: split them out.
+        return TextResult(text.strip(), max(0, int(prompt_tokens) - cached), tok_out, cache_read=cached)
+    except Exception as e:
+        _log_llm_error("openai-compat", model, str(e))
+        raise RuntimeError(
+            f"OpenAI-compatible invocation failed (model={model} at {base_url}): {e}"
+        ) from e
 
 
 def invoke_openai_compat(
@@ -462,10 +444,9 @@ def embed_openai_compat(
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
         # Single-element list: OpenAI-spec allows a bare string, but ai-gateway
         # only accepts the array form.
-        resp = httpx.post(url, json={"model": model, "input": [text]},
-                          timeout=timeout, headers=headers)
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+        data = call_with_retry(lambda: _post_json(url, {"model": model, "input": [text]}, timeout, headers),
+                               what=f"OpenAI-compatible embedding ({model})")
+        return data["data"][0]["embedding"]
     except Exception as e:
         raise RuntimeError(
             f"OpenAI-compatible embedding failed (model={model} at {base_url}): {e}"
@@ -485,7 +466,9 @@ def _anthropic_client(api_key: str = "", base_url: str = ""):
         raise RuntimeError(
             "Anthropic provider requires the 'anthropic' package: pip install anthropic"
         )
-    kwargs: dict = {}
+    # Retries are ours (retry.call_with_retry): turn the SDK's own off so a
+    # 429 is not retried 3 × 6 times.
+    kwargs: dict = {"max_retries": 0}
     if api_key:
         kwargs["api_key"] = api_key
     if base_url and base_url != "https://api.anthropic.com":
@@ -499,28 +482,38 @@ def _anthropic_usage(response) -> tuple[int, int]:
     return int(tok_in), int(tok_out)
 
 
+def _anthropic_cache(response) -> tuple[int, int]:
+    """(cache_read, cache_write) input tokens from an Anthropic usage block."""
+    usage = response.usage
+    read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    return (int(read) if isinstance(read, (int, float)) else 0,
+            int(write) if isinstance(write, (int, float)) else 0)
+
+
 def invoke_anthropic(
     model: str, prompt: str, max_tokens: int = 4096,
     api_key: str = "", base_url: str = "",
 ) -> tuple[str, int, int]:
     """Invoke the Anthropic Messages API directly. Returns (text, tokens_in, tokens_out).
 
-    Uses the official ``anthropic`` SDK (optional dependency). The SDK
-    auto-retries 429/5xx with exponential backoff.
+    Uses the official ``anthropic`` SDK (optional dependency). Retries
+    follow ``retry.call_with_retry`` (the SDK's own retries are turned off).
     """
     client = _anthropic_client(api_key, base_url)
     try:
-        response = client.messages.create(
+        response = call_with_retry(lambda: client.messages.create(
             model=model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
-        )
+        ), what=f"Anthropic messages ({model})")
         text = "".join(
             block.text for block in response.content
             if getattr(block, "type", None) == "text"
         )
         tok_in, tok_out = _anthropic_usage(response)
-        return text.strip(), tok_in, tok_out
+        cache_read, cache_write = _anthropic_cache(response)
+        return TextResult(text.strip(), tok_in, tok_out, cache_read=cache_read, cache_write=cache_write)
     except Exception as e:
         _log_llm_error("anthropic", model, str(e))
         raise RuntimeError(f"Anthropic invocation failed (model={model}): {e}") from e
@@ -544,7 +537,7 @@ def invoke_anthropic_structured(
     client = _anthropic_client(api_key, base_url)
     forced = supports_forced_tool_choice(model)
     try:
-        response = client.messages.create(
+        response = call_with_retry(lambda: client.messages.create(
             model=model,
             max_tokens=max_tokens,
             tools=[{
@@ -557,7 +550,7 @@ def invoke_anthropic_structured(
             # back to tolerant parsing in the caller.
             tool_choice={"type": "tool", "name": tool_name} if forced else {"type": "auto"},
             messages=[{"role": "user", "content": prompt if forced else prompt + tool_instruction(tool_name)}],
-        )
+        ), what=f"Anthropic structured ({model})")
         data: dict | None = None
         texts: list[str] = []
         for block in response.content:

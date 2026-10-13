@@ -30,11 +30,11 @@ def _cfg(**kwargs) -> DiscoveryConfig:
 
 # ── no module-global config ───────────────────────────────────────────────
 
-def test_router_globals_are_gone():
-    from ai_discovery.shared import llm_router
+def test_old_shared_llm_modules_are_gone():
+    import importlib.util
 
-    for name in ("configure", "get_config", "save_config", "reset_config", "set_usage_logger"):
-        assert not hasattr(llm_router, name), name
+    for mod in ("llm_router", "llm_invoke", "model_defaults"):
+        assert importlib.util.find_spec(f"ai_discovery.shared.{mod}") is None, mod
 
 
 def test_two_clients_with_different_configs_do_not_interfere():

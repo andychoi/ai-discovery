@@ -15,7 +15,7 @@ import pytest
 from ai_discovery import llm
 from ai_discovery.config import DiscoveryConfig
 from ai_discovery.llm import transport
-from ai_discovery.llm import transport as llm_invoke  # wire calls (was shared.llm_invoke)
+from ai_discovery.llm import transport as llm_invoke  # wire calls
 from ai_discovery.llm.catalog import MODELS
 from ai_discovery.llm.settings import _ENV_MAP, settings_from_config
 

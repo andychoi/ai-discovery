@@ -25,7 +25,8 @@ from ..config import DiscoveryConfig
 log = logging.getLogger(__name__)
 
 from ai_discovery import llm as _llm
-from ai_discovery.llm.catalog import MODELS, rates_for_model
+from ai_discovery.llm.catalog import MODELS
+from ai_discovery.llm.cost import Usage, cost_usd, price_for
 from ai_discovery.llm.transport import (
     converse_bedrock, invoke_anthropic_structured, invoke_openai_compat_structured,
     warm_ollama, unload_ollama,
@@ -157,7 +158,8 @@ class LLMClient:
             enable_thinking=True,  # preserve the pre-router invoke_ollama default
             num_ctx=self._fast_num_ctx(tier),
         )
-        self._track_cost(tier, meta["model_id"], meta["input_tokens"], meta["output_tokens"])
+        self._track_cost(tier, meta["model_id"], meta["input_tokens"], meta["output_tokens"],
+                         meta.get("cache_read_tokens", 0), meta.get("cache_write_tokens", 0))
         truncated = bool(meta.get("truncated", False))
         if truncated:
             with self._truncations_lock:
@@ -277,7 +279,8 @@ class LLMClient:
             )
             tok_in = result["usage"]["input_tokens"]
             tok_out = result["usage"]["output_tokens"]
-            self._track_cost(tier, model, tok_in, tok_out)
+            self._track_cost(tier, model, tok_in, tok_out, result["usage"].get("cache_read_tokens", 0),
+                             result["usage"].get("cache_write_tokens", 0))
 
             data = _first_tool_input(result["content"], tool_name)
             if data is not None:
@@ -603,26 +606,29 @@ class LLMClient:
     def total_cost_usd(self) -> float:
         return sum(t.get("est_usd", 0) for t in self._costs.values())
 
-    def _track_cost(self, tier: str, model: str, tokens_in: int, tokens_out: int):
+    def _track_cost(self, tier: str, model: str, tokens_in: int, tokens_out: int,
+                    cache_read: int = 0, cache_write: int = 0):
+        """Accumulate usage per tier and price every token class (llm.cost, M1.11.a).
+
+        Each tier runs a fixed model per scan, so recomputing the cumulative
+        estimate with the current model's price is exact. Local providers price
+        at $0 (no phantom cost tripping the budget guard on Ollama/MLX scans).
+        """
         if tier not in self._costs:
             self._costs[tier] = {
                 "calls": 0, "tokens_in": 0, "tokens_out": 0,
+                "cache_read_tokens": 0, "cache_write_tokens": 0,
                 "est_usd": 0.0, "model": model,
             }
         entry = self._costs[tier]
         entry["calls"] += 1
-        entry["tokens_in"] += tokens_in
-        entry["tokens_out"] += tokens_out
-        # Per-model rates (shared/model_defaults.MODEL_RATES): each tier runs a
-        # fixed model per scan, so recomputing the cumulative estimate with the
-        # current model's rate is exact. Local providers rate at $0 — phantom
-        # cost previously accrued at Bedrock rates and could trip the pipeline
-        # budget guard on long Ollama/MLX scans.
-        in_rate, out_rate = rates_for_model(model, self._config.provider)
-        entry["est_usd"] = (
-            entry["tokens_in"] / 1_000_000 * in_rate
-            + entry["tokens_out"] / 1_000_000 * out_rate
-        )
+        entry["tokens_in"] += int(tokens_in or 0)
+        entry["tokens_out"] += int(tokens_out or 0)
+        entry["cache_read_tokens"] += int(cache_read or 0)
+        entry["cache_write_tokens"] += int(cache_write or 0)
+        usage = Usage(entry["tokens_in"], entry["tokens_out"], entry["cache_read_tokens"],
+                      entry["cache_write_tokens"])
+        entry["est_usd"] = cost_usd(usage, price_for(model, self._config.provider))
 
     def persist_costs(self, scan_id: int, db_path: Path):
         from ..db import get_conn

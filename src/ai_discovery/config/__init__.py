@@ -11,14 +11,8 @@ from typing import Literal, Optional
 
 log = logging.getLogger(__name__)
 
-# Import single source of truth for model IDs
-try:
-    from ai_discovery.shared.model_defaults import MODELS, DEFAULT_PROVIDER
-except ImportError:
-    # Fallback when running standalone (outside the app package)
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from ai_discovery.shared.model_defaults import MODELS, DEFAULT_PROVIDER
+# Single source of truth for model IDs (M1.10/M1.11: ai_discovery.llm.catalog)
+from ai_discovery.llm.catalog import DEFAULT_PROVIDER, MODELS  # noqa: E402
 
 _B = MODELS["bedrock"]
 _O = MODELS["ollama"]

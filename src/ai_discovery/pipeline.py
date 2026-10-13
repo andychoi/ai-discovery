@@ -239,7 +239,7 @@ def _release_node_source(nodes: list) -> int:
 def _is_metered(provider: str) -> bool:
     """True for providers that bill per token (M0.5: every paid provider, not
     just Bedrock). Local providers are free — same set the cost tracker rates at $0."""
-    from .shared.model_defaults import _LOCAL_PROVIDERS
+    from .llm.catalog import _LOCAL_PROVIDERS
 
     return provider not in _LOCAL_PROVIDERS
 

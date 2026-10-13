@@ -86,7 +86,7 @@ def _log_usage(usage_logger: Optional[UsageLogger], project_slug: str, model_id:
 
 
 def _text_call(settings: LLMSettings, provider: str, model_id: str, prompt: str, max_tokens: int, *,
-               enable_thinking: bool = False, num_ctx: Optional[int] = None) -> tuple[str, int, int]:
+               enable_thinking: bool = False, num_ctx: Optional[int] = None) -> tuple:
     spec = get_provider(provider)
     if spec.protocol == "bedrock":
         return transport.invoke_bedrock(model_id, prompt, max_tokens, settings.region())
@@ -128,8 +128,9 @@ def invoke_text(
         tier = settings.tier_for_doc_type(doc_type)
     provider = settings.provider
     model_id = settings.model(tier)
-    text, tok_in, tok_out = _text_call(settings, provider, model_id, prompt, max_tokens,
-                                       enable_thinking=enable_thinking, num_ctx=num_ctx)
+    result = _text_call(settings, provider, model_id, prompt, max_tokens,
+                        enable_thinking=enable_thinking, num_ctx=num_ctx)
+    text, tok_in, tok_out = result
     _log_usage(usage_logger, project_slug, model_id, tier, tok_in, tok_out, provider=provider)
     return {
         "text": strip_thinking(text),
@@ -138,6 +139,9 @@ def invoke_text(
         "truncated": tok_out >= int(max_tokens * 0.95),
         "input_tokens": tok_in,
         "output_tokens": tok_out,
+        # transport.TextResult carries cache counts; plain tuples (test doubles) mean 0
+        "cache_read_tokens": getattr(result, "cache_read", 0),
+        "cache_write_tokens": getattr(result, "cache_write", 0),
     }
 
 

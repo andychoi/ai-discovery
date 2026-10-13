@@ -69,7 +69,7 @@ def run(ctx: RunContext) -> None:
             # (No-op on Bedrock; on Ollama this pins them with keep_alive=2h so they
             # survive the 5-minute default unload timer across phase transitions.)
             if config.provider in ("ollama", "mlx-gemma", "mlx-qwen"):
-                from ai_discovery.shared.model_defaults import MODELS
+                from ai_discovery.llm.catalog import MODELS
                 emb_model = MODELS.get(config.provider, {}).get("embedding", config.rag.ollama_model)
                 console.print(f"[dim]Warming embedding model ({emb_model})...[/]")
                 llm_client.warm_embedding("2h")
