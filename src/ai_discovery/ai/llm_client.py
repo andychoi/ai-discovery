@@ -8,7 +8,7 @@ config (M1.10.a — no module-global router config).
 
 The structured-output path (``invoke_structured``) calls the shared invoke
 layer directly — Bedrock via ``converse_bedrock`` and Anthropic via
-``invoke_anthropic_structured`` — because both need a forced ``tool_choice``,
+``invoke_anthropic_structured`` — because both need a ``tool_choice`` (forced where the model allows it),
 which the router's converse fallback does not expose.
 """
 
@@ -264,12 +264,15 @@ class LLMClient:
                     "inputSchema": {"json": schema},
                 }
             }
+            forced = _llm.providers.supports_forced_tool_choice(model)
             result = converse_bedrock(
                 model,
-                [{"role": "user", "content": [{"text": prompt}]}],
+                [{"role": "user", "content": [{"text": prompt if forced
+                                                else prompt + _llm.providers.tool_instruction(tool_name)}]}],
                 max_tokens=max_tokens,
                 tools=[tool],
-                tool_choice={"tool": {"name": tool_name}},
+                # Opus/Sonnet 5.5 reject a forced tool choice: auto + instruction there.
+                tool_choice={"tool": {"name": tool_name}} if forced else {"auto": {}},
                 region=self._config.bedrock.region,
             )
             tok_in = result["usage"]["input_tokens"]

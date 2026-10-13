@@ -539,7 +539,10 @@ def invoke_anthropic_structured(
     dict when the model called the tool (shaped by *schema*); ``None``
     otherwise, in which case ``text`` carries the prose for tolerant parsing.
     """
+    from .providers import supports_forced_tool_choice, tool_instruction
+
     client = _anthropic_client(api_key, base_url)
+    forced = supports_forced_tool_choice(model)
     try:
         response = client.messages.create(
             model=model,
@@ -549,8 +552,11 @@ def invoke_anthropic_structured(
                 "description": tool_description or "Return the structured result.",
                 "input_schema": schema,
             }],
-            tool_choice={"type": "tool", "name": tool_name},
-            messages=[{"role": "user", "content": prompt}],
+            # Opus/Sonnet 5.5 (and Fable/Mythos 5.1) reject a forced tool call
+            # with a 400: use auto + an instruction there; text answers fall
+            # back to tolerant parsing in the caller.
+            tool_choice={"type": "tool", "name": tool_name} if forced else {"type": "auto"},
+            messages=[{"role": "user", "content": prompt if forced else prompt + tool_instruction(tool_name)}],
         )
         data: dict | None = None
         texts: list[str] = []

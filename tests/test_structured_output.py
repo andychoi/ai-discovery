@@ -48,6 +48,7 @@ _SCHEMA = {"type": "object", "properties": {"purpose": {"type": "string"}}}
 def test_invoke_structured_bedrock_uses_forced_tool(monkeypatch):
     cfg = DiscoveryConfig()
     cfg.provider = "bedrock"
+    cfg.bedrock.standard = "us.anthropic.claude-sonnet-4-6"   # a model that accepts a forced tool call
     captured = {}
 
     def fake_converse(model, messages, *, max_tokens, tools, tool_choice, region):
@@ -214,3 +215,23 @@ def test_invoke_structured_ollama_fallback_parses_fenced_text(monkeypatch):
     result = LLMClient(cfg).invoke_structured("screen", "p", _SCHEMA, tool_name="t")
     assert result.data == {"purpose": "z"}
     assert result.via_tool is False
+
+
+
+def test_invoke_structured_bedrock_5_5_uses_auto_tool_choice(monkeypatch):
+    """Sonnet/Opus 5.5 reject a forced tool call (400): auto + an instruction instead."""
+    cfg = DiscoveryConfig()
+    cfg.provider = "bedrock"                      # default standard model: Sonnet 5.5
+    captured = {}
+
+    def fake_converse(model, messages, *, max_tokens, tools, tool_choice, region):
+        captured.update(model=model, tool_choice=tool_choice, prompt=messages[0]["content"][0]["text"])
+        return {"content": [{"toolUse": {"name": "emit_screen_spec", "input": {"purpose": "x"}}}],
+                "stop_reason": "tool_use", "usage": {"input_tokens": 1, "output_tokens": 1}}
+
+    monkeypatch.setattr(llm_client_mod, "converse_bedrock", fake_converse)
+    result = LLMClient(cfg).invoke_structured("screen", "prompt", _SCHEMA, tool_name="emit_screen_spec")
+    assert "sonnet-5-5" in captured["model"]
+    assert captured["tool_choice"] == {"auto": {}}
+    assert "calling the `emit_screen_spec` tool" in captured["prompt"]
+    assert result.data == {"purpose": "x"}

@@ -95,3 +95,25 @@ def is_ollama_like(name: str) -> bool:
 def max_tokens_field_for(name: str) -> str:
     """Output-cap parameter name (gpt-5 family needs ``max_completion_tokens``)."""
     return get_provider(name).max_tokens_field
+
+
+# Models that reject a forced tool choice (`tool_choice` type "tool"/"any",
+# Converse `toolChoice: {tool|any}`) with a 400 — per Anthropic's model
+# reference (2026-10): Claude Opus 5.5, Sonnet 5.5, Fable 5.1, Mythos 5.1.
+# Matched as substrings so Bedrock (`global.anthropic.…`) and OpenRouter
+# (`anthropic/…-5.5`) ids are covered. Haiku 5.5 is not on the list.
+_NO_FORCED_TOOL_CHOICE = ("opus-5-5", "opus-5.5", "sonnet-5-5", "sonnet-5.5",
+                          "fable-5-1", "fable-5.1", "mythos-5-1", "mythos-5.1")
+
+
+def supports_forced_tool_choice(model: str) -> bool:
+    """False when *model* rejects a forced tool call; use ``auto`` + a prompt instruction instead."""
+    m = (model or "").lower()
+    return not any(tag in m for tag in _NO_FORCED_TOOL_CHOICE)
+
+
+def tool_instruction(tool_name: str) -> str:
+    """Prompt suffix that steers an ``auto`` tool choice to the one tool."""
+    return (f"\n\nRespond only by calling the `{tool_name}` tool with your answer as its input; "
+            "do not reply in plain text.")
+

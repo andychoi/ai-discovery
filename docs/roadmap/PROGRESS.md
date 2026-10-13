@@ -331,3 +331,10 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Bench/golden changes:** none.
 - **Follow-ups:** confirm Bedrock Sonnet/Opus 5.5 ids on a Bedrock account (`discover doctor --llm` with `provider: bedrock`); Haiku 5.5 long-prompt (>100K) pricing not modelled; rename `invoke("tierN")` call sites to roles; M1.11 (budget/cost/retry/cache) is now unblocked.
 
+## 2026-10-13 — fix: forced tool choice on Claude 5.5 (follow-up to M1.10.b)
+- **Branch/commit:** fix/forced-tool-choice (squash-merged)
+- **Changes:** `llm/providers.py` (`supports_forced_tool_choice`, `tool_instruction`); `llm/transport.py` `invoke_anthropic_structured` and `ai/llm_client.py` Bedrock structured path send `tool_choice` auto + an instruction for models that reject forced tool use; tests in `test_llm_providers.py` (+2) and `test_structured_output.py` (+1, the forced-path test pins a 4.6 model).
+- **Why:** M1.10.b moved Claude defaults to the 5.5 family; per Anthropic's model reference, Opus 5.5 / Sonnet 5.5 (and Fable/Mythos 5.1) return a 400 for `tool_choice` `tool`/`any`, so every structured call (screen specs, batched Tier-1) would have failed on the new Anthropic defaults and, presumably, Bedrock Converse. Found while reading the transport for M1.11 — not by a failing run. Haiku 5.5 is not on that list and keeps the forced call. `strict: true` was not used: Discovery's schemas don't guarantee `additionalProperties: false`.
+- **Verify:** full `pytest -q` → 1531 passed, 2 skipped; golden unchanged.
+- **Follow-ups:** none (the tolerant text-parse fallback already covers a model that answers in prose).
+

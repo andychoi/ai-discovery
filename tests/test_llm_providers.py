@@ -272,6 +272,25 @@ def test_invoke_anthropic_structured_forced_tool(monkeypatch):
     assert captured["max_tokens"] == 512
 
 
+def test_invoke_anthropic_structured_5_5_uses_auto_tool_choice(monkeypatch):
+    """Opus/Sonnet 5.5 reject a forced tool call with a 400 — send auto + an instruction."""
+    captured = {}
+    _install_fake_anthropic_structured(
+        monkeypatch, captured, [_ToolUseBlock("emit", {"purpose": "x"})])
+    data, *_ = llm_invoke.invoke_anthropic_structured("claude-opus-5-5", "Extract.", _SCHEMA, tool_name="emit")
+    assert data == {"purpose": "x"}
+    assert captured["tool_choice"] == {"type": "auto"}
+    assert "calling the `emit` tool" in captured["messages"][0]["content"]
+
+
+def test_forced_tool_choice_capability():
+    from ai_discovery.llm.providers import supports_forced_tool_choice as ok
+
+    assert ok("claude-opus-4-8") and ok("claude-haiku-5-5") and ok("global.anthropic.claude-haiku-5-5")
+    assert not ok("claude-opus-5-5") and not ok("global.anthropic.claude-sonnet-5-5")
+    assert not ok("anthropic/claude-opus-5.5") and not ok("claude-fable-5-1")
+
+
 def test_invoke_anthropic_structured_text_fallback(monkeypatch):
     captured = {}
     _install_fake_anthropic_structured(
