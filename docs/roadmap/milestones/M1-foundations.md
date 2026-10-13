@@ -133,7 +133,7 @@
 - **Out of scope:** config key rename (M1.10.b); budget/cost/cache (M1.11).
 
 ### M1.10.b Config: `models.fast|standard|deep` + `quality: draft|final`
-- **Status:** Planned
+- **Status:** In progress (rm/M1.10b-roles-quality, 2026-10-13)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.10.a
