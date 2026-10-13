@@ -176,7 +176,7 @@
     "degradations": 0,
     "domains": 3,
     "entity_state_machines": 0,
-    "file_parse_cache": 0,
+    "file_parse_cache": 9,
     "generated_docs": 10,
     "llm_cache": 0,
     "llm_costs": 0,

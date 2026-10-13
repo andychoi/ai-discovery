@@ -1,4 +1,11 @@
-"""Stage ``parse``: parse files + OpenAPI/GraphQL/proto contracts (pipeline phase 6), moved verbatim (M1.6)."""
+"""Stage ``parse``: parse files + OpenAPI/GraphQL/proto contracts (pipeline phase 6).
+
+Moved verbatim in M1.6. M1.9 adds the per-file parse cache (``store/parse_cache.py``,
+ADR-0002): an unchanged file (same bytes, encoding decision and parser version)
+loads its nodes from the cache instead of being re-parsed; ``--full`` ignores the
+cache. Results merge in sorted path order, so two files defining the same
+qualified name always resolve the same way (audit #97).
+"""
 
 from __future__ import annotations
 
@@ -32,20 +39,55 @@ def run(ctx: RunContext) -> None:
         all_nodes: list = []
         parse_errors = 0
         failed_files: list[str] = []
+        from ..store.parse_cache import ParseCache, encode_nodes
+        cache = ParseCache(ctx.db_path, read=not ctx.rescan)   # --full: parse everything
+        new_entries: list[tuple[str, str, str, str]] = []
+        cache_hits = 0
+        results: dict = {}
+
+        def _cache_key(file_path):
+            """(repo-relative path, sha256, encoding decision) — None if unreadable."""
+            import hashlib
+            from pathlib import Path as _P
+            from ..core.encoding import decode_bytes
+            try:
+                raw = _P(file_path).read_bytes()
+            except OSError:
+                return None
+            decoded = decode_bytes(raw)
+            try:
+                rel = _P(file_path).resolve().relative_to(_P(resolved.repo_path).resolve()).as_posix()
+            except ValueError:
+                rel = str(file_path)
+            enc = decoded.encoding + (":lossy" if decoded.lossy else "")
+            return rel, hashlib.sha256(raw).hexdigest(), enc, decoded.is_fallback
 
         def _parse_one(file_path):
-            """Parse a single file with the first matching parser. Returns
-            (nodes, error_exc) — exc is None on success."""
+            """Parse a single file with the first matching parser (or load it from
+            the parse cache). Returns (nodes, error_exc, cache_entry, hit)."""
+            key = _cache_key(file_path)
             for p in parsers:
                 if p.can_parse(file_path):
+                    if key is not None:
+                        cached = cache.get(key[0], key[1], key[2], str(file_path))
+                        if cached is not None:
+                            if key[3]:   # keep the per-scan encoding-fallback count right
+                                from ..core.encoding import read_source
+                                read_source(file_path)
+                            return cached, None, None, True
                     try:
                         nodes = p.parse_file(file_path)
                         _stamp_file_hash(nodes, file_path)  # A-2: cross-scan identity
-                        return nodes, None
                     except Exception as exc:
                         logger.debug("parse traceback for %s", file_path, exc_info=True)
-                        return [], (file_path, exc)
-            return [], None
+                        return [], (file_path, exc), None, False
+                    entry = None
+                    if key is not None:
+                        payload = encode_nodes(nodes, str(file_path))
+                        if payload is not None:
+                            entry = (key[0], key[1], key[2], payload)
+                    return nodes, None, entry, False
+            return [], None, None, False
 
         with _timed("parse"), Progress(
             SpinnerColumn(),
@@ -69,7 +111,7 @@ def run(ctx: RunContext) -> None:
                 futures = {parse_pool.submit(_parse_one, f): f for f in files}
                 for fut in _as_completed(futures):
                     try:
-                        nodes, err = fut.result()
+                        nodes, err, entry, hit = fut.result()
                     except Exception as exc:  # shouldn't happen — _parse_one catches
                         logger.warning("Parse future crashed: %s", exc)
                         logger.debug("parse future traceback", exc_info=True)
@@ -82,13 +124,21 @@ def run(ctx: RunContext) -> None:
                         parse_errors += 1
                         failed_files.append(str(fpath))
                     else:
-                        all_nodes.extend(nodes)
+                        results[futures[fut]] = nodes
+                        cache_hits += hit
+                        if entry is not None:
+                            new_entries.append(entry)
                     progress.advance(task)
+            # Merge in path order, not completion order: deterministic output (audit #97).
+            for f in sorted(results, key=str):
+                all_nodes.extend(results[f])
+            cache.put_many(new_entries)
 
         console.print(
             f"  Parsed [green]{len(all_nodes)}[/] code nodes from "
             f"[green]{len(files)}[/] files"
             + (f"  ([yellow]{parse_errors} errors[/])" if parse_errors else "")
+            + (f"  ([dim]{cache_hits} from parse cache[/])" if cache_hits else "")
         )
         # M0.4: report files decoded via a legacy/lossy fallback (never dropped).
         from ..core.encoding import fallback_stats

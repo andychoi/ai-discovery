@@ -287,7 +287,7 @@
     "degradations": 0,
     "domains": 10,
     "entity_state_machines": 0,
-    "file_parse_cache": 0,
+    "file_parse_cache": 18,
     "generated_docs": 32,
     "llm_cache": 0,
     "llm_costs": 0,
