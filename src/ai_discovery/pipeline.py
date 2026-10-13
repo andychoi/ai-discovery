@@ -461,6 +461,10 @@ def _run_pipeline_unlocked(
     # Phase 10, which made Phase 2 (screen specs) raise UnboundLocalError on any
     # repo with a detectable menu. Keep this binding ahead of the screens stage.
     ctx.llm_client = LLMClient(config)
+    # M1.11.b: repeated LLM calls are answered from the response cache ($0);
+    # --full re-asks but still records. Test doubles may not support it.
+    if not getattr(config, "no_llm", False) and hasattr(ctx.llm_client, "attach_cache"):
+        ctx.llm_client.attach_cache(layout.cache_dir / "llm_cache.db", read=not rescan)
 
     # screens → walk → parse → graph → slices → sql → entities → embed → summaries
     # → flows → rollup → visuals → review → render → finalise (stages/runner.py)

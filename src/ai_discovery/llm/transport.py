@@ -493,7 +493,7 @@ def _anthropic_cache(response) -> tuple[int, int]:
 
 def invoke_anthropic(
     model: str, prompt: str, max_tokens: int = 4096,
-    api_key: str = "", base_url: str = "",
+    api_key: str = "", base_url: str = "", system: str = "",
 ) -> tuple[str, int, int]:
     """Invoke the Anthropic Messages API directly. Returns (text, tokens_in, tokens_out).
 
@@ -502,10 +502,16 @@ def invoke_anthropic(
     """
     client = _anthropic_client(api_key, base_url)
     try:
+        extra: dict = {}
+        if system:
+            # Prompt caching (M1.11.b): mark the stable prefix; prefixes shorter
+            # than the model's minimum cacheable length simply don't cache.
+            extra["system"] = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
         response = call_with_retry(lambda: client.messages.create(
             model=model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
+            **extra,
         ), what=f"Anthropic messages ({model})")
         text = "".join(
             block.text for block in response.content

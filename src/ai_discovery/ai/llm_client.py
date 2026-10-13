@@ -19,6 +19,7 @@ import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from ..config import DiscoveryConfig
 
@@ -49,6 +50,8 @@ class LLMResponse:
     # True when the output hit (≥95% of) max_tokens: the text is likely cut off
     # and must not be treated as a complete answer (audit #26).
     truncated: bool = False
+    # True when served from the response cache (M1.11.b): no call, $0.
+    cached: bool = False
 
 
 @dataclass
@@ -120,6 +123,27 @@ class LLMClient:
         self._costs: dict[str, dict] = {}
         self._truncations: dict[str, int] = {}
         self._truncations_lock = threading.Lock()
+        self._response_cache = None
+
+    def attach_cache(self, path: Path, *, read: bool = True) -> None:
+        """Serve repeated calls from ``llm/cache.py`` (``read=False``: record only, e.g. ``--full``)."""
+        from ai_discovery.llm.cache import ResponseCache
+
+        self._response_cache = ResponseCache(path, read=read)
+
+    def cache_stats(self) -> dict[str, int]:
+        c = self._response_cache
+        return {"hits": c.hits, "writes": c.writes} if c is not None else {"hits": 0, "writes": 0}
+
+    def _cache_key(self, tier: str, prompt: str, max_tokens: int, *, system: str = "",
+                   kind: str = "text", schema: Optional[dict] = None) -> Optional[str]:
+        if self._response_cache is None:
+            return None
+        from ai_discovery.llm.cache import cache_key
+
+        return cache_key(provider=self._config.provider, model_id=self._config.get_model(_llm.role_for_tier(tier)),
+                         role=_llm.role_for_tier(tier), prompt=prompt, max_tokens=max_tokens, system=system,
+                         kind=kind, schema=schema)
 
     _OLLAMA_LIKE = frozenset(name for name, spec in _llm.PROVIDERS.items() if spec.protocol == "ollama")
 
@@ -142,8 +166,28 @@ class LLMClient:
             return self._config.mlx_qwen.fast_num_ctx or None
         return None
 
-    def invoke(self, tier: str, prompt: str, max_tokens: int = 4096) -> LLMResponse:
-        """Invoke LLM for given tier — dispatched through ``llm.invoke_text``."""
+    def invoke(self, tier: str, prompt: str, max_tokens: int = 4096, *, system: str = "") -> LLMResponse:
+        """Invoke LLM for given tier — dispatched through ``llm.invoke_text``.
+
+        ``system``: a stable instruction prefix. On Anthropic it is sent as a
+        system block marked for prompt caching; elsewhere it is prepended to the
+        prompt. Repeated calls are answered from the response cache when one is
+        attached; truncated answers are never cached.
+        """
+        key = self._cache_key(tier, prompt, max_tokens, system=system) if tier in _ROUTER_TIER else None
+        if key is not None:
+            hit = self._response_cache.get(key)
+            if hit is not None:
+                return LLMResponse(text=hit.output["text"], tokens_in=0, tokens_out=0,
+                                   model=hit.output.get("model", ""), tier=tier, cached=True)
+        resp = self._invoke_uncached(tier, prompt, max_tokens, system=system)
+        if key is not None and not resp.truncated:
+            self._response_cache.put(key, {"text": resp.text, "model": resp.model}, role=_llm.role_for_tier(tier),
+                                     model_id=resp.model, kind="text",
+                                     usage={"input": resp.tokens_in, "output": resp.tokens_out})
+        return resp
+
+    def _invoke_uncached(self, tier: str, prompt: str, max_tokens: int, *, system: str = "") -> LLMResponse:
         if self._config.provider not in MODELS:
             raise ValueError(
                 f"Unknown provider {self._config.provider!r} — expected one of "
@@ -157,6 +201,7 @@ class LLMClient:
             self.settings(), router_tier, prompt, max_tokens,
             enable_thinking=True,  # preserve the pre-router invoke_ollama default
             num_ctx=self._fast_num_ctx(tier),
+            system=system,
         )
         self._track_cost(tier, meta["model_id"], meta["input_tokens"], meta["output_tokens"],
                          meta.get("cache_read_tokens", 0), meta.get("cache_write_tokens", 0))
@@ -171,6 +216,36 @@ class LLMClient:
                            tier=tier, truncated=truncated)
 
     def invoke_structured(
+        self,
+        tier: str,
+        prompt: str,
+        schema: dict,
+        *,
+        tool_name: str = "emit",
+        tool_description: str = "",
+        max_tokens: int = 4096,
+    ) -> StructuredResponse:
+        """Schema-enforced call (see ``_invoke_structured_uncached``), served from the
+        response cache when an identical call was answered before."""
+        key = self._cache_key(tier, prompt, max_tokens, kind=f"structured:{tool_name}", schema=schema)
+        if key is not None:
+            hit = self._response_cache.get(key)
+            if hit is not None:
+                o = hit.output
+                return StructuredResponse(data=o["data"], tokens_in=0, tokens_out=0, model=o.get("model", ""),
+                                          tier=tier, via_tool=o.get("via_tool", False),
+                                          raw_text=o.get("raw_text", ""))
+        resp = self._invoke_structured_uncached(tier, prompt, schema, tool_name=tool_name,
+                                                tool_description=tool_description, max_tokens=max_tokens)
+        if key is not None and isinstance(resp.data, dict) and resp.data:
+            self._response_cache.put(key, {"data": resp.data, "model": resp.model, "via_tool": resp.via_tool,
+                                           "raw_text": resp.raw_text},
+                                     role=_llm.role_for_tier(tier), model_id=resp.model,
+                                     kind=f"structured:{tool_name}",
+                                     usage={"input": resp.tokens_in, "output": resp.tokens_out})
+        return resp
+
+    def _invoke_structured_uncached(
         self,
         tier: str,
         prompt: str,

@@ -86,14 +86,18 @@ def _log_usage(usage_logger: Optional[UsageLogger], project_slug: str, model_id:
 
 
 def _text_call(settings: LLMSettings, provider: str, model_id: str, prompt: str, max_tokens: int, *,
-               enable_thinking: bool = False, num_ctx: Optional[int] = None) -> tuple:
+               enable_thinking: bool = False, num_ctx: Optional[int] = None, system: str = "") -> tuple:
     spec = get_provider(provider)
-    if spec.protocol == "bedrock":
-        return transport.invoke_bedrock(model_id, prompt, max_tokens, settings.region())
     if spec.protocol == "anthropic":
+        # Anthropic: the stable prefix travels as a cache-marked system block.
+        kwargs = {"system": system} if system else {}
         return transport.invoke_anthropic(model_id, prompt, max_tokens,
                                           api_key=settings.api_key("anthropic"),
-                                          base_url=settings.get("anthropic.url", ""))
+                                          base_url=settings.get("anthropic.url", ""), **kwargs)
+    if system:   # other providers: one prompt, prefix first
+        prompt = f"{system}\n\n{prompt}"
+    if spec.protocol == "bedrock":
+        return transport.invoke_bedrock(model_id, prompt, max_tokens, settings.region())
     if spec.protocol == "openai_compat":
         return transport.invoke_openai_compat(model_id, prompt, max_tokens,
                                               base_url=settings.url(provider),
@@ -115,6 +119,7 @@ def invoke_text(
     enable_thinking: bool = False,
     num_ctx: Optional[int] = None,
     usage_logger: Optional[UsageLogger] = None,
+    system: str = "",
 ) -> dict:
     """Text in, text out, with metadata.
 
@@ -129,7 +134,7 @@ def invoke_text(
     provider = settings.provider
     model_id = settings.model(tier)
     result = _text_call(settings, provider, model_id, prompt, max_tokens,
-                        enable_thinking=enable_thinking, num_ctx=num_ctx)
+                        enable_thinking=enable_thinking, num_ctx=num_ctx, system=system)
     text, tok_in, tok_out = result
     _log_usage(usage_logger, project_slug, model_id, tier, tok_in, tok_out, provider=provider)
     return {

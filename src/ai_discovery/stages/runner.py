@@ -204,6 +204,12 @@ class StageRunner:
         counts = client.truncation_counts() if client is not None and hasattr(client, "truncation_counts") else {}
         if counts:
             ctx.degrade("llm", "llm_truncated", sum(counts.values()), sorted(counts))
+        stats = client.cache_stats() if client is not None and hasattr(client, "cache_stats") else {}
+        if stats.get("hits"):
+            from ..pipeline import console as _console
+
+            _console.print(f"[dim]LLM response cache: {stats['hits']} answer(s) reused at $0, "
+                           f"{stats['writes']} stored[/]")
         from ..db import get_conn
         from ..pipeline import console
 

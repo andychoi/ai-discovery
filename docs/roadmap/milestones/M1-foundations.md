@@ -145,7 +145,7 @@
 - **Out of scope:** budget/cost/cache (M1.11).
 
 ### M1.11 `llm/` budget, cost, retry, cache, estimator
-- **Status:** Blocked (split 2026-10-13 into M1.11.a + M1.11.b; mark Done when both are)
+- **Status:** Done (M1.11.a fe2095f + M1.11.b a3f092d)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.11.a, M1.11.b
@@ -168,7 +168,7 @@
 - **Out of scope:** response cache, estimator, prompt caching (M1.11.b); persisting cache-token counts (needs an `llm_costs` migration, lane A).
 
 ### M1.11.b `llm/` response cache, estimator, prompt caching
-- **Status:** In progress (rm/M1.11b-cache-estimate, 2026-10-13)
+- **Status:** Done (a3f092d)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.11.a
