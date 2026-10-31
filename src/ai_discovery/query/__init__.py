@@ -12,8 +12,9 @@ from .impact import change_impact, impact
 from .search import search
 from .session import Project
 from .source import call_path, symbol_source
+from .verification import verification_plan
 from .views import context, entity, flow, overview, screen, table
 
 __all__ = ["Answer", "CONTRACT_VERSION", "STATUSES", "TRI_STATES", "Project",
            "overview", "search", "context", "screen", "entity", "flow", "table", "impact", "change_impact",
-           "symbol_source", "call_path"]
+           "symbol_source", "call_path", "verification_plan"]

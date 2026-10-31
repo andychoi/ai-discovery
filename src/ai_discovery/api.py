@@ -15,8 +15,8 @@ not_indexed | unknown; ``data``; ``totals``; ``truncated``; ``omitted``;
 """
 
 from .query import (CONTRACT_VERSION, STATUSES, TRI_STATES, Answer, Project, call_path, change_impact, context,
-                    entity, flow, impact, overview, screen, search, symbol_source, table)
+                    entity, flow, impact, overview, screen, search, symbol_source, table, verification_plan)
 
 __all__ = ["CONTRACT_VERSION", "STATUSES", "TRI_STATES", "Answer", "Project",
            "overview", "search", "context", "screen", "entity", "flow", "table", "impact", "change_impact",
-           "symbol_source", "call_path"]
+           "symbol_source", "call_path", "verification_plan"]

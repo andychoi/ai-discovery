@@ -48,7 +48,7 @@ Opt-in: `get_table`, `get_symbol_source` (exact line bounds, re-checked against 
 | Opt-in tool | Item | Input | Output `data` |
 |---|---|---|---|
 | `get_why` | M8.5 | `{target?:str, query?:str}` | `{records:[{text, source:adr\|commit\|pr_message\|code_comment, citation, date, stale:bool, signer_kind, status}]}`; none → `status:"unknown"` with sources searched |
-| `get_verification_plan` | M5.15 | `{diff?, range?, working_tree?, plan_path?}` | `{build:[cmd], tests:[cmd], impacted_tests, smoke_targets, unplanned_impact}`; each command labelled `detected\|configured` |
+| `get_verification_plan` | M5.15 | `{diff?, range?, working_tree?, plan_path?, depth?}` | `{source, changed_files, changed_symbols, build:[{stack,tool,cwd,cmd,basis}], tests:[…], targeted_tests:[{test,path,cwd,cmd,basis:graph\|convention}], impacted_tests:{status,tests,reason}, smoke_targets:[endpoint\|screen], unknowns, unmapped_files, plan:{pinned, unplanned_changes, test_changes, unexpected_impact}\|null, verdict:ok\|stop, stop_reasons}`; `basis` is `detected` until a config `verify:` section exists |
 | `record_finding` / `set_finding_status` / `add_note` / `propose_decision` | M5.10 | target + text + evidence | `{id, signer_kind:"agent", status}` — never alters graph facts |
 
 Profiles (M5.3): `default` (8 above), `lean` (≤ 5: `search`, `get_context`, `get_impact`, `get_change_impact`, `get_screen`), `all`. Measured tool-list cost (≈ 4 chars/token, M5.3): lean ≈ 1.1k, default ≈ 1.4k, all ≈ 1.8k tokens (`discover mcp print-config --tools X` prints it).
