@@ -62,7 +62,7 @@
 - **Out of scope:** —
 
 ### M5.5 `discover-impact` skill
-- **Status:** In progress (rm/M5.5-impact-skill, 2026-10-31)
+- **Status:** Done (752141d)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.2, M5.4

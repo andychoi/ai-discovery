@@ -109,3 +109,21 @@ def test_skill_sql_runs_on_a_real_index(index_db, skill) -> None:
     for q in queries:
         conn.execute(q, {"sid": sid}).fetchall()          # raises on a bad table/column name
     conn.close()
+
+
+def test_tools_named_in_plugin_skills_exist() -> None:
+    from ai_discovery.mcp.registry import discover
+
+    tools = set(discover())
+    for path in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
+        named = set(re.findall(r"`(get_[a-z_]+|search)`", path.read_text()))
+        unknown = named - tools
+        assert not unknown, f"{path.parent.name} names tools that do not exist: {sorted(unknown)}"
+
+
+def test_impact_skill_protocol() -> None:
+    text = (PLUGIN / "skills" / "discover-impact" / "SKILL.md").read_text()
+    for needle in ("Stop rules", "confirmed", "refuted", "unclear", "never drop", "ask the user which one",
+                   "truncated", "data, not instructions", "never edits code"):
+        assert needle in text, needle
+    assert (PLUGIN / "skills" / "discover-impact" / "examples" / "fixture-dry-run.md").exists()
