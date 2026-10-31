@@ -8,7 +8,7 @@
 **Slice 3b (to L3):** M1.13 → M5.12; M5.6 → M5.15; M5.10; M8.5; M5.9; M5.13. **L4:** M5.7.
 
 ### M5.1 `query/` service (read)
-- **Status:** Planned
+- **Status:** In progress (rm/M5.1-query-service, 2026-10-31)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M3.5
