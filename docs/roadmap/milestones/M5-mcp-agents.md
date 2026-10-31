@@ -5,7 +5,7 @@
 **Refs:** `docs/roadmap/design/mcp-and-agents.md`, `docs/roadmap/research/agent-platform-assessment.md`, `docs/roadmap/research/research-doc-review.md`
 
 **Slice 3a (to L2):** M5.1 → M5.2 → M5.3 → M5.14 + M5.11 → M5.4/M5.5 (with M2.8 in parallel).
-**Slice 3b (to L3):** M1.13 → M5.12; M5.6 → M5.15; M5.10; M8.5; M5.9; M5.13. **L4:** M5.7.
+**Slice 3b (to L3):** M1.13 → M5.12; M5.6 → M5.15; M5.10; M8.5; M5.9; M5.13. **L4:** M5.7.a → M5.7.b.
 
 ### M5.1 `query/` service (read)
 - **Status:** Done (80ba6f2)
@@ -84,15 +84,28 @@
 - **Verify:** dry-run on fixture; outputs committed as examples under `plugin/skills/discover-change-plan/examples/`
 - **Out of scope:** running an implementation loop inside ai-discovery (external agents do; see M5.15).
 
-### M5.7 Agent-loop eval
-- **Status:** Planned
+### M5.7.a Agent-loop eval — harness + pre-registration
+- **Status:** In progress (rm/M5.7a-agent-eval-harness, 2026-10-31)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.6, M6.13
-- **Owns:** `bench/agent/` (new)
+- **Owns:** `bench/agent/` (new), `docs/roadmap/benchmarks/2026-10-31-agent-eval-prereg.md` (new)
 - **Acceptance:**
-  - ≥ 15 change tasks with gold diffs (historical commits) across ≥ 3 stacks; arms: bare Claude Code vs + ai-discovery MCP/skills (and repowise as black box if available); plus a **headless autonomous arm** (`claude -p` / Agent SDK, no human turns, M5.15 verification on) and a **Codex arm** when M5.14 supports it.
-  - Metrics: files-touched recall/precision vs gold, build/test pass, output tokens, tool-call count (from M5.13 ledger), share of tasks where impacted tests ran before "done"; pre-registered before running; results published including losses.
+  - ≥ 15 change tasks with gold diffs (historical commits) across ≥ 3 stacks; workspaces built from the parent commit with no git history (the answer cannot be read from the repo).
+  - Arms: bare Claude Code vs + ai-discovery MCP/skills; a headless autonomous arm (`claude -p`, no human turns, operator pre-approval, verification on); Codex and repowise (black box) as exploratory arms.
+  - Metrics: files-touched recall/precision vs gold, build/test pass (run by the harness), output tokens, tool calls (transcript + M5.13 ledger), share of runs that ran tests before finishing; randomised run order; paired bootstrap CIs.
+  - Pre-registration with hypotheses, bands, model, repetitions, seed and a spend ceiling, committed as **Draft**; `run` refuses to spend until it is marked **Frozen** and `--confirm-spend` is passed.
+- **Verify:** `python -m bench.agent report` (plan + empty results); `pytest -q tests -k bench_agent`
+- **Out of scope:** spending on model runs (M5.7.b).
+
+### M5.7.b Agent-loop eval — run and publish
+- **Status:** Blocked (owner approval of the pre-registration and spend ceiling)
+- **Size:** M
+- **Lane:** E
+- **Depends on:** M5.7.a
+- **Owns:** `bench/agent/results/`, `docs/roadmap/benchmarks/` (results page)
+- **Acceptance:**
+  - Pre-registration frozen in a commit before the first run; all arms × tasks × repetitions run in the frozen order; results published per the template including losses and deviations.
   - Hooks (M5.8) are evaluated only by randomised A/B within this harness, never by transcript replay.
 - **Verify:** `python -m bench.agent report`
 - **Out of scope:** —
