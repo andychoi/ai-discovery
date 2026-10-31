@@ -73,3 +73,7 @@ tests/corpus/external/.cache/
 src/ai_discovery/server/static/
 web/node_modules/
 web/dist/
+
+# M5.7 agent eval: full-history task repos and per-run scratch workspaces
+bench/agent/.repos/
+bench/agent/results/work/

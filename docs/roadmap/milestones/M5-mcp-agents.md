@@ -85,7 +85,7 @@
 - **Out of scope:** running an implementation loop inside ai-discovery (external agents do; see M5.15).
 
 ### M5.7.a Agent-loop eval — harness + pre-registration
-- **Status:** In progress (rm/M5.7a-agent-eval-harness, 2026-10-31)
+- **Status:** Done (bbbc8b0)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.6, M6.13
