@@ -216,12 +216,13 @@
 - **Out of scope:** new language coverage (M6).
 
 ### M1.13 Mask secrets in source before prompts
-- **Status:** Exploring
+- **Status:** Planned
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.10
 - **Owns:** `src/ai_discovery/llm/redact.py` (new)
 - **Acceptance:**
   - High-confidence secret patterns (keys, tokens, connection strings with passwords) masked in any source excerpt sent to an LLM; count recorded as a degradation-free metric.
+  - Masker is a pure function with no LLM-layer imports so M5.12 can reuse it for source served over MCP (promoted from Exploring 2026-10-31, `research/agent-platform-assessment.md`).
 - **Verify:** `pytest -q tests -k redact`
 - **Out of scope:** secret scanning reports.

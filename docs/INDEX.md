@@ -21,7 +21,7 @@ Implementation work for v1 is organized in `roadmap/`:
 - **`roadmap/ROADMAP.md`** — milestones M0–M8, slices, not-building list, risks, open items
 - **`roadmap/milestones/`** — work items (single source of truth for status)
 - **`roadmap/adr/`**, **`roadmap/design/`** — decisions and target designs (architecture, CLI, wiki web, MCP/agents, graph accuracy, SAP, evidence overlays, benchmark protocol)
-- **`roadmap/research/`** — repowise benchmark, edge-case catalog, ai-discovery audit, review of `new-requirement-research.md`
+- **`roadmap/research/`** — repowise benchmark, agent-platform assessment (autonomous-agent readiness vs repowise), edge-case catalog, ai-discovery audit, review of `new-requirement-research.md`
 
 ---
 

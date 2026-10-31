@@ -94,3 +94,17 @@
   - README CLI reference generated from the Typer app by a script; test fails if stale.
 - **Verify:** `pytest -q tests/cli`
 - **Out of scope:** —
+
+### M2.8 Freshness triggers (git hook + watch)
+- **Status:** Planned
+- **Size:** M
+- **Lane:** A
+- **Depends on:** M3.6, M1.4
+- **Owns:** `src/ai_discovery/core/githook.py` (new), `src/ai_discovery/cli/commands/init.py` (`--git-hook/--no-git-hook`), `src/ai_discovery/cli/commands/scan.py` (`--watch`), `tests/cli/`
+- **Acceptance:**
+  - `discover init --git-hook` installs a post-commit hook (chained with any existing hook, marker-delimited) that starts a detached incremental keyless `scan`; it respects the run lock (skips if held), never blocks or fails the commit, and logs to `<state>/logs/hook.log`. `--no-git-hook` removes exactly what was added; `init`'s inventory lists it; `doctor` reports hook installed / stale / missing.
+  - `discover scan --watch` re-scans on file changes with a debounce (default 2 s) and the same lock; `--progress json` emits one event per rescan.
+  - Prose (LLM) never runs from the hook or watch unless `--prose` is set explicitly in config — no surprise spend.
+  - Worktrees and detached HEAD handled (hook resolves the repo root; skips during rebase/merge).
+- **Verify:** `pytest -q tests/cli -k "githook or watch"`
+- **Out of scope:** webhooks, schedulers, a daemon (`research/agent-platform-assessment.md` §3 — skipped for v1).

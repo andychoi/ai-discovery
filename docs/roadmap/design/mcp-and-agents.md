@@ -1,9 +1,9 @@
 # MCP server and Claude Code integration
 
-- **Status:** Accepted (tool list frozen at M5.3; schemas may grow additively)
-- **Last updated:** 2026-10-08
-- **Related items:** M5.1–M5.8, M1.12, M6.13, M3.5
-- **Scope decision:** ai-discovery serves graph, impact and page data over MCP and ships Claude Code skills. **Claude Code is the orchestrator.** There is no built-in BA agent.
+- **Status:** Accepted (default tool list frozen at M5.3; schemas may grow additively; new tools are opt-in only)
+- **Last updated:** 2026-10-31
+- **Related items:** M5.1–M5.15, M2.8, M1.12, M1.13, M6.13, M3.5, M8.1, M8.2, M8.5
+- **Scope decision:** ai-discovery is the **knowledge layer for autonomous agents**: it serves graph, impact, page, rationale and verification data over MCP and ships skills. **External agents orchestrate** (Claude Code, Codex, Agent SDK, Cursor, CI bots). There is no built-in BA agent and ai-discovery never executes user code. Gap analysis: `research/agent-platform-assessment.md`.
 
 ## 1. Why (from `docs/new-requirement-research.md`, verified in `research/research-doc-review.md`)
 - Agentic search works best when the agent has enough starting context. Without precise structure it pattern-matches on text. Source: the Anthropic blog "How Claude Code works in large codebases", 2026-05-14.
@@ -42,7 +42,15 @@
 | `get_entity` | `{name:str}` | `{states, transitions:[{from,to,guard,writer}], decisions(DMN), requirements(EARS), readers, writers}` |
 | `get_flow` | `{id:str}` | `{steps:[{node,citation}], bpmn_available:bool, stop_reason}` |
 
-Opt-in: `get_table`, `get_symbol_source` (exact line bounds), `get_path` (A→B).
+Opt-in: `get_table`, `get_symbol_source` (exact line bounds, re-checked against the live file), `get_path` (A→B), plus the agent-platform tools below.
+
+| Opt-in tool | Item | Input | Output `data` |
+|---|---|---|---|
+| `get_why` | M8.5 | `{target?:str, query?:str}` | `{records:[{text, source:adr\|commit\|pr_message\|code_comment, citation, date, stale:bool, signer_kind, status}]}`; none → `status:"unknown"` with sources searched |
+| `get_verification_plan` | M5.15 | `{diff?, range?, working_tree?, plan_path?}` | `{build:[cmd], tests:[cmd], impacted_tests, smoke_targets, unplanned_impact}`; each command labelled `detected\|configured` |
+| `record_finding` / `set_finding_status` / `add_note` / `propose_decision` | M5.10 | target + text + evidence | `{id, signer_kind:"agent", status}` — never alters graph facts |
+
+Profiles (M5.3): `default` (8 above), `lean` (≤ 5: `search`, `get_context`, `get_impact`, `get_change_impact`, `get_screen`), `all`.
 
 **Field-naming rule:** no certainty words. Use `may_break` / `may_affect`, never `will_break` (repowise 0.47.0 lesson).
 
@@ -159,3 +167,16 @@ Per-stack verify command hints (from config or detected):
   - number of tool calls.
 - **Reporting:** pre-register the hypotheses and bands in a commit before running. Report every arm, including losses.
 - **Gate:** the skills are marked GA only if arm (b) beats arm (a) on recall with no precision loss, *and* M6.13 accuracy gates pass.
+
+## 7. Autonomous-agent contract (added 2026-10-31)
+
+What an agent running without a human in the loop can rely on. Items in brackets.
+
+- **Headless use.** Every CLI command supports `--json` and documented exit codes (M2.1); `scan --progress json` streams NDJSON; with no TTY the cost gate errors naming `--yes`/`--no-prose` instead of prompting (M2.4). The same answers are importable from `ai_discovery.api` (M5.1).
+- **Freshness.** Opt-in post-commit hook and `scan --watch` keep the index at HEAD (M2.8); every answer carries `_meta.indexed_commit/behind_by/dirty/stale_warning` (M5.1). Hooks and watch never run prose (no surprise spend).
+- **Orientation.** A capped, deterministic instructions block in AGENTS.md/CLAUDE.md (M5.11); install for Claude Code, Codex, Cursor and VS Code with a duplicate guard (M5.14).
+- **Safety envelope (M5.12).** Repo-derived text appears only in fields listed in `_meta.content_trust.untrusted`; tool descriptions say those fields are data, not instructions; possible injections are flagged in `_meta.degraded`; secrets are masked (M1.13 masker). Remote MCP requires a token off loopback (M5.9).
+- **Write-back model (M5.10).** Agents may record findings, notes and *proposed* decisions, each stamped `signer_kind`, client, session and scan id. Write-back never changes graph facts; proposed decisions become accepted only by a human.
+- **Verification (M5.15).** After editing, agents call `get_verification_plan(working_tree, plan_path)` and run the returned commands themselves; unplanned impact is a stop condition in the `discover-verify-change` skill. `discover-change-plan` keeps its human approval gate; an operator may pre-approve for unattended runs.
+- **Observability (M5.13).** A local-only call ledger; `discover status --agent` summarises it; M5.7 uses it for tool-call metrics.
+- **Proof (M5.7).** Effects are claimed only from the pre-registered eval, including a headless arm; hooks ship only after a randomised A/B (M5.8).

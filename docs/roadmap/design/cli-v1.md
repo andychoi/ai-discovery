@@ -43,6 +43,7 @@
   | `--prose/--no-prose` | Set the spend mode |
   | `--provider NAME` | Choose the LLM provider |
   | `--mcp/--no-mcp` | Write `.mcp.json` or not |
+  | `--git-hook/--no-git-hook` | Install or remove the post-commit freshness hook (M2.8; off by default, listed in the init inventory) |
   | `--force` | Overwrite an existing config |
 - **Non-TTY without `--yes` or a mode flag:** exit 2 `init_needs_choice`.
 - **Stdin EOF:** treated as non-TTY.
@@ -60,6 +61,7 @@ Incremental by default (ADR-0002).
 | `--budget USD` | config | Override `llm.budget_usd` |
 | `--quality draft\|final` | config | Model role mapping (replaces `--prod`) |
 | `--source URL[@ref]` | — | Clone or fetch a remote repo into the state dir (token via env `DISCOVERY_GIT_TOKEN`, never in the URL) |
+| `--watch` | off | Re-scan incrementally on file changes (debounced, same lock; never runs prose unless config enables it) — M2.8 |
 
 **Cost gate** (only with prose; M2.4):
 

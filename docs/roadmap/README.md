@@ -2,7 +2,7 @@
 
 This folder is the **operating manual for implementing ai-discovery v1** across many Claude Code sessions and sub-agents. A fresh session with no prior context should be able to read this file, pick the next work item, implement it, verify it, and record the result.
 
-Last updated: 2026-10-08
+Last updated: 2026-10-31
 
 ## Why v1
 
@@ -11,7 +11,7 @@ ai-discovery works but grew too wide: 13 CLI commands / 69 options, a 2,071-line
 - **Keyless first:** `init → scan → serve` produces a full structural wiki with no LLM key; prose is an opt-in layer.
 - **Small CLI** (hard break): `init, scan, status, doctor, serve, mcp, ask, impact, export, drift, push` (+ `evidence` with M8).
 - **Wiki web:** React SPA bundled in the wheel, served by FastAPI on one port, offline.
-- **Agent integration:** MCP tools + Claude Code skills (impact / change-plan). Claude Code orchestrates.
+- **Agent platform (knowledge layer):** MCP tools (stdio + HTTP) + skills (impact / change-plan / verify-change), freshness triggers, write-back, safety envelope and verification contract for autonomous agents. External agents (Claude Code, Codex, Agent SDK, CI bots) orchestrate; we never run the loop or execute user code (`research/agent-platform-assessment.md`).
 - **Honest graph:** closed edge-origin vocabulary, no guessing on ambiguity, unknown ≠ zero, measured precision/recall.
 - **Target stacks:** ASP.NET/WebForms (C#, VB.NET), Java/Spring/JSP, TS/JS SPAs, Python, SAP ABAP (abapGit) + Fiori/UI5.
 
@@ -29,7 +29,7 @@ ai-discovery works but grew too wide: 13 CLI commands / 69 options, a 2,071-line
 | `milestones/` | M0–M8 work items (status, deps, lane, owned files, acceptance, verify) |
 | `adr/` | Architecture decision records (0001–0006; more added as decisions are made) |
 | `design/` | architecture-v1, cli-v1, wiki-web, mcp-and-agents, graph-accuracy, sap-abap-ui5, evidence-overlays, benchmark-protocol |
-| `research/` | repowise benchmark, edge-case catalog, ai-discovery audit, review of `docs/new-requirement-research.md` |
+| `research/` | repowise benchmark, agent-platform assessment (readiness levels, capability matrix), edge-case catalog, ai-discovery audit, review of `docs/new-requirement-research.md` |
 | `benchmarks/` | Benchmark results (created by M0.12) |
 | `PROGRESS.md` | Append-only session log |
 
@@ -77,6 +77,9 @@ ai-discovery works but grew too wide: 13 CLI commands / 69 options, a 2,071-line
 | M4.5 | D | `cli/commands/serve.py` |
 | M5.3 | E | `cli/commands/mcp.py` |
 | M8.2 | G | `cli/commands/evidence.py` |
+| M5.10 | E | one migration file under `store/migrations/` (number reserved in PROGRESS.md) |
+| M5.13 | E | `cli/commands/status.py` (`--agent` section, coordinated with lane A) |
+| M8.5 | G | `mcp/tools/get_why.py` (auto-discovered tool) + one migration file (number reserved in PROGRESS.md) |
 | M0.3 → M2.x | C → A | `tests/cli/` is created by M0.3 (lane C) and owned by lane A from M2.1 on |
 
 Rules: registries (parsers, page builders, stages, MCP tools, post-scan hooks) are auto-discovered so adding one never edits a central list; `pyproject.toml` dependency edits are append-only; each migration is its own numbered file.

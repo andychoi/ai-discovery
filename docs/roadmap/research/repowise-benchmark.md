@@ -6,6 +6,7 @@
 - **Sources:**
   - `../repowise` at HEAD `bcf4d96e`: v0.53.0, AGPL-3.0-or-later.
   - Read-only exploration of its code, docs, CHANGELOG and tests.
+- **Follow-up:** the autonomous-agent lens (readiness levels, capability matrix, new M5/M2/M8 items) is in [`agent-platform-assessment.md`](agent-platform-assessment.md) (2026-10-31).
 - **Clean-room rule (ADR-0006):** no repowise code enters this repo. This page describes *behaviour and design*, never implementation.
 
 ## 1. What repowise is (facts)
@@ -140,8 +141,8 @@
 | A4 | `_meta` freshness (index commit, behind-by, degraded) | Adopt | Honesty | M5.1 |
 | A5 | Three-state answers; `may_break` naming | Adopt | No confident zeros | M5.2 |
 | A6 | Claude Code plugin with skills + commands | Adapt (impact + change-plan skills centred on the research-doc BA workflow) | User decision: MCP + skills | M5.4–M5.6 |
-| A7 | Hooks (SessionStart/PostToolUse augment) | Exploring; measure against a base rate first | repowise retired hooks that didn't move behaviour | M5.8 |
-| A8 | Generated CLAUDE.md block | Exploring | Context amplification cost | — |
+| A7 | Hooks (SessionStart/PostToolUse augment) | Exploring; randomised A/B in the M5.7 harness first | repowise retired hooks that didn't move behaviour | M5.8 |
+| A8 | Generated CLAUDE.md block | Adopt (superseded 2026-10-31: capped, deterministic, opt-in) | Context amplification cost — hence the token cap | M5.11 |
 
 ### Evidence and benchmarks
 

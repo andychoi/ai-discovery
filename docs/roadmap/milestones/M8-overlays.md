@@ -13,6 +13,7 @@
 - **Acceptance:**
   - Churn (decayed), ownership (mailmap-aware), co-change pairs (ignore commits touching > 200 files, merges, bots) stored as `evidence_kind=co_change`; used for ranking/risk, never served as a dependency.
   - Handles shallow clones (warning) and history rewrites (fall back to full walk).
+  - Churn/hotspot/ownership/co-change feed a separate `risk` section of M5.2 change impact (`{hotspots, owners, co_change}`), never merged into `items` (`research/agent-platform-assessment.md` §3).
 - **Verify:** `pytest -q tests -k overlay_git`
 - **Out of scope:** —
 
@@ -50,3 +51,17 @@
   - speedscope / pprof / collapsed-stack ingestion → sampled method-chain evidence (dotnet-trace, JFR-derived, py-spy/sys.monitoring, node `--cpu-prof`); sampled ⇒ absence meaningless.
 - **Verify:** `pytest -q tests -k profiles`
 - **Out of scope:** —
+
+### M8.5 Rationale overlay + `get_why`
+- **Status:** Planned
+- **Size:** M
+- **Lane:** G
+- **Depends on:** M8.1, M5.3
+- **Owns:** `src/ai_discovery/overlays/rationale.py` (new), `src/ai_discovery/mcp/tools/get_why.py` (new; auto-discovered tool, no central-list edit), one migration file under `store/migrations/` (number reserved in PROGRESS.md)
+- **Acceptance:**
+  - Mines rationale records with provenance (`evidence_kind=rationale`, source = adr | commit | pr_message | code_comment) from ADR-style files (`docs/adr/`, `doc/adr/`, `*decisions*.md`), commit messages touching the target, and `WHY:`/`NOTE:`/`HACK:` comments; each record cites path:line or commit SHA.
+  - Agent-proposed decisions from M5.10 are listed with `signer: agent, status: proposed` and never shown as accepted until a human confirms.
+  - Opt-in MCP tool `get_why(target|query)` → records ranked by proximity to the target; no records → `status: "unknown"` with the sources searched, never an empty `ok`.
+  - Stale flag when the cited lines changed after the record's date.
+- **Verify:** `pytest -q tests -k rationale`
+- **Out of scope:** mining agent session transcripts; LLM summarisation of rationale (prose layer may add it later).
