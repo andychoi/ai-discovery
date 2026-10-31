@@ -22,13 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from .metrics import (
-    score_call_edges,
-    score_entity_fields,
-    score_forbidden_edges,
-    score_sets,
-)
-from .runner import run_fixture
+from .scoring import score_project
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "projects"
 BASELINE_PATH = Path(__file__).resolve().parent / "baseline.json"
@@ -96,24 +90,7 @@ def _load_fixtures():
 _FIXTURES = _load_fixtures()
 
 
-def _score_project(repo_path: Path, gt: dict) -> dict:
-    res = run_fixture(repo_path, gt["language"])
-    return {
-        "endpoints": score_sets(
-            res.endpoint_pairs(), {(e["method"], e["path"]) for e in gt["endpoints"]}
-        ),
-        "entities": score_entity_fields(res.entity_fields(), gt["entities"]),
-        "relationships": score_sets(
-            res.relationship_pairs(),
-            {(r["from_entity"], r["to_entity"]) for r in gt["relationships"]},
-        ),
-        "call_edges": score_call_edges(res.edges, gt.get("key_call_edges", [])),
-        "di_resolution": score_forbidden_edges(res.edges, gt.get("forbidden_call_edges", [])),
-        "external_systems": score_sets(
-            res.external_system_pairs(),
-            {(s["name"], s["kind"]) for s in gt.get("external_systems", [])},
-        ),
-    }
+_score_project = score_project   # moved to scoring.py (M6.13) — shared with `python -m bench gate`
 
 
 def _compute_report() -> dict:

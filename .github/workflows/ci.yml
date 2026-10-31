@@ -1,4 +1,4 @@
-# CI (roadmap item M4.5): unit suite + the install-from-wheel smoke test.
+# CI (roadmap items M4.5, M6.13): unit suite, offline accuracy gate, install-from-wheel smoke test.
 # Node is needed only to build the SPA; the smoke test removes it from PATH.
 name: ci
 
@@ -32,5 +32,7 @@ jobs:
         run: .venv/bin/python scripts/roadmap_lint.py
       - name: Tests
         run: .venv/bin/python -m pytest -q
+      - name: Accuracy gate (fixtures + dev hard cases, offline; M6.13)
+        run: .venv/bin/python -m bench gate
       - name: Wheel smoke (no Node on PATH)
         run: RUN_SLOW=1 .venv/bin/python -m pytest -q tests/smoke

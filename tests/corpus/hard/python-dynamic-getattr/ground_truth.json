@@ -1,0 +1,31 @@
+{
+  "project": "python-dynamic-getattr",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {
+      "caller_suffix": "Dispatcher.handle",
+      "callee_suffix": "Dispatcher.log",
+      "min_confidence": 0.9
+    }
+  ],
+  "forbidden_call_edges": [
+    {
+      "caller_suffix": "Dispatcher.handle",
+      "callee_suffix": "Dispatcher.on_create"
+    },
+    {
+      "caller_suffix": "Dispatcher.handle",
+      "callee_suffix": "Dispatcher.on_delete"
+    }
+  ],
+  "external_systems": [],
+  "language": "python",
+  "_README": "Labelled from source. handle() dispatches by string through getattr: which on_* runs is unknowable statically, so no edge may be guessed to either. The direct self.log call must resolve. Catalog: 'Reflection / string dispatch' (M6.7).",
+  "hard_case": {
+    "catalog": "Reflection / string dispatch",
+    "item": "M6.7"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "project": "java-interface-two-impls",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {
+      "caller_suffix": "CheckoutService.pay",
+      "callee_suffix": "StripeGateway.charge",
+      "min_confidence": 0.75
+    },
+    {
+      "caller_suffix": "CheckoutService.pay",
+      "callee_suffix": "PaypalGateway.charge",
+      "min_confidence": 0.75
+    }
+  ],
+  "forbidden_call_edges": [
+    {
+      "caller_suffix": "CheckoutService.pay",
+      "callee_suffix": "Invoice.charge"
+    }
+  ],
+  "external_systems": [],
+  "language": "java",
+  "_README": "Labelled from source. CheckoutService calls PaymentGateway.charge through the interface; either implementation may run (dispatch to both is correct). shop.billing.Invoice.charge shares the name but is unrelated and must never be linked. Catalog: 'Interface \u2192 implementation' (M6.7) and 'Java interfaces captured' (M6.3).",
+  "hard_case": {
+    "catalog": "Interface \u2192 implementation dispatch",
+    "item": "M6.7"
+  }
+}

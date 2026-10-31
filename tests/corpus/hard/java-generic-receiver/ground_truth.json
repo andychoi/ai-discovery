@@ -1,0 +1,21 @@
+{
+  "project": "java-generic-receiver",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [],
+  "forbidden_call_edges": [
+    {
+      "caller_suffix": "Cart.count",
+      "callee_suffix": "Item.size"
+    }
+  ],
+  "external_systems": [],
+  "language": "java",
+  "_README": "Labelled from source. items is List<Item>: items.size() is java.util.List.size, not Item.size \u2014 the generic argument must not become the receiver type. items.get(0).size() does call Item.size, but through a chained call the static resolver may not type; it is not required. Catalog: 'Java generics for receiver typing' (High, M6.3).",
+  "hard_case": {
+    "catalog": "Java generics for receiver typing",
+    "item": "M6.3"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "project": "csharp-logging-decoy",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {
+      "caller_suffix": "OrderService.Audit",
+      "callee_suffix": "AuditLog.LogInformation",
+      "min_confidence": 0.75
+    }
+  ],
+  "forbidden_call_edges": [
+    {
+      "caller_suffix": "OrderService.Place",
+      "callee_suffix": "AuditLog.LogInformation"
+    }
+  ],
+  "external_systems": [],
+  "language": "csharp",
+  "_README": "Labelled from source. Place() logs through ILogger (framework type, not in the repo): no edge may reach the repo's AuditLog.LogInformation. Audit() does call it through a typed field. Catalog: 'builtin method names' guard (M1.12) \u2014 the eShop trial showed LogInformation as the top unresolved name.",
+  "hard_case": {
+    "catalog": "Short-name match vs framework/builtin method names",
+    "item": "M6.2"
+  }
+}

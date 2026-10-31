@@ -73,9 +73,12 @@ bench/                       (lane Q; M0.11 built the parts marked ✓)
   results/                  YYYY-MM-DD-<repo>.json via `run --save` — summaries go to docs/roadmap/benchmarks/
 ```
 
-Skipped-file reasons are classified by the harness, not the walker: `skip_dir`, `unsupported_extension`, `no_symbols` (a parsable file that produced no nodes). `--gate` is not built yet (CI gating is M6.13).
+Skipped-file reasons are classified by the harness, not the walker: `skip_dir`, `unsupported_extension`, `no_symbols` (a parsable file that produced no nodes).
 
-`--gate` compares the run with the committed baseline. It fails when precision drops beyond the CI band, or when recall drops without a matching rise in `unresolved_calls` (the M1.12 trade-off).
+**Gate (M6.13, `python -m bench gate`, `bench/gate.py`).**
+- *Offline, every CI run:* every fixture in `tests/fixtures/projects` and the **dev** half of `tests/corpus/hard` vs `tests/corpus/baseline.json` / `tests/corpus/hard/baseline_dev.json`. Any F1 drop > 0.001 fails; rises are reported and refreshed only with `--update` plus a PROGRESS.md line.
+- *Hard cases:* fixtures built from edge-case-catalog rows, labelled from source, deliberately not all passing. Split dev/sealed by `SPLIT_SEED` (sha256 of `seed:name`); the **sealed** half runs only with `--sealed` (the weekly/dispatch workflow at milestone gates) and prints counts, never case names or edges.
+- *External (`--external [--fetch]`, `.github/workflows/accuracy.yml`, weekly + on demand):* scans each pinned repo with a graded sheet (`bench/precision/sheets/*-seed11-m112.csv`). Precision per language × origin = share graded correct among graded edges still emitted; fails below the sheet's Wilson 95% lower bound. Edges graded wrong and still emitted are listed as a to-fix list. Recall per repo (key edges, never pooled) vs the recorded run in `docs/roadmap/benchmarks/raw/m112-*.json`; a drop fails unless `unresolved_calls` rose (the M1.12 trade-off). Drift: an origin whose edge count moved > 20% since the recorded run gets a re-sample warning.
 
 ## 5. Results template (`docs/roadmap/benchmarks/YYYY-MM-DD-<label>.md`)
 

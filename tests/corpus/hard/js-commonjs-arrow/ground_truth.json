@@ -1,0 +1,27 @@
+{
+  "project": "js-commonjs-arrow",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {
+      "caller_suffix": "getUser",
+      "callee_suffix": "findUser",
+      "min_confidence": 0.75
+    },
+    {
+      "caller_suffix": "findUser",
+      "callee_suffix": "get",
+      "min_confidence": 0.75
+    }
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "javascript",
+  "_README": "Labelled from source. CommonJS require + arrow-function consts: getUser calls userService.findUser, which calls db.get. Known gap from M1.12 follow-ups: arrow consts get no call sites and require() binds no import.",
+  "hard_case": {
+    "catalog": "JS CommonJS require; arrow-function consts",
+    "item": "M6.5"
+  }
+}

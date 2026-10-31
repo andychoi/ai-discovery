@@ -1,0 +1,27 @@
+{
+  "project": "csharp-file-scoped-namespace",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {
+      "caller_suffix": "InvoiceService.Total",
+      "callee_suffix": "Billing.Calculator.Compute",
+      "min_confidence": 0.75
+    }
+  ],
+  "forbidden_call_edges": [
+    {
+      "caller_suffix": "InvoiceService.Total",
+      "callee_suffix": "Shipping.Calculator.Compute"
+    }
+  ],
+  "external_systems": [],
+  "language": "csharp",
+  "_README": "Labelled from source. InvoiceService (namespace Shop.Billing, file-scoped) uses Calculator from its own namespace; Shop.Shipping.Calculator has the same simple name. Catalog: 'C# file-scoped namespace X;' (High, M6.2) and 'same-namespace scope'.",
+  "hard_case": {
+    "catalog": "C# file-scoped namespace; same-namespace scope",
+    "item": "M6.2"
+  }
+}

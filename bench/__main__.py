@@ -8,6 +8,8 @@
   sample --repo ID --seed N [--per-stratum 30] [--fetch]
                                          seeded stratified edge sample → CSV for hand grading
   score SHEET.csv [...]                  precision per stratum (Wilson 95% CI) from graded sheets
+  gate [--sealed] [--external [--fetch] [--repo ID ...]] [--update] [--json]
+                                         accuracy gates (M6.13): exit 1 on any regression
 """
 
 from __future__ import annotations
@@ -134,6 +136,44 @@ def cmd_score(args) -> int:
     return 0
 
 
+def cmd_gate(args) -> int:
+    from .gate import external_gate, offline_gate
+
+    result = offline_gate(sealed=args.sealed, update=args.update)
+    if args.external:
+        ext = external_gate(fetch=args.fetch, repo_ids=args.repo or None)
+        result.failures += ext.failures
+        result.warnings += ext.warnings
+        result.report["external"] = ext.report
+    if args.json:
+        print(json.dumps({"ok": result.ok, "failures": result.failures, "improvements": result.improvements,
+                          "warnings": result.warnings, "report": result.report}, indent=2, sort_keys=True))
+    else:
+        for label in ("fixtures", "hard:dev"):
+            projects = result.report.get(label, {})
+            print(f"{label}: {len(projects)} project(s) scored")
+        if "hard:sealed" in result.report:
+            s = result.report["hard:sealed"]
+            print(f"hard:sealed: {s['cases']} case(s), {s['regressions']} regression(s), "
+                  f"{s['improvements']} improvement(s) — details withheld (sealed split)")
+        for repo_id, r in sorted(result.report.get("external", {}).items()):
+            if r.get("status") != "scored":
+                print(f"external/{repo_id}: {r.get('status')}")
+                continue
+            rc = r["recall"]
+            print(f"external/{repo_id}: recall {rc['baseline']} → {rc['current']}; "
+                  + ", ".join(f"{k} {v['current_precision']}" for k, v in sorted(r["precision"].items())
+                              if not k.startswith("_") and v["current_precision"] is not None))
+        for w in result.warnings:
+            print(f"warning: {w}")
+        for i in result.improvements:
+            print(f"improved: {i} — refresh with `python -m bench gate --update` and justify in PROGRESS.md")
+        for f in result.failures:
+            print(f"FAIL: {f}")
+        print("gate: ok" if result.ok else f"gate: {len(result.failures)} regression(s)")
+    return 0 if result.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m bench", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -165,6 +205,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("score")
     p.add_argument("sheets", nargs="+")
     p.set_defaults(fn=cmd_score)
+    p = sub.add_parser("gate", help="accuracy gates: fixtures + dev hard cases (+ sealed / external)")
+    p.add_argument("--sealed", action="store_true", help="also score the sealed hard cases (milestone gates only)")
+    p.add_argument("--external", action="store_true", help="also scan pinned repos vs graded sheets (network)")
+    p.add_argument("--fetch", action="store_true", help="with --external: fetch pinned commits that are missing")
+    p.add_argument("--repo", action="append", help="with --external: only these repo ids")
+    p.add_argument("--update", action="store_true", help="rewrite offline baselines from this run (justify!)")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_gate)
     args = ap.parse_args(argv)
     return args.fn(args)
 
