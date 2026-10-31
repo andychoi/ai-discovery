@@ -22,7 +22,7 @@
 - **Out of scope:** impact (M5.2).
 
 ### M5.2 Impact + change impact
-- **Status:** Planned
+- **Status:** In progress (rm/M5.2-impact, 2026-10-31)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.1, M1.12
