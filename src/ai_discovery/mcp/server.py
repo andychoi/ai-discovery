@@ -40,7 +40,11 @@ def _annotations(spec: ToolSpec) -> types.ToolAnnotations:
 
 
 def to_sdk_tool(spec: ToolSpec) -> types.Tool:
-    return types.Tool(name=spec.name, title=spec.title or None, description=spec.description,
+    from .safety import UNTRUSTED_SENTENCE
+
+    description = spec.description if UNTRUSTED_SENTENCE in spec.description else \
+        f"{spec.description} {UNTRUSTED_SENTENCE}"
+    return types.Tool(name=spec.name, title=spec.title or None, description=description,
                       input_schema=spec.input_schema, annotations=_annotations(spec))
 
 

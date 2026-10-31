@@ -8,6 +8,8 @@
   fields are cut from the tail (lists are already ranked) in the tool's declared
   shed order; each cut is recorded in ``omitted`` with the true total. Long
   strings are clipped last.
+- **safety** (M5.12) — secrets masked, injection-shaped text flagged, untrusted fields
+  listed (``mcp/safety.py``); fails closed.
 - **meta** — ``_meta.tool``, ``_meta.response_budget`` and total ``timing_ms``.
 """
 
@@ -22,6 +24,7 @@ from jsonschema import Draft202012Validator
 
 from ..query.answer import Answer
 from ..query.session import Project
+from .safety import apply_safety
 from .tool import ToolSpec
 
 log = logging.getLogger(__name__)
@@ -144,6 +147,13 @@ def call_tool(spec: ToolSpec, project: Project, args: Optional[dict], *, max_tok
     answer.setdefault("omitted", [])
     answer.setdefault("totals", {})
     answer.setdefault("truncated", False)
+    try:
+        answer = apply_safety(answer)   # M5.12: mask secrets, flag injection-shaped text
+    except Exception as exc:  # fail closed: never serve repository text that was not checked
+        log.exception("safety envelope failed for %s", spec.name)
+        answer = Answer(status="unknown", data={"reason": "safety_check_failed", "error": type(exc).__name__},
+                        remedy="retry; if it persists run `discover doctor` and report the error").to_dict()
+        answer["meta"]["degraded"] = ["safety_check_failed"]
     answer = apply_budget(spec, answer, max_tokens)
     answer["meta"]["tool"] = spec.name
     answer["meta"]["timing_ms"] = round((time.monotonic() - started) * 1000, 1)
