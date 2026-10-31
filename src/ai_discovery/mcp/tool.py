@@ -39,6 +39,8 @@ class ToolSpec:
     profiles: frozenset[str] = field(default_factory=lambda: frozenset({"default"}))
     title: str = ""
     rank: int = 100          # position in tools/list (lower first): overview, search, context, impact, …
+    read_only: bool = True   # False for write-back tools (M5.10): annotated readOnlyHint=false
+    needs_signer: bool = False   # handler(project, args, signer) — who is writing (client, session)
 
     def __post_init__(self) -> None:
         if not self.profiles <= set(PROFILES) - {"all"}:

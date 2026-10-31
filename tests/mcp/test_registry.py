@@ -9,7 +9,8 @@ from ai_discovery.mcp.registry import ToolSelectionError, schema_tokens, select
 
 DEFAULT = ["get_overview", "search", "get_context", "get_impact", "get_change_impact", "get_screen", "get_entity",
            "get_flow"]
-OPT_IN = {"get_table", "get_symbol_source", "get_path", "get_verification_plan"}
+OPT_IN = {"get_table", "get_symbol_source", "get_path", "get_verification_plan",
+          "record_finding", "set_finding_status", "add_note", "propose_decision", "get_annotations"}
 
 
 def _names(spec):

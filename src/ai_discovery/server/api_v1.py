@@ -36,6 +36,10 @@ class NoteIn(BaseModel):
     body: str = Field(min_length=1, max_length=20_000)
 
 
+class StatusIn(BaseModel):
+    status: str = Field(min_length=1, max_length=40)
+
+
 # ── plumbing ──────────────────────────────────────────────────────────────
 
 def _answer(data: Any = None, *, status: str = "ok", totals: Optional[dict] = None, truncated: bool = False,
@@ -113,6 +117,27 @@ def _ctx(request: Request):
 def _not_indexed(request: Request) -> dict:
     return _answer({"hint": "run `discover scan`"}, status="not_indexed",
                    meta={"scan_id": None, "contract_version": CONTRACT_VERSION, "degraded": []})
+
+
+def _annotations_for(layout, page_id: str) -> list[dict]:
+    """Agent/human annotations anchored to a page (or, for a symbol page, to its qualified name) — M5.10."""
+    from ..mcp.safety import apply_safety   # SDK-free: secrets masked, injection-shaped text flagged (M5.12)
+    from ..query.annotations import for_anchor
+    from ..query.session import Project
+
+    qn = page_id.split(":", 1)[1].split("@", 1)[0] if page_id.startswith("symbol:") else None
+    try:
+        with Project(layout).read() as r:
+            rows = for_anchor(r, page_id=page_id, qn=qn) if r.indexed else []
+    except sqlite3.Error:
+        return []
+    out = []
+    for row in rows:
+        checked = apply_safety({"data": row, "meta": {}})
+        item = checked["data"]
+        item["flags"] = checked["meta"].get("content_trust", {}).get("flags", [])
+        out.append(item)
+    return out
 
 
 def _json(raw, default):
@@ -228,6 +253,7 @@ def build_router() -> APIRouter:
                 "stale_reason": stale.get(p.page_id),
                 "stamp": p.stamp.__dict__ if p.stamp else None,
                 "notes": [n.__dict__ for n in notes_for(conn, p.page_id)],
+                "annotations": _annotations_for(layout, p.page_id),
             }
             return _answer(data, meta=meta)
 
@@ -256,6 +282,19 @@ def build_router() -> APIRouter:
         finally:
             conn.close()
         return _answer({"note_id": note_id, "page_id": page_id})
+
+    @r.post("/annotations/{annotation_id}/status")
+    def set_annotation_status(request: Request, annotation_id: int, body: StatusIn):
+        """A person confirms or closes an agent annotation (roadmap item M5.10)."""
+        from ..query.annotations import Signer, set_status
+        from ..query.session import Project
+
+        app = request.app
+        if app.state.allow_remote:
+            auth = request.headers.get("authorization", "")
+            if auth != f"Bearer {app.state.token}":
+                raise HTTPException(status_code=401, detail="a bearer token is required for writes")
+        return set_status(Project(app.state.layout), annotation_id, body.status, signer=Signer("human", "wiki", None))
 
     @r.get("/tree")
     def tree(request: Request):

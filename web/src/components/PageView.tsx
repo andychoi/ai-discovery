@@ -7,6 +7,7 @@ import { loadMermaid } from "../vendors";
 import { getJson } from "../api";
 import { Link } from "./Link";
 import { NoteForm } from "./NoteForm";
+import { Annotations, type Annotation } from "./Annotations";
 import { Empty, ErrorState, Loading, NotIndexed } from "./States";
 
 interface Citation { path: string; line_start: number; line_end: number }
@@ -15,6 +16,7 @@ interface PageData {
   links: { dst: string; kind: string }[]; backlinks: { src: string; kind: string }[];
   citations: Citation[]; confidence: number; freshness: string; stale_reason?: string | null;
   notes: { id: number; author: string | null; body: string; created_at: string }[];
+  annotations?: Annotation[];
   successor?: string;
 }
 interface SourceData { path: string; first_line: number; start: number; end: number; lines: string[] }
@@ -162,6 +164,7 @@ export function PageView({ pageId }: { pageId: string }) {
           <ul className="notes">{p.notes.map((n) => <li key={n.id}><p>{n.body}</p><p className="muted">{n.author ?? "anonymous"} · {n.created_at.slice(0, 10)}</p></li>)}</ul>
         ) : <Empty>No notes yet.</Empty>}
         <NoteForm pageId={p.page_id} onAdded={() => setVersion((v) => v + 1)} />
+        <Annotations items={p.annotations ?? []} onChanged={() => setVersion((v) => v + 1)} />
       </aside>
       {cite && <SourcePanel cite={cite} onClose={() => setCite(null)} />}
     </div>

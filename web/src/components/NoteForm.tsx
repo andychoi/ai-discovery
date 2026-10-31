@@ -3,7 +3,7 @@ import { AuthRequired, noteError, postJson } from "../api";
 
 const TOKEN_KEY = "ai-discovery.write-token";
 
-function savedToken(): string | null {
+export function savedToken(): string | null {
   try { return window.sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
 }
 

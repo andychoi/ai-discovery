@@ -167,6 +167,7 @@
     "reports-sales"
   ],
   "table_counts": {
+    "annotations": 0,
     "business_flows": 10,
     "call_edges": 9,
     "code_nodes": 42,
@@ -188,7 +189,7 @@
     "review_claims": 0,
     "scan_runs": 1,
     "scenario_flows": 5,
-    "schema_migrations": 3,
+    "schema_migrations": 4,
     "schema_version": 1,
     "screen_mappings": 0,
     "screen_review_claims": 0,

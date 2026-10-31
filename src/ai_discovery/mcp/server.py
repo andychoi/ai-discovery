@@ -9,6 +9,7 @@ SQLite reads are blocking, so handlers run in a worker thread.
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any, Optional
 
 import anyio
@@ -35,8 +36,19 @@ INSTRUCTIONS = (
 
 
 def _annotations(spec: ToolSpec) -> types.ToolAnnotations:
-    return types.ToolAnnotations(title=spec.title or spec.name, read_only_hint=True, destructive_hint=False,
-                                 idempotent_hint=True, open_world_hint=False)
+    return types.ToolAnnotations(title=spec.title or spec.name, read_only_hint=spec.read_only, destructive_hint=False,
+                                 idempotent_hint=spec.read_only, open_world_hint=False)
+
+
+def session_id(ctx: Any, fallback: str) -> str:
+    """The transport's session id when it has one (streamable HTTP), else this server process's id (stdio)."""
+    for path in (("session_id",), ("session", "session_id"), ("connection", "session_id")):
+        cur = ctx
+        for attr in path:
+            cur = getattr(cur, attr, None)
+        if isinstance(cur, str) and cur:
+            return cur
+    return fallback
 
 
 def to_sdk_tool(spec: ToolSpec) -> types.Tool:
@@ -73,6 +85,7 @@ def create_server(project: Project, tools: list[ToolSpec], *, max_tokens: Option
                   ledger: Optional[Ledger] = None) -> Server:
     by_name = {t.name: t for t in tools}
     listed = [to_sdk_tool(t) for t in tools]
+    process_session = f"proc-{uuid.uuid4().hex[:12]}"
 
     async def on_list_tools(ctx: Any, params: Any) -> types.ListToolsResult:
         return types.ListToolsResult(tools=listed)
@@ -84,8 +97,11 @@ def create_server(project: Project, tools: list[ToolSpec], *, max_tokens: Option
                                                     "available": sorted(by_name)},
                             remedy="call one of the listed tools (tools/list)").to_dict()
         else:
+            from ..query.annotations import Signer
+
+            signer = Signer("agent", client_name(ctx), session_id(ctx, process_session))
             answer = await anyio.to_thread.run_sync(
-                lambda: call_tool(spec, project, params.arguments or {}, max_tokens=max_tokens))
+                lambda: call_tool(spec, project, params.arguments or {}, max_tokens=max_tokens, signer=signer))
         if ledger is not None:
             ledger.record(entry_for(params.name, client_name(ctx), params.arguments, answer))
         return _result(answer)

@@ -323,6 +323,13 @@ def context(project: Project, target: str) -> dict:
             "unresolved_calls": unresolved[:MAX_NEIGHBOURS],
             "confidence": page["confidence"] if page is not None else None,
         }
+        from .annotations import for_anchor   # M5.10: findings / notes / decisions, signed; never facts
+
+        notes = for_anchor(r, page_id=page_id if page is not None else None,
+                           qn=node_rows[0]["qualified_name"] if node_rows and len({x["qualified_name"]
+                                                                                   for x in node_rows}) == 1 else None)
+        ans.data["annotations"] = ans.cap("annotations", notes, MAX_NEIGHBOURS,
+                                          key=lambda a: (a["status"] not in ("open", "proposed"), a["created_at"]))
         if len(unresolved) > MAX_NEIGHBOURS:
             ans.omitted.append({"field": "unresolved_calls", "dropped": len(unresolved) - MAX_NEIGHBOURS,
                                 "total": len(unresolved)})
@@ -331,7 +338,8 @@ def context(project: Project, target: str) -> dict:
                                 "total": len(node_rows)})
         ans.totals["symbols"] = len(node_rows)
         evidence = {n["evidence_kind"] for n in callers + callees if n.get("evidence_kind")}
-        ans.meta = r.meta(files=[c["path"] for c in citations], untrusted=["summary"], evidence=evidence)
+        ans.meta = r.meta(files=[c["path"] for c in citations], evidence=evidence,
+                          untrusted=["summary", "annotations[].text", "annotations[].evidence[].note"])
         return ans.to_dict()
 
 

@@ -128,7 +128,8 @@ def apply_budget(spec: ToolSpec, answer: dict, max_tokens: Optional[int] = None)
     return answer
 
 
-def call_tool(spec: ToolSpec, project: Project, args: Optional[dict], *, max_tokens: Optional[int] = None) -> dict:
+def call_tool(spec: ToolSpec, project: Project, args: Optional[dict], *, max_tokens: Optional[int] = None,
+              signer: Any = None) -> dict:
     """Run one tool call through the full pipeline. Never raises."""
     started = time.monotonic()
     args = dict(args or {})
@@ -137,7 +138,12 @@ def call_tool(spec: ToolSpec, project: Project, args: Optional[dict], *, max_tok
         answer = _bad_arguments(spec, errors)
     else:
         try:
-            answer = spec.handler(project, args)
+            if spec.needs_signer:
+                from ..query.annotations import Signer
+
+                answer = spec.handler(project, args, signer or Signer("agent", "unknown", None))
+            else:
+                answer = spec.handler(project, args)
         except Exception as exc:  # the shield: domain or internal failure → success-shaped answer
             log.exception("tool %s failed", spec.name)
             answer = Answer(status="unknown", data={"reason": "internal_error", "error": type(exc).__name__,
