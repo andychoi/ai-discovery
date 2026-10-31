@@ -188,7 +188,7 @@
 - **Out of scope:** IDE extensions.
 
 ### M5.15 Verification contract (`get_verification_plan` + `discover-verify-change`)
-- **Status:** Planned
+- **Status:** In progress (rm/M5.15-verification, 2026-10-31)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.2, M5.6
