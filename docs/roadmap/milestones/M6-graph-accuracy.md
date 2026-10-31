@@ -146,7 +146,7 @@
 - **Out of scope:** —
 
 ### M6.13 Accuracy gates in CI
-- **Status:** Planned
+- **Status:** In progress (rm/M6.13-accuracy-gates, 2026-10-31)
 - **Size:** M
 - **Lane:** Q
 - **Depends on:** M0.11, M1.12
