@@ -12,7 +12,7 @@
 
 ## 2. Server
 - **Package:** `src/ai_discovery/mcp/`, using the official `mcp` Python SDK **2.x** (`mcp>=2.3,<3`; low-level `Server` with `on_list_tools`/`on_call_tool`; 2.x renamed `FastMCP` to `MCPServer`, which we do not use). Only `mcp/server.py` imports the SDK; `ToolSpec`, the registry and the middleware are SDK-free.
-- **Transport:** stdio, via `discover mcp serve`.
+- **Transport:** stdio, via `discover mcp serve` (with a parent-process watchdog), or streamable HTTP at `/mcp` via `discover mcp serve --http` (M5.9): loopback by default with the SDK's DNS-rebinding guard; a non-loopback bind refuses to start without a ≥ 16-char bearer token (`--token` / `$DISCOVER_MCP_TOKEN`, constant-time check on every request); `--allow-host` pins accepted Host headers. Legacy SSE is not offered.
 - **Data access:** every tool calls `query/` (M5.1) and reads `current_scan`, read-only.
 - **Middleware**, in order:
   1. **shield.** No exception escapes as an MCP error. Domain failures return a success-shaped `Answer` with a `remedy`, e.g. `not_indexed` → "run `discover scan`".

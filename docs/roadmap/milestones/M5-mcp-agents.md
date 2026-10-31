@@ -110,7 +110,7 @@
 - **Out of scope:** —
 
 ### M5.9 MCP streamable-HTTP transport
-- **Status:** In progress (rm/M5.9-mcp-http, 2026-10-31)
+- **Status:** Done (2ccb403)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.3

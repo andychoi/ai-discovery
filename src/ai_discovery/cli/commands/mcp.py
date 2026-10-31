@@ -110,18 +110,38 @@ def register(app: typer.Typer) -> None:
     mcp_app = typer.Typer(help="MCP server for coding agents (Claude Code, Codex, Cursor, VS Code, …).",
                           invoke_without_command=True, no_args_is_help=False)
 
-    def _serve(ctx: typer.Context, tools: Optional[str], max_tokens: Optional[int]) -> None:
-        from ...mcp.server import run_stdio
+    def _serve(ctx: typer.Context, tools: Optional[str], max_tokens: Optional[int], *, http: bool = False,
+               host: str = "127.0.0.1", port: int = 0, token: Optional[str] = None,
+               allow_hosts: Optional[list[str]] = None) -> None:
+        from ...mcp.ledger import Ledger
+        from ...mcp.server import create_server, run_stdio
         from ...query.session import Project
 
         g = get_globals(ctx)
         specs = _select(tools or os.environ.get(TOOLS_ENV))
         cap = max_tokens or (int(os.environ[MAX_TOKENS_ENV]) if os.environ.get(MAX_TOKENS_ENV, "").isdigit()
                              else None)
-        from ...mcp.ledger import Ledger
-
         layout = g.layout()
-        run_stdio(Project(layout), specs, max_tokens=cap, ledger=Ledger.for_state_dir(layout.logs_dir))
+        ledger = Ledger.for_state_dir(layout.logs_dir)
+        if not http:
+            from ...mcp.transport_http import start_parent_watchdog
+
+            start_parent_watchdog()
+            run_stdio(Project(layout), specs, max_tokens=cap, ledger=ledger)
+            return
+        from ...mcp import transport_http as th
+        from ..output import stderr_console
+
+        try:
+            th.check_http_bind(host, token)
+        except th.HttpBindRefused as exc:
+            raise DiscoveryError(str(exc), "serve_remote_not_allowed",
+                                 hint=f"set ${th.TOKEN_ENV} (≥ 16 chars) or pass --token, or bind 127.0.0.1") from exc
+        server = create_server(Project(layout), specs, max_tokens=cap, ledger=ledger)
+        stderr_console(g).print(f"MCP over HTTP at {th.url_for(host, port)}"
+                                + ("  (bearer token required)" if token else "  (loopback only)"), highlight=False)
+        th.run_http(server, host=host, port=port, token=token, allow_hosts=allow_hosts,
+                    log_level="error" if g.quiet else "warning")
 
     @mcp_app.callback()
     def main(ctx: typer.Context) -> None:
@@ -136,9 +156,16 @@ def register(app: typer.Typer) -> None:
         tools: Optional[str] = typer.Option(None, "--tools", help=_TOOLS_HELP),
         max_tokens: Optional[int] = typer.Option(None, "--max-tokens", min=500, max=100_000,
                                                  help="Per-response token cap (default: each tool's own budget)."),
+        http: bool = typer.Option(False, "--http", help="Serve streamable HTTP instead of stdio."),
+        host: str = typer.Option("127.0.0.1", "--host", help="HTTP bind address (non-loopback needs a token)."),
+        port: int = typer.Option(7342, "--port", min=0, max=65535, help="HTTP port."),
+        token: Optional[str] = typer.Option(None, "--token", envvar="DISCOVER_MCP_TOKEN",
+                                            help="Bearer token (≥ 16 chars); required off loopback."),
+        allow_host: Optional[list[str]] = typer.Option(None, "--allow-host",
+                                                       help="Accepted Host header (repeatable), e.g. mcp.internal:7342."),
     ) -> None:
-        """Serve MCP tools over stdio (launched by the agent, not by hand)."""
-        _serve(ctx, tools, max_tokens)
+        """Serve MCP tools over stdio (launched by the agent), or over HTTP with --http."""
+        _serve(ctx, tools, max_tokens, http=http, host=host, port=port, token=token, allow_hosts=allow_host)
 
     @mcp_app.command("install")
     @handle_errors
