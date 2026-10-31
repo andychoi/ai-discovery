@@ -149,7 +149,7 @@
 - **Out of scope:** per-directory instruction files.
 
 ### M5.12 Content-safety envelope
-- **Status:** Planned
+- **Status:** In progress (rm/M5.12-safety, 2026-10-31)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.3, M1.13
