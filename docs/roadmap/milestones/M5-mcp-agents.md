@@ -163,7 +163,7 @@
 - **Out of scope:** guaranteeing injection immunity (agents remain responsible); sanitising the user's own prompts.
 
 ### M5.13 Agent tool-use ledger
-- **Status:** Planned
+- **Status:** In progress (rm/M5.13-ledger, 2026-10-31)
 - **Size:** S
 - **Lane:** E
 - **Depends on:** M5.3
