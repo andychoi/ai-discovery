@@ -66,7 +66,7 @@
 - **Out of scope:** —
 
 ### M4.6 Retire viewer; notes UI; staleness badges
-- **Status:** Planned
+- **Status:** In progress (rm/M4.6-notes-ui, 2026-10-31)
 - **Size:** S
 - **Lane:** D
 - **Depends on:** M4.5
