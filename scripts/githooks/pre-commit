@@ -1,0 +1,21 @@
+#!/bin/sh
+# Roadmap guard (docs/roadmap/README.md, work-item protocol): on `main`, only roadmap bookkeeping
+# (milestone claims, PROGRESS.md, roadmap docs) and squash-merges may be committed. Code changes
+# belong on an rm/<ID>-<slug> branch, claimed first. Enable once per clone:
+#     git config core.hooksPath scripts/githooks
+# Bypass deliberately (and say why in PROGRESS.md): ROADMAP_ALLOW_MAIN=1 git commit ...
+branch=$(git symbolic-ref --short -q HEAD)
+[ "$branch" = "main" ] || exit 0
+[ -n "$ROADMAP_ALLOW_MAIN" ] && exit 0
+gitdir=$(git rev-parse --git-dir)
+# a squash-merge or merge in progress is how items land on main
+[ -f "$gitdir/SQUASH_MSG" ] || [ -f "$gitdir/MERGE_HEAD" ] && exit 0
+outside=$(git diff --cached --name-only | grep -v '^docs/roadmap/' || true)
+if [ -n "$outside" ]; then
+  echo "pre-commit: refusing to commit code directly on main:" >&2
+  echo "$outside" | sed 's/^/  /' >&2
+  echo "Claim the item (milestone status → In progress), branch rm/<ID>-<slug>, and land it with" >&2
+  echo "  python scripts/roadmap_land.py rm/<ID>-<slug> --push" >&2
+  exit 1
+fi
+exit 0

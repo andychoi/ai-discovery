@@ -43,16 +43,19 @@ ai-discovery works but grew too wide: 13 CLI commands / 69 options, a 2,071-line
 
 ## Work-item protocol
 
-0. **One-time:** the roadmap scaffold itself (this folder, `scripts/roadmap_lint.py`, `.claude/skills/roadmap-next/`) must be committed on main before the first claim.
+0. **One-time:** the roadmap scaffold itself (this folder, `scripts/roadmap_lint.py`, `.claude/skills/roadmap-next/`) must be committed on main before the first claim. **Per clone:** `git config core.hooksPath scripts/githooks` — the `pre-commit` hook refuses code commits on `main` (only `docs/roadmap/` bookkeeping and squash-merges are allowed there; deliberate bypass: `ROADMAP_ALLOW_MAIN=1`, explained in PROGRESS.md).
 1. **Green baseline.** Run `pytest -q` on main. If red, stop and add/fix a work item for it first.
 2. **Pick.** `python scripts/roadmap_lint.py --next` (optionally `--lane X`) lists ready items with ★ critical-path items first — take the first, or the item the user names. Never auto-pick `Exploring` items.
-3. **Claim.** In the milestone file set `Status: In progress (rm/<ID>-<slug>, <YYYY-MM-DD>)`; commit that one-line change to main before branching, so parallel agents see the claim.
+3. **Claim — before touching any code.** In the milestone file set `Status: In progress (rm/<ID>-<slug>, <YYYY-MM-DD>)`; commit that one-line change to main and push it before branching, so parallel agents see the claim. Exploring code to size an item is fine; editing it is not.
 4. **Split check.** If the item won't fit in one session, split it in the milestone file into `<ID>.a`, `<ID>.b` (same fields) before coding.
-5. **Branch.** `rm/<ID>-<slug>` (e.g. `rm/M1.6-stages-front`). Sub-agents use worktree isolation, one item per agent.
+5. **Branch.** `rm/<ID>-<slug>` (e.g. `rm/M1.6-stages-front`). Sub-agents use worktree isolation, one item per agent. Rebase on main before landing.
 6. **Ownership.** Edit only the item's **Owns** paths. Needing to change another lane's file → add a contract-change item (or note in PROGRESS.md and ask), don't edit it. Reserve migration numbers in PROGRESS.md before creating migration files.
 7. **Implement** following the referenced design doc. If the design must change, update the design doc / ADR in the same PR (CLAUDE.md principle 2).
 8. **Verify.** Run the item's **Verify** commands plus `pytest -q`. Golden snapshots and bench baselines change only with a one-line justification in PROGRESS.md.
-9. **Close.** Set `Status: Done (<PR # or branch-head short-sha>)` in the same PR (the squash SHA isn't known yet; that's fine); append a PROGRESS.md entry; run `python scripts/roadmap_lint.py`. Squash-merge.
+9. **Close.** Set `Status: Done (<PR # or branch-head short-sha>)` in the same PR (the squash SHA isn't known yet; that's fine); append a PROGRESS.md entry; run `python scripts/roadmap_lint.py`.
+10. **Land with the tool, never by hand:** `python scripts/roadmap_land.py rm/<ID>-<slug> --push`. It squash-merges, refuses if anything is left unstaged/untracked or the staged diff differs from the branch diff, runs `pytest -q`, the roadmap lint and `python -m bench gate`, then commits with the branch's `feat|fix…` message, deletes the branch and pushes. (`--dry-run` checks only; `--skip-tests` for docs-only branches.)
+
+**Why steps 3 and 10 are mechanical (2026-10-31):** M4.6 landed half an item — a failed `git add` left the notes UI out of its squash commit and main imported a deleted package until a follow-up commit; M6.2 was implemented on local main without a claim and had to be moved to a branch before pushing. The hook and `roadmap_land.py` make both mistakes refuse instead of happen.
 
 ## Lanes (parallel work boundaries)
 

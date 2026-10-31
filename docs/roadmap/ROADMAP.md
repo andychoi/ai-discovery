@@ -2,7 +2,7 @@
 
 _Last reworked 2026-10-31 for the agent-platform direction — see `research/agent-platform-assessment.md`._
 
-No dates — status is the commitment (repowise-style). Item-level status lives in `milestones/*.md`; run `python scripts/roadmap_lint.py --board` for live counts.
+No dates — status is the commitment (repowise-style). Item-level status lives in `milestones/*.md`; run `python scripts/roadmap_lint.py --board` for live counts. This table was last refreshed 2026-10-31.
 
 | Status | Meaning |
 |---|---|
@@ -16,12 +16,12 @@ No dates — status is the commitment (repowise-style). Item-level status lives 
 | # | Milestone | Goal | Status |
 |---|---|---|---|
 | M0 | [Stabilize & measure](milestones/M0-stabilize.md) | Fix defects that survive any rewrite; golden harness; baseline vs repowise | Done |
-| M1 | [Foundations (strangler)](milestones/M1-foundations.md) | Paths, config v2, store + lock, stages, llm/, edge contract, secret masking | In progress (M1.13 left) |
+| M1 | [Foundations (strangler)](milestones/M1-foundations.md) | Paths, config v2, store + lock, stages, llm/, edge contract, secret masking | Done |
 | M2 | [CLI v1 (hard break)](milestones/M2-cli-v1.md) | 11 commands (+ `evidence` in M8), cost gate, status/doctor, freshness triggers | In progress |
 | M3 | [Page model & keyless wiki](milestones/M3-pages.md) | Deterministic pages, prose layer, incremental parity | In progress |
-| M4 | [Wiki web](milestones/M4-wiki-web.md) | React SPA in wheel, `serve` | In progress |
-| M5 | [MCP + agent platform](milestones/M5-mcp-agents.md) | Knowledge layer for autonomous agents: query, impact, MCP (stdio + HTTP), skills, write-back, safety envelope, verification contract, agent eval | Planned |
-| M6 | [Graph accuracy](milestones/M6-graph-accuracy.md) | Walker, C#/Java/VB/Vue gaps, DI, SQL/procs/MyBatis, CI gates | Planned |
+| M4 | [Wiki web](milestones/M4-wiki-web.md) | React SPA in wheel, `serve`, notes, annotations | In progress (M4.4 graph explorer left) |
+| M5 | [MCP + agent platform](milestones/M5-mcp-agents.md) | Knowledge layer for autonomous agents: query, impact, MCP (stdio + HTTP), skills, write-back, safety envelope, verification contract, agent eval | In progress — L3 built; M5.7.b eval run awaits owner approval; M5.8 Exploring |
+| M6 | [Graph accuracy](milestones/M6-graph-accuracy.md) | Walker, C#/Java/VB/Vue gaps, DI, SQL/procs/MyBatis, CI gates | In progress (M6.13 gates, M6.2 C# done) |
 | M7 | [SAP ABAP + UI5](milestones/M7-sap.md) | abapGit + Fiori/UI5 extraction | Planned |
 | M8 | [Evidence overlays](milestones/M8-overlays.md) | Git history (+ risk), coverage, OTLP spans, rationale (`get_why`) | Planned |
 

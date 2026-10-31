@@ -537,3 +537,10 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** \`pytest -q tests -k csharp\` (incl. 7 new); full \`pytest -q\` → 1794 passed, 2 skipped; \`bench gate --sealed\` ok; \`bench gate --external\` ok; \`roadmap_lint\` ok.
 - **Process note:** the implementation commit was first made on local \`main\` without a claim; before pushing, it was moved to this branch and the claim committed first (no published history rewritten).
 - **Follow-ups:** M6.3 Java interface nodes + extend the foreign-receiver rule; \`.csproj\` ImplicitUsings SDK defaults are not modelled (they only add framework namespaces); re-sample the eShop precision sheet. No repowise code was copied or translated.
+
+## 2026-10-31 — process: main-branch guard + landing tool
+- **Branch:** rm/process-guards (not a milestone item)
+- **Changes:** `scripts/githooks/pre-commit` (new: on `main`, only `docs/roadmap/` bookkeeping and squash-merges may be committed; `ROADMAP_ALLOW_MAIN=1` bypass), `scripts/roadmap_land.py` (new: squash-merge with checks — clean main, item `Done`, no unstaged/untracked leftovers, staged diff = branch diff, staged tree = branch tree, `pytest -q` + roadmap lint + `bench gate`, commit with the branch's message, verify the commit's files, delete the branch, optional push), `tests/test_roadmap_process.py` (4, temp repos), `docs/roadmap/README.md` (protocol steps 0, 3, 5, 9, 10 + why), `.claude/skills/roadmap-next/SKILL.md` (claim before editing; land with the tool), `docs/roadmap/ROADMAP.md` (milestone status table refreshed).
+- **Why:** M4.6 landed half an item (failed `git add` → main imported a deleted package until d383355); M6.2 was implemented on local main without a claim (moved to a branch before pushing). Both are now refusals, not reminders.
+- **Local setup done:** `git config core.hooksPath scripts/githooks` in this clone. Other clones must run it once (README step 0).
+- **Verify:** `pytest -q tests/test_roadmap_process.py` → 4 passed; this branch landed with `scripts/roadmap_land.py` itself.
