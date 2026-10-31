@@ -50,7 +50,7 @@
 - **Out of scope:** HTTP transport (M5.9).
 
 ### M5.4 Plugin + triage/consistency skills
-- **Status:** In progress (rm/M5.4-plugin, 2026-10-31)
+- **Status:** Done (35a3880)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.3

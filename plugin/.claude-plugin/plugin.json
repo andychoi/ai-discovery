@@ -1,0 +1,10 @@
+{
+  "name": "ai-discovery",
+  "displayName": "ai-discovery",
+  "version": "0.1.0",
+  "description": "Brownfield code intelligence for coding agents: call graph, screens, tables and entity state machines over MCP, plus review skills that verify discovery output against the source.",
+  "author": {"name": "ai-discovery maintainers"},
+  "repository": "https://github.com/andychoi/ai-discovery",
+  "license": "AGPL-3.0-only",
+  "keywords": ["code-intelligence", "impact-analysis", "brownfield", "mcp", "legacy"]
+}

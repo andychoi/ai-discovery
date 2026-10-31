@@ -1,0 +1,11 @@
+{
+  "name": "ai-discovery",
+  "owner": {"name": "ai-discovery maintainers"},
+  "plugins": [
+    {
+      "name": "ai-discovery",
+      "source": "./",
+      "description": "MCP server and review skills for repositories indexed by `discover scan`."
+    }
+  ]
+}

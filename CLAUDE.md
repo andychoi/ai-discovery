@@ -155,9 +155,9 @@ source_hashes:
 
 ## Using Skills
 
-Five custom skills accelerate development. The first three help build the discovery pipeline itself; the last two run *after* a scan to verify and improve its output.
+Five custom skills accelerate development. The first three help build the discovery pipeline itself (`.claude/skills/<name>/SKILL.md`, thin wrappers over the guides); the last two run *after* a scan to verify its output and ship in the Claude Code plugin (`plugin/skills/<name>/SKILL.md`, roadmap M5.4). `/roadmap-next` (`.claude/skills/roadmap-next/`) drives roadmap items. `tests/test_plugin.py` fails if a skill named here has no file.
 
-> **Note (2026-10-08):** these five skills are documented but not yet present in the repo (no `.claude/skills/` for them). `/discover-triage` and `/discover-consistency` are scheduled in roadmap item M5.4. The only skill in the repo today is `/roadmap-next` (`.claude/skills/roadmap-next/SKILL.md`).
+**Plugin:** `plugin/` bundles the MCP server and the post-scan skills — `claude plugin marketplace add ./plugin && claude plugin install ai-discovery@ai-discovery` (see `plugin/README.md`). Without the plugin, `discover mcp install --target claude` wires the server alone.
 
 ### `/parser-extension`
 **When**: You want to add Go, Rust, Java, C#, JavaScript, or any other language.
@@ -207,28 +207,28 @@ Five custom skills accelerate development. The first three help build the discov
 ### `/discover-triage`
 **When**: After a `discover scan` run, before treating its output as authoritative. Verify low-confidence rows against source code.
 
-**What it does**: Reactive, bounded review of flagged rows only:
-1. Prompt user for source repo path + discovery output path (or project slug)
-2. Pull rows where `generated_docs.confidence < 0.65` and `review_claims.status IN ('contradicted','unverified')`
-3. For each flagged row, read source at the cited file:line and verify
-4. Decide accept (RAG miss) / correct (LLM error) / human-review (genuinely ambiguous)
-5. Emit `triage-report.md`; apply corrections only on user confirmation
+**What it does**: Reactive, bounded review of flagged items only (≤ 40):
+1. `get_overview` for freshness; open `.discovery/discovery.db` read-only
+2. Pull low-confidence pages (< 0.65), guessed call edges (origin confidence < 0.75), unresolved calls that may hide edges, screens without a backend chain
+3. For each item, read the source at the cited file:line and verify
+4. Decide accept / correct / human-review; name repeated patterns once
+5. Emit `.discovery/reports/triage-report.md`; add corrections as page notes only on user confirmation
 
-**Reference**: `docs/guides/output-review/triage-workflow.md`
+**Skill**: `plugin/skills/discover-triage/SKILL.md` · **Background**: `docs/guides/output-review/triage-workflow.md` (pre-v1 tables)
 
 ---
 
 ### `/discover-consistency`
 **When**: After triage, or as a periodic audit. Verify cross-artifact links and flag domain-pattern absences.
 
-**What it does**: Read-only consistency check across the output tree:
-1. Prompt user for discovery output path (or project slug)
-2. Build the link graph from `links_to` frontmatter across ASIS / ASD / ASSC / PF / BPMN / DMN / EARS
-3. Check coverage: every endpoint in PF, every entity in EARS, every UC linked to a PF, every gateway in DMN
-4. Flag domain-pattern absences (logout, refund, password-reset for e-commerce; etc.) — distinguishing **code gaps** from **discovery failures** via source grep
-5. Emit `consistency-report.md`; never edits artifacts in place
+**What it does**: Read-only consistency check across the v1 index:
+1. `get_overview` for freshness; open `.discovery/discovery.db` read-only
+2. Link integrity: dangling page links
+3. Coverage: unreached endpoints, untouched tables, entities without transitions, unresolved-call hot spots (> 15%)
+4. Flag expected-flow absences (logout, refund, password-reset for e-commerce; etc.) — distinguishing **code gaps** from **discovery misses** via source grep
+5. Emit `.discovery/reports/consistency-report.md`; never edits anything
 
-**Reference**: `docs/guides/output-review/consistency-workflow.md`
+**Skill**: `plugin/skills/discover-consistency/SKILL.md` · **Background**: `docs/guides/output-review/consistency-workflow.md` (pre-v1 tables)
 
 ---
 

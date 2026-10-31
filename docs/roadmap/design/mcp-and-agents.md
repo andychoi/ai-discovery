@@ -105,8 +105,9 @@ Edge kinds and origins are defined in [ADR-0004](../adr/0004-edge-origin-vocabul
 ## 5. Claude Code plugin (`plugin/`, new; M5.4)
 ```
 plugin/
-  .claude-plugin/plugin.json      # verify current manifest format against Claude Code docs at M5.4 (Unverified)
-  .mcp.json                        # discover mcp serve
+  .claude-plugin/plugin.json      # name ai-discovery (verified against Claude Code plugin docs 2026-10-31)
+  .claude-plugin/marketplace.json # single-plugin marketplace, source "./"
+  .mcp.json                        # discover mcp serve (runs in the session working directory)
   skills/
     discover-impact/SKILL.md
     discover-change-plan/SKILL.md

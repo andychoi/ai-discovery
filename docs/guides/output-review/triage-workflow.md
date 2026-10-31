@@ -1,5 +1,7 @@
 # Output Triage: Step-by-Step Workflow
 
+> **Pre-v1 (legacy SDLC tables).** The v1 workflow — pages, call edges, unresolved calls, screen specs — is `plugin/skills/discover-triage/SKILL.md` (roadmap M5.4). This guide is kept for background.
+
 Verify low-confidence rows in the output of a `discover scan` against actual source code, propose targeted corrections, and emit an audit report.
 
 This skill is **reactive and bounded** — it runs over flagged rows only, not the full corpus. A 10-minute run typically costs less than a single Tier-3 LLM call.

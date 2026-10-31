@@ -1,5 +1,7 @@
 # Output Consistency: Step-by-Step Workflow
 
+> **Pre-v1 (legacy SDLC tables).** The v1 workflow — pages, call edges, unresolved calls, screen specs — is `plugin/skills/discover-consistency/SKILL.md` (roadmap M5.4). This guide is kept for background.
+
 Verify that the artifacts produced by `discover scan` are internally consistent — every endpoint claimed in ASIS appears in a process flow, every entity in ASSC appears in EARS requirements, every PF scenario references a use case, and so on. Also flag domain-pattern absences (e-commerce missing `logout` / `refund` flows, etc.).
 
 This skill is **read-only** — it never modifies the scan output. Its product is `consistency-report.md`, a severity-ranked list of inconsistencies and missing-flow callouts that humans or downstream skills act on.
