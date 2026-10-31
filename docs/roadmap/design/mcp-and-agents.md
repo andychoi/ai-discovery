@@ -28,6 +28,7 @@
  "evidence_kinds_used":["static","framework"],"timing_ms":41}
 ```
 `stale_warning` is set only when files *in this answer* changed; otherwise only `behind_by` is reported.
+M5.1 adds `content_trust: {untrusted: [field paths], note}` (fields holding repo text or prose; M5.12 extends it), `truncated` and `omitted_count`. The envelope's `omitted` is a list of `{field, dropped, total}`. Statuses: `ok | not_found` (with `did_you_mean`) `| not_indexed` (with `remedy`) `| unknown` (ambiguous target, with `candidates`).
 
 ## 3. Tools (default 8)
 
@@ -35,7 +36,7 @@
 |---|---|---|
 | `get_overview` | `{}` | `{summary, stacks:[…], counts:{files,symbols,screens,entities,tables,endpoints}, entry_points:[…top 20], domains:[{name,page_id}], unresolved_ratio_by_lang:{…}}` |
 | `search` | `{query:str, kinds?:[page_type\|"symbol"], limit?:int≤50}` | `{hits:[{id,type,title,snippet,score,path?,line?}]}` |
-| `get_context` | `{target:str}`: symbol QN, `file:`, `screen:`, `table:`, `entity:` | `{page_id, summary, callers:[…≤20], callees:[…≤20], screens:[…], tables:{reads:[],writes:[]}, citations:[{path,line_start,line_end}], unresolved_calls_here:int}` |
+| `get_context` | `{target:str}`: symbol QN or short name, `symbol:`, `file:`, `screen:`, `table:`, `entity:` or any page id | `{page_id, type, title, summary, symbols:[…], callers:[…≤20], callees:[…≤20]` (each with `origin, evidence_kind, confidence, followable`)`, callers_complete: yes\|unknown, screens:[…], tables:{reads:[],writes:[]}, links, backlinks, citations:[{path,line_start,line_end}], unresolved_calls_here:int, unresolved_calls:[…≤20]}` |
 | `get_impact` | `{target:str, depth?:1..6=3, include?:[evidence_kind], max_items?:≤100=50}` | see §4 |
 | `get_change_impact` | `{diff?:str, range?:"A..B", working_tree?:bool}` | `{changed_symbols:[…], impact:<get_impact data merged>, tests_to_run:[…] (if coverage overlay), screens_affected:[…]}` |
 | `get_screen` | `{id_or_route:str}` | `{screen, menu_path, events:[{ui_event, handler, endpoint?}], chain:[{layer,node,citation}], tables, batch_jobs, interfaces}` |
