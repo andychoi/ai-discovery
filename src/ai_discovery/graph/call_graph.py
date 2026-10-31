@@ -9,7 +9,10 @@ a reason from ``origins.UNRESOLVED_REASONS``.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import posixpath
+import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
@@ -17,6 +20,10 @@ from . import origins as O
 from .models import CallEdge, CodeNode, ExecutionEdge, ExecutionNode, Scenario, StateTransition
 
 _CLASS_TYPES = ("class", "db_model")
+_TYPE_DECLS = _CLASS_TYPES + ("interface", "enum")   # any repo type (M6.2: C# interface/enum nodes)
+# Languages whose parser emits every type kind (interfaces too), so "no repo type of that name" really
+# means "a library type". Java joins with M6.3 (interface nodes); until then its interfaces look foreign.
+_TYPED_DECLS_LANGS = frozenset({"csharp"})
 _SELF_RECEIVERS = frozenset({"self", "this", "cls", "Me", "base", "super"})
 # Languages where a receiver-less call inside a method means `this.name()`.
 _IMPLICIT_THIS = frozenset({"java", "csharp", "vbnet"})
@@ -84,7 +91,7 @@ def resolve_calls(nodes: list[CodeNode], symbol_index=None) -> Resolution:
         sites = node.call_sites if node.call_sites else [{"name": c, "receiver": None} for c in node.calls]
         if not sites:
             continue
-        imports = _build_import_index(node)
+        imports = _build_import_index(node, extra=r.global_imports(node))
         for site in sites:
             if site.get("name"):
                 r.resolve_site(node, site, imports)
@@ -120,21 +127,67 @@ class _Resolver:
         # P0-2: interface/base short name → implementing/extending class nodes.
         self.impls: dict[str, list[CodeNode]] = defaultdict(list)
         self.members: dict[str, list[CodeNode]] = defaultdict(list)   # owner qn → direct members
+        # M6.2: partial classes — fragments sharing a full name merge field types and bases.
+        self.bases_of: dict[str, list[str]] = {}
         for node in nodes:
-            self.qualified[node.qualified_name] = node
-            if "." in node.qualified_name:
-                self.members[node.qualified_name.rsplit(".", 1)[0]].append(node)
-            self.by_name[node.name].append(node)
+            fragment = node.node_type in _CLASS_TYPES and node.qualified_name in self.qualified \
+                and self.qualified[node.qualified_name].node_type in _CLASS_TYPES
+            if not fragment:
+                self.qualified[node.qualified_name] = node
+                if "." in node.qualified_name:
+                    self.members[node.qualified_name.rsplit(".", 1)[0]].append(node)
+                self.by_name[node.name].append(node)
             ftypes = (node.framework_hints or {}).get("field_types")
             if ftypes:
-                self.field_types[node.qualified_name] = ftypes
+                self.field_types.setdefault(node.qualified_name, {}).update(
+                    {k: v for k, v in ftypes.items() if k not in self.field_types.get(node.qualified_name, {})})
             if node.node_type in _CLASS_TYPES and node.bases:
+                merged = self.bases_of.setdefault(node.qualified_name, [])
                 for base in node.bases:
-                    self.impls[base.rsplit(".", 1)[-1]].append(node)
+                    if base not in merged:
+                        merged.append(base)
+                        self.impls[base.rsplit(".", 1)[-1]].append(self.qualified[node.qualified_name])
+        self._project_of: dict[str, str] = {}
+        self.global_usings: dict[str, list[dict]] = defaultdict(list)   # C# project dir → `global using`s
+        for node in nodes:
+            if node.language == "csharp":
+                for imp in node.imports or []:
+                    if imp.get("global") and imp not in self.global_usings[self.project_dir(node.file_path)]:
+                        self.global_usings[self.project_dir(node.file_path)].append(imp)
+        # Files holding only `global using`s (GlobalUsings.cs) emit no nodes, and `.csproj` <Using> items
+        # are not C# at all: read both once per project directory (M6.2).
+        for proj in sorted({self.project_dir(n.file_path) for n in nodes if n.language == "csharp"} - {""}):
+            for imp in _project_usings(Path(proj)):
+                if imp not in self.global_usings[proj]:
+                    self.global_usings[proj].append(imp)
         self.files = sorted({n.file_path for n in nodes if n.file_path})
         self._import_cache: dict[tuple, bool] = {}
         self.edges: list[CallEdge] = []
         self.unresolved: list[UnresolvedCall] = []
+
+    def project_dir(self, file_path: str) -> str:
+        """Nearest ancestor directory holding a *.csproj (C# `global using` scope); '' when none."""
+        start = str(Path(file_path).parent)
+        if start in self._project_of:
+            return self._project_of[start]
+        found = ""
+        for d in [Path(start), *Path(start).parents]:
+            try:
+                if any(d.glob("*.csproj")):
+                    found = str(d)
+                    break
+            except OSError:
+                break
+        self._project_of[start] = found
+        return found
+
+    def global_imports(self, node: CodeNode) -> list[dict]:
+        if node.language != "csharp" or not self.global_usings:
+            return []
+        return self.global_usings.get(self.project_dir(node.file_path), [])
+
+    def bases(self, cls: CodeNode) -> list[str]:
+        return self.bases_of.get(cls.qualified_name, cls.bases or [])
 
     # ── recording ────────────────────────────────────────────────────────
     def _edge(self, caller: CodeNode, target: CodeNode, origin_name: str, call: str, **meta) -> None:
@@ -298,7 +351,7 @@ class _Resolver:
         for _ in range(_MAX_INHERIT_DEPTH):
             parents: list[CodeNode] = []
             for c in frontier:
-                for base in c.bases or []:
+                for base in self.bases(c):
                     types = self._resolve_type(base)
                     if len(types) == 1 and types[0].qualified_name not in seen:
                         seen.add(types[0].qualified_name)
@@ -314,7 +367,7 @@ class _Resolver:
 
     def _has_foreign_base(self, caller: CodeNode) -> bool:
         cls = self._class_of(caller)
-        return cls is not None and any(not self._resolve_type(b) for b in cls.bases or [])
+        return cls is not None and any(not self._resolve_type(b) for b in self.bases(cls))
 
     def _is_local_type(self, caller: CodeNode, t: CodeNode, imports: dict[str, dict]) -> bool:
         if t.file_path == caller.file_path:
@@ -347,6 +400,7 @@ class _Resolver:
         cls = self._class_of(caller)
         ftypes = self.field_types.get(cls.qualified_name, {}) if cls is not None else {}
         type_name = ftypes.get(receiver) or ftypes.get(receiver.rsplit(".", 1)[-1])
+        declared = bool(type_name)
         if not type_name:
             # static call on a type name: `OrderService.create()` (JS/C#/Java statics)
             if receiver[:1].isupper() and self._resolve_type(receiver):
@@ -355,11 +409,18 @@ class _Resolver:
                 return False
         types = self._resolve_type(type_name)
         if not types:
-            # interfaces are often not nodes (the C# parser emits none): go
-            # straight to the implementations; a type with none is outside
-            # the repo → let the global tier decide
-            return self._via_implementations(caller, site, name, type_name.rsplit(".", 1)[-1], receiver,
-                                             call_ref, bases=None)
+            # an interface (not a class node): go straight to the implementations
+            if self._via_implementations(caller, site, name, type_name.rsplit(".", 1)[-1], receiver,
+                                         call_ref, bases=None):
+                return True
+            short = type_name.rsplit(".", 1)[-1]
+            if declared and _family(caller.language) in _TYPED_DECLS_LANGS \
+                    and not any(n.node_type in _TYPE_DECLS for n in self.by_name.get(short, [])):
+                # M6.2: the receiver's declared type is outside the repo (`ILogger<T> _logger`) and nothing
+                # in the repo implements it — its methods are the library's; never guess a repo method by name
+                self._miss(caller, site, call_ref, "external")
+                return True
+            return False
         local = [t for t in types if self._is_local_type(caller, t, imports)]
         if len(local) == 1:
             t, origin_name = local[0], "receiver_typed"
@@ -471,7 +532,41 @@ class _Resolver:
                         self.edges.append(make_edge(m.qualified_name, o.qualified_name, "dispatch", call=m.name))
 
 
-def _build_import_index(caller: CodeNode) -> dict[str, dict]:
+_GLOBAL_USING = re.compile(r"^\s*global\s+using\s+(static\s+)?(?:(\w+)\s*=\s*)?([\w.]+)\s*;", re.M)
+_CSPROJ_USING = re.compile(r"<Using\s+Include=\"([\w.]+)\"(?:\s+Static=\"(true|True)\")?(?:\s+Alias=\"(\w+)\")?")
+
+
+def _project_usings(project: Path) -> list[dict]:
+    """`global using` lines from the project's .cs files (outside bin/obj) and `<Using>` items of its .csproj."""
+    out: list[dict] = []
+    files = [f for f in project.rglob("*.cs") if not ({"bin", "obj"} & set(f.relative_to(project).parts))]
+    for f in sorted(files):
+        try:
+            head = f.read_text(encoding="utf-8", errors="replace")[:20000]
+        except OSError:
+            continue
+        for static, alias, target in _GLOBAL_USING.findall(head):
+            out.append(_using_record(target, alias or None, bool(static)))
+    for proj in sorted(project.glob("*.csproj")):
+        try:
+            text = proj.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for target, static, alias in _CSPROJ_USING.findall(text):
+            out.append(_using_record(target, alias or None, bool(static)))
+    return out
+
+
+def _using_record(target: str, alias: str | None, static: bool) -> dict:
+    module, _, name = target.rpartition(".")
+    if alias:
+        return {"module": module, "name": name or None, "alias": alias, "static": static, "global": True}
+    if static:
+        return {"module": module, "name": name, "alias": None, "static": True, "global": True}
+    return {"module": target, "name": None, "alias": None, "static": False, "global": True}
+
+
+def _build_import_index(caller: CodeNode, extra: list[dict] | None = None) -> dict[str, dict]:
     """Map each local binding name to its import record.
 
     `from M import Name`          → {"Name": import_record}
@@ -480,7 +575,7 @@ def _build_import_index(caller: CodeNode) -> dict[str, dict]:
     `import M.N as Alias`         → {"Alias": import_record}
     """
     index: dict[str, dict] = {}
-    for imp in caller.imports:
+    for imp in [*(caller.imports or []), *(extra or [])]:
         alias = imp.get("alias")
         name = imp.get("name")
         module = imp.get("module") or ""
@@ -488,6 +583,9 @@ def _build_import_index(caller: CodeNode) -> dict[str, dict]:
             local = alias
         elif name:
             local = name
+        elif caller.language in ("csharp", "vbnet"):
+            # `using Ns;` binds no name; key it uniquely so `using A.X;` and `using A.Y;` both survive (M6.2)
+            local = f"*{module}" if module else ""
         else:
             # Plain `import M.N` binds the first segment (`M`).
             local = module.split(".")[0] if module else ""

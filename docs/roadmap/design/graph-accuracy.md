@@ -82,7 +82,7 @@ Every new query string must compile under the pinned tree-sitter floor (M0.3 tes
 - Separate **call** from **reference** from **type-use**. A method passed as a value is a reference, not a call.
 
 ### 4.3 Receiver typing (M6.2, M6.3)
-Types come from declarations of fields, constructor parameters, method parameters, locals, and `new Foo().m()`. If two candidate types exist for one name, use no type. Builtin types are refused. Chained calls `a().b()` are typed from the declared return type of `a` (Med priority).
+Types come from declarations of fields, constructor parameters, method parameters, locals, and `new Foo().m()`. If two candidate types exist for one name, use no type. Builtin types are refused. Chained calls `a().b()` are typed from the declared return type of `a` (Med priority). **M6.2 (C#):** a receiver whose declared type is not a repo type and has no repo implementation is `external` — never a name-only guess (see `docs/architecture/decisions.md`, C# scope rules).
 
 ### 4.4 Override dispatch (M6.7)
 `dispatches_to` (origin `dispatch`) goes from a base or interface method to each same-signature implementation in a subtype. Exclusions:

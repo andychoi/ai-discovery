@@ -146,6 +146,16 @@ def load_sheet(path: Path) -> list[dict]:
         return [row for row in csv.DictReader(f) if (row.get("verdict") or "").strip()]
 
 
+def _edge_key(e: dict) -> tuple:
+    """Identify an edge by where its caller and target are defined (file:line), so renamed qualified
+    names (e.g. C# namespaces fixed in M6.2) still match the graded sheet; names only as a fallback."""
+    if e.get("caller_file"):
+        target = (e["resolved_file"], str(e.get("resolved_line"))) if e.get("resolved_file") else \
+            (e.get("resolved_to") or "",)   # synthesized targets (`external::…`) have no file
+        return (e["caller_file"], str(e.get("caller_line")), *target)
+    return (e["caller"], e["resolved_to"])
+
+
 def precision_check(graded: list[dict], emitted: list[dict],
                     recorded_by_origin: Optional[dict] = None) -> tuple[dict, list[str], list[str]]:
     """Per stratum (language × origin): graded precision at sampling time vs now.
@@ -162,7 +172,7 @@ def precision_check(graded: list[dict], emitted: list[dict],
     """
     from .precision.score import wilson
 
-    now = {(e["caller"], e["resolved_to"]) for e in emitted if e.get("resolved_to")}
+    now = {_edge_key(e) for e in emitted if e.get("resolved_to")}
     empty = {"base_c": 0, "base_n": 0, "cur_c": 0, "cur_n": 0, "wrong_still": [], "correct_gone": 0}
     strata: dict[tuple[str, str], dict] = defaultdict(lambda: {**empty, "wrong_still": []})
     for row in graded:
@@ -170,7 +180,7 @@ def precision_check(graded: list[dict], emitted: list[dict],
         if verdict not in ("correct", "wrong"):
             continue
         s = strata[(row["language"], row["origin"])]
-        edge = (row["caller"], row["resolved_to"])
+        edge = _edge_key(row)
         s["base_n"] += 1
         s["base_c"] += verdict == "correct"
         if edge in now:

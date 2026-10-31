@@ -20,7 +20,7 @@
 - **Out of scope:** encoding (M0.4).
 
 ### M6.2 C# coverage
-- **Status:** In progress (rm/M6.2-csharp-coverage, 2026-10-31)
+- **Status:** Done (ba29c22)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M0.3

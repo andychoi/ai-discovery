@@ -14,9 +14,19 @@ CS_LANGUAGE = Language(tscsharp.language())
 
 # ── Tree-sitter queries ──────────────────────────────────────────────
 
+# M6.2: every type declaration, not only classes. Records and structs behave like classes
+# (constructible, with methods); interfaces and enums become type nodes so bases, search and
+# pages see them (interface members stay out: calls through an interface resolve to the
+# implementations, ADR-0004).
+_TYPE_KINDS = {"class_declaration": "class", "record_declaration": "class", "struct_declaration": "class",
+               "interface_declaration": "interface", "enum_declaration": "enum"}
 _CLASS_QUERY = Query(
     CS_LANGUAGE,
-    "(class_declaration name: (identifier) @class.name) @class.def",
+    """[(class_declaration name: (identifier) @class.name)
+        (record_declaration name: (identifier) @class.name)
+        (struct_declaration name: (identifier) @class.name)
+        (interface_declaration name: (identifier) @class.name)
+        (enum_declaration name: (identifier) @class.name)] @class.def""",
 )
 
 _METHOD_QUERY = Query(
@@ -29,10 +39,13 @@ _CONSTRUCTOR_QUERY = Query(
     "(constructor_declaration name: (identifier) @ctor.name) @ctor.def",
 )
 
+# M6.2: block (`namespace A.B { }`) and file-scoped (`namespace A.B;`) forms, single- or multi-segment.
 _NAMESPACE_QUERY = Query(
     CS_LANGUAGE,
-    "(namespace_declaration name: (qualified_name) @ns.name) @ns.def",
+    """[(namespace_declaration name: [(qualified_name) (identifier)] @ns.name)
+        (file_scoped_namespace_declaration name: [(qualified_name) (identifier)] @ns.name)] @ns.def""",
 )
+_NAMESPACE_TYPES = ("namespace_declaration", "file_scoped_namespace_declaration")
 
 try:
     _ASSIGNMENT_QUERY = Query(
@@ -83,9 +96,13 @@ try:
             function: [
                 (member_access_expression
                     expression: (identifier) @call.obj
-                    name: (identifier) @call.name
+                    name: [(identifier) @call.name (generic_name (identifier) @call.name)]
                 )
                 (identifier) @call.name
+                (generic_name (identifier) @call.name)
+                (conditional_access_expression
+                    (member_binding_expression name: [(identifier) @call.name
+                                                      (generic_name (identifier) @call.name)]))
             ]
         )""",
     )
@@ -101,9 +118,14 @@ try:
             function: [
                 (member_access_expression
                     expression: (_) @site.receiver
-                    name: (identifier) @site.name
+                    name: [(identifier) @site.name (generic_name (identifier) @site.name)]
                 )
                 (identifier) @site.name
+                (generic_name (identifier) @site.name)
+                (conditional_access_expression
+                    condition: (_) @site.receiver
+                    (member_binding_expression name: [(identifier) @site.name
+                                                      (generic_name (identifier) @site.name)]))
             ]
         ) @site.call""",
     )
@@ -149,9 +171,9 @@ class CSharpParser(LanguageParser):
         file_stem = file_path.stem
         fp = str(file_path)
 
-        # Extract namespace prefix (if present)
-        namespace = self._extract_namespace(root)
-        prefix = namespace if namespace else file_stem
+        # Namespace prefix per type: enclosing block namespaces, else the file-scoped one,
+        # else the file stem (M6.2 — the file-scoped form used to fall back to the stem).
+        file_namespace = self._extract_namespace(root)
 
         # File-level usings — attached to every node in the file.
         imports = self._extract_imports(root)
@@ -161,7 +183,9 @@ class CSharpParser(LanguageParser):
         for cls_match in _matches(_CLASS_QUERY, root):
             cls_node = cls_match["class.def"][0]
             class_name = cls_match["class.name"][0].text.decode()
+            prefix = self._namespace_of(cls_node, file_namespace) or file_stem
             qualified = f"{prefix}.{class_name}"
+            kind = _TYPE_KINDS.get(cls_node.type, "class")
 
             # Gather class-level attributes
             attrs = self._extract_attributes(cls_node)
@@ -171,8 +195,10 @@ class CSharpParser(LanguageParser):
             table_attr = next((a for a in attrs if a["name"] == "Table"), None)
             is_db_model = table_attr is not None
 
-            node_type = "db_model" if is_db_model else "class"
+            node_type = "db_model" if is_db_model else kind
             framework_hints: dict = {}
+            if self._is_partial(cls_node):
+                framework_hints["partial"] = True   # fragments merge by full name in the resolver (M6.2)
             if is_db_model and table_attr and table_attr.get("arg"):
                 framework_hints["table"] = table_attr["arg"]
 
@@ -217,6 +243,8 @@ class CSharpParser(LanguageParser):
                 class_code_node.params = list(class_fields)
 
             nodes.append(class_code_node)
+            if kind != "class":
+                continue   # interfaces/enums: type node only (members are signatures or constants)
 
             # Methods inside this class
             for m_match in _matches(_METHOD_QUERY, cls_node):
@@ -304,10 +332,11 @@ class CSharpParser(LanguageParser):
             if not name_nodes:
                 continue
             receiver_nodes = match.get("site.receiver", [])
-            sites.append({
-                "name": name_nodes[0].text.decode(),
-                "receiver": receiver_nodes[0].text.decode() if receiver_nodes else None,
-            })
+            receiver = receiver_nodes[0].text.decode() if receiver_nodes else None
+            if receiver is not None:
+                # `a?.b` / `a!.b` reach the same member as `a.b` (M6.2)
+                receiver = receiver.replace("?.", ".").replace("!.", ".").rstrip("!?")
+            sites.append({"name": name_nodes[0].text.decode(), "receiver": receiver})
         return sites
 
     @staticmethod
@@ -337,6 +366,7 @@ class CSharpParser(LanguageParser):
                     target = child.text.decode()
             if not target:
                 continue
+            is_global = decl.text.lstrip().startswith(b"global")   # `global using X;` (C# 10)
             if alias:
                 module, _, name = target.rpartition(".")
                 out.append({"module": module, "name": name or None, "alias": alias, "static": is_static})
@@ -346,6 +376,8 @@ class CSharpParser(LanguageParser):
                 out.append({"module": module, "name": name, "alias": None, "static": True})
             else:
                 out.append({"module": target, "name": None, "alias": None, "static": False})
+            if is_global:
+                out[-1]["global"] = True
         return out
 
     @staticmethod
@@ -420,10 +452,34 @@ class CSharpParser(LanguageParser):
 
     @staticmethod
     def _extract_namespace(root) -> str | None:
-        """Extract the namespace qualified name from the root node."""
+        """The file-scoped namespace (`namespace A.B;`), if the file declares one."""
         for match in _matches(_NAMESPACE_QUERY, root):
-            return match["ns.name"][0].text.decode()
+            decl = match["ns.def"][0]
+            if decl.type == "file_scoped_namespace_declaration":
+                return match["ns.name"][0].text.decode()
         return None
+
+    @staticmethod
+    def _namespace_of(type_node, file_namespace: str | None) -> str | None:
+        """Full namespace of a type: nested block namespaces (outer first), inside the file-scoped one."""
+        parts: list[str] = []
+        cur = type_node.parent
+        while cur is not None:
+            if cur.type == "namespace_declaration":
+                name = cur.child_by_field_name("name")
+                if name is not None:
+                    parts.append(name.text.decode())
+            cur = cur.parent
+        parts.reverse()
+        if file_namespace and not parts:
+            return file_namespace
+        if file_namespace:
+            parts.insert(0, file_namespace)
+        return ".".join(parts) or None
+
+    @staticmethod
+    def _is_partial(type_node) -> bool:
+        return any(c.type == "modifier" and c.text == b"partial" for c in type_node.children)
 
     @staticmethod
     def _extract_attributes(node) -> list[dict]:

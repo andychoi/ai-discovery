@@ -56,6 +56,24 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
   0.8 to `receiver_global` 0.75; the corpus bars were lowered to 0.75 with a
   note per fixture.
 
+### C# scope rules (M6.2)
+- **Namespaces.** A type's qualified name uses its enclosing block namespaces, else the file-scoped
+  `namespace X;`, else the file stem. Before M6.2 the file-scoped form fell back to the stem, so two
+  `Calculator` classes in different namespaces collided.
+- **Same namespace and `global using`.** A type in the caller's namespace (or a parent namespace) is
+  local (`receiver_typed`). `global using` lines (any `.cs` file, including type-less `GlobalUsings.cs`)
+  and `.csproj` `<Using Include>` items apply to every file of that project (nearest `.csproj` up the tree).
+- **Foreign declared receiver → no guess.** When a receiver's *declared* type (field, property, constructor
+  parameter) is not a repo type and nothing in the repo implements it — `ILogger<T> _logger` — the call is
+  recorded `unresolved_calls reason=external`; the name-only tier never binds it to a same-named repo method.
+  C# only for now: the C# parser emits interface/enum nodes, so "no repo type" is reliable; Java joins with
+  M6.3. Effect on eShop: `global_unique` precision 0.833 → 0.926 on the graded M1.12 sample; unresolved
+  rows 2,525 → 2,851 (honest misses instead of guesses).
+- **Partial classes** merge field types and bases by full name, so a code-behind file sees fields declared
+  in its designer file.
+- Interfaces and enums are type nodes but not class types for receiver typing: a call through an interface
+  still resolves to the implementations (`framework` for one, `dispatch` for 2–24).
+
 ### History (pre-ADR-0004)
 The 2026-05/06 cascade — stage 0 index (1.0), exact (1.0), import-scope
 (0.95), receiver-type (0.93; HIGH-3), short-name contextual 0.95…0.6 with A-3
