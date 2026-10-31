@@ -1,14 +1,13 @@
-"""`discover mcp [serve|install|uninstall|print-config]` (roadmap item M5.3, design/cli-v1.md).
+"""`discover mcp [serve|install|uninstall|print-config]` (roadmap items M5.3, M5.14; design/cli-v1.md).
 
 ``serve`` (the default) runs the stdio MCP server; stdout is reserved for the
-protocol, so nothing else is printed there. ``install`` merges one server entry
-into ``<repo>/.mcp.json`` and ``uninstall`` removes exactly that entry (and the
-file, if nothing else is left in it).
+protocol, so nothing else is printed there. ``install`` writes one server entry
+per client (``--target claude|codex|cursor|vscode|all``, ``--scope project|user``;
+formats in ``mcp/targets``) and ``uninstall`` removes exactly what it wrote.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -25,53 +24,29 @@ MAX_TOKENS_ENV = "DISCOVER_MCP_MAX_TOKENS"
 
 _TOOLS_HELP = ("Tool selection: a profile (default | lean | all), tool names (allowlist), and +name / -name edits, "
                "comma-separated. Also $" + TOOLS_ENV + ".")
+_TARGET_HELP = "Client(s): claude, codex, cursor, vscode, comma-separated, or all."
+_SCOPE_HELP = "project (portable file in the repo, safe to commit) or user (your home config, absolute repo path)."
 
 
 def server_entry(tools: Optional[str] = None) -> dict:
+    """The Claude Code project entry (also what `discover init --mcp` writes)."""
     args = ["mcp", "serve"] + (["--tools", tools] if tools else [])
     return {"command": "discover", "args": args}
 
 
-def _read_mcp_json(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8")) or {}
-    except ValueError as exc:
-        raise DiscoveryError(f"{path} is not valid JSON; fix or remove it first", "config_invalid_value") from exc
-    if not isinstance(data, dict):
-        raise DiscoveryError(f"{path} must contain a JSON object", "config_invalid_value")
-    return data
-
-
 def install_entry(repo: Path, tools: Optional[str] = None) -> tuple[Path, bool]:
-    """Write our server into ``<repo>/.mcp.json``; returns (path, changed). Other servers are kept."""
-    path = repo / ".mcp.json"
-    data = _read_mcp_json(path)
-    servers = data.setdefault("mcpServers", {})
-    if not isinstance(servers, dict):
-        raise DiscoveryError(f"{path}: `mcpServers` must be an object", "config_invalid_value")
-    entry = server_entry(tools)
-    if servers.get(SERVER_NAME) == entry:
-        return path, False
-    servers[SERVER_NAME] = entry
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    return path, True
+    """Claude Code project install (kept for callers of the M5.3 API)."""
+    from ...mcp.targets import install
+
+    res = install("claude", "project", repo, tools=tools)
+    return Path(res["path"]), res["changed"]
 
 
 def uninstall_entry(repo: Path) -> tuple[Path, str]:
-    """Remove our server from ``.mcp.json``. Returns (path, "removed" | "file_removed" | "absent")."""
-    path = repo / ".mcp.json"
-    data = _read_mcp_json(path)
-    servers = data.get("mcpServers")
-    if not isinstance(servers, dict) or SERVER_NAME not in servers:
-        return path, "absent"
-    del servers[SERVER_NAME]
-    if not servers and set(data) == {"mcpServers"}:
-        path.unlink()
-        return path, "file_removed"
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    return path, "removed"
+    from ...mcp.targets import uninstall
+
+    res = uninstall("claude", "project", repo)
+    return Path(res["path"]), res["result"]
 
 
 def _select(tools: Optional[str]):
@@ -83,13 +58,45 @@ def _select(tools: Optional[str]):
         raise DiscoveryError(str(exc), "config_invalid_value", hint="see `discover mcp print-config --help`") from exc
 
 
+def _targets(spec: str) -> list[str]:
+    from ...mcp.targets import TARGETS
+
+    names = [t.strip().lower() for t in spec.split(",") if t.strip()]
+    if names == ["all"]:
+        return list(TARGETS)
+    bad = [t for t in names if t not in TARGETS]
+    if bad or not names:
+        raise DiscoveryError(f"unknown target {', '.join(bad) or '(none)'}", "config_invalid_value",
+                             hint=f"use {', '.join(TARGETS)} or all")
+    return list(dict.fromkeys(names))
+
+
+def _target_error(exc) -> DiscoveryError:
+    return DiscoveryError(str(exc), "config_invalid_value", hint=getattr(exc, "hint", None))
+
+
+def resolve_command(command: Optional[str]) -> tuple[str, Optional[str]]:
+    """(command, note). Default: `discover` when it is on PATH, else this executable's absolute path."""
+    import shutil
+    import sys
+
+    if command:
+        return command, None
+    if shutil.which("discover"):
+        return "discover", None
+    me = Path(sys.argv[0]).resolve() if sys.argv and sys.argv[0] else None
+    if me is not None and me.name.startswith("discover") and me.is_file():
+        return str(me), f"`discover` is not on PATH; wrote the absolute path {me} (pass --command to override)"
+    return "discover", "`discover` is not on PATH; clients may fail to start it (pass --command /abs/path)"
+
+
 def _repo(ctx: typer.Context) -> Path:
-    layout = get_globals(ctx).layout()
-    return layout.repo or get_globals(ctx).repo
+    g = get_globals(ctx)
+    return g.layout().repo or g.repo
 
 
 def register(app: typer.Typer) -> None:
-    mcp_app = typer.Typer(help="MCP server for coding agents (Claude Code, Codex, Cursor, …).",
+    mcp_app = typer.Typer(help="MCP server for coding agents (Claude Code, Codex, Cursor, VS Code, …).",
                           invoke_without_command=True, no_args_is_help=False)
 
     def _serve(ctx: typer.Context, tools: Optional[str], max_tokens: Optional[int]) -> None:
@@ -123,46 +130,109 @@ def register(app: typer.Typer) -> None:
     @handle_errors
     def install(
         ctx: typer.Context,
+        target: str = typer.Option("claude", "--target", "-t", help=_TARGET_HELP),
+        scope: str = typer.Option("project", "--scope", help=_SCOPE_HELP),
         tools: Optional[str] = typer.Option(None, "--tools", help=_TOOLS_HELP),
-        scope: str = typer.Option("project", "--scope", help="project (writes <repo>/.mcp.json)."),
+        command: Optional[str] = typer.Option(None, "--command",
+                                              help="Executable the client runs (default: `discover` if on PATH, "
+                                                   "else the absolute path of this executable)."),
+        force: bool = typer.Option(False, "--force", help="Write even if another discovery server is configured."),
     ) -> None:
-        """Add the ai-discovery server to the project's .mcp.json (other servers are kept)."""
+        """Wire the ai-discovery server into one or more MCP clients (other servers are kept)."""
+        from ...mcp import targets as tg
+
         g = get_globals(ctx)
-        if scope != "project":
-            raise DiscoveryError(f"--scope {scope} is not supported yet", "config_invalid_value",
-                                 hint="use --scope project; per-client and user-level installs arrive with M5.14")
         if tools:
             _select(tools)
-        path, changed = install_entry(_repo(ctx), tools)
-        emit(g, {"path": str(path), "changed": changed, "server": SERVER_NAME, "entry": server_entry(tools)},
-             f"{'Wrote' if changed else 'Already present in'} {path}")
+        repo = _repo(ctx)
+        command, command_note = resolve_command(command)
+        results, skipped = [], []
+        names = _targets(target)
+        for t in names:
+            try:
+                results.append(tg.install(t, scope, repo, tools=tools, command=command, force=force))
+                if command_note:
+                    results[-1]["notes"].append(command_note)
+            except tg.TargetError as exc:
+                if len(names) == 1:
+                    raise _target_error(exc) from exc
+                skipped.append({"target": t, "reason": str(exc), "hint": exc.hint})
+
+        def human(console) -> None:
+            for r in results:
+                verb = "Wrote" if r["changed"] else "Already present in"
+                console.print(f"{r['target']:7} {verb} {r['path']}", highlight=False)
+                for n in r["notes"]:
+                    console.print(f"        [yellow]![/] {n}", highlight=False)
+            for s in skipped:
+                console.print(f"{s['target']:7} [yellow]skipped[/]: {s['reason']}"
+                              + (f" — {s['hint']}" if s["hint"] else ""), highlight=False)
+        emit(g, {"installed": results, "skipped": skipped}, human)
 
     @mcp_app.command("uninstall")
     @handle_errors
-    def uninstall(ctx: typer.Context) -> None:
-        """Remove exactly the entry `install` wrote."""
+    def uninstall(
+        ctx: typer.Context,
+        target: str = typer.Option("claude", "--target", "-t", help=_TARGET_HELP),
+        scope: str = typer.Option("project", "--scope", help=_SCOPE_HELP),
+    ) -> None:
+        """Remove exactly the entries `install` wrote."""
+        from ...mcp import targets as tg
+
         g = get_globals(ctx)
-        path, state = uninstall_entry(_repo(ctx))
-        msg = {"absent": f"No {SERVER_NAME} entry in {path}", "removed": f"Removed {SERVER_NAME} from {path}",
-               "file_removed": f"Removed {path} (it held only {SERVER_NAME})"}[state]
-        emit(g, {"path": str(path), "result": state}, msg)
+        repo = _repo(ctx)
+        results = []
+        names = _targets(target)
+        for t in names:
+            try:
+                results.append(tg.uninstall(t, scope, repo))
+            except tg.TargetError as exc:
+                if len(names) == 1:
+                    raise _target_error(exc) from exc
+                results.append({"target": t, "scope": scope, "result": "not_applicable", "reason": str(exc)})
+        msg = {"absent": "no entry in", "removed": "removed from", "file_removed": "removed (file deleted)",
+               "not_applicable": "not applicable"}
+
+        def human(console) -> None:
+            for r in results:
+                console.print(f"{r['target']:7} {msg[r['result']]} {r.get('path', '')}", highlight=False)
+        emit(g, {"uninstalled": results}, human)
 
     @mcp_app.command("print-config")
     @handle_errors
     def print_config(
         ctx: typer.Context,
+        target: Optional[str] = typer.Option(None, "--target", "-t", help=_TARGET_HELP),
+        scope: str = typer.Option("project", "--scope", help=_SCOPE_HELP),
         tools: Optional[str] = typer.Option(None, "--tools", help=_TOOLS_HELP),
+        command: Optional[str] = typer.Option(None, "--command", help="Executable the client runs."),
     ) -> None:
-        """Print the .mcp.json snippet and the tools it would expose (with schema token cost)."""
+        """Print what `install` would write (per client), the tools exposed and their schema-token cost."""
+        from ...mcp import targets as tg
         from ...mcp.registry import schema_tokens
 
         g = get_globals(ctx)
         specs = _select(tools)
-        snippet = {"mcpServers": {SERVER_NAME: server_entry(tools)}}
-        result = {"config": snippet, "tools": [s.name for s in specs], "schema_tokens": schema_tokens(specs)}
+        repo = _repo(ctx)
+        command, _ = resolve_command(command)
+        snippets = []
+        for t in _targets(target or "claude"):
+            try:
+                snippets.append(tg.snippet(t, scope, repo, tools=tools, command=command))
+            except tg.TargetError as exc:
+                snippets.append({"target": t, "scope": scope, "error": str(exc), "hint": exc.hint})
+        result = {"config": {"mcpServers": {SERVER_NAME: server_entry(tools)}}, "snippets": snippets,
+                  "tools": [s.name for s in specs], "schema_tokens": schema_tokens(specs)}
 
         def human(console) -> None:
-            console.print(json.dumps(snippet, indent=2), highlight=False, markup=False)
+            for s in snippets:
+                if "error" in s:
+                    console.print(f"# {s['target']} ({s['scope']}): {s['error']}", highlight=False, markup=False)
+                    if s.get("hint"):
+                        console.print(f"#   {s['hint']}", highlight=False, markup=False)
+                    continue
+                console.print(f"# {s['target']} ({s['scope']}) → {s['path']}", highlight=False, markup=False)
+                console.print(s["text"], highlight=False, markup=False)
             console.print(f"tools ({len(specs)}, ~{result['schema_tokens']} schema tokens): "
                           + ", ".join(result["tools"]), highlight=False)
         emit(g, result, human)

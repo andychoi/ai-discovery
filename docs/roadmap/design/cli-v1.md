@@ -109,8 +109,8 @@ Incremental by default (ADR-0002).
 ### `discover mcp [serve|install|uninstall|print-config]`
 - **`serve`** (default): stdio MCP server (`design/mcp-and-agents.md`). `--tools a,b,+c,-d` selects tools (profiles `default|lean|all`; also `$DISCOVER_MCP_TOOLS`); `--max-tokens N` caps every response (also `$DISCOVER_MCP_MAX_TOKENS`).
 - **`print-config`:** prints the `.mcp.json` snippet, the selected tools and their schema-token cost.
-- **`install`:** writes the project `.mcp.json` entry (`--tools` is recorded in its args). `--scope project` only; user-level and per-client installs are M5.14.
-- **`uninstall`:** removes exactly what `install` wrote.
+- **`install`:** `--target claude|codex|cursor|vscode|all` (default `claude`), `--scope project|user` (default `project`), `--tools`, `--command` (default `discover` if on PATH, else this executable's absolute path), `--force`. Project scope writes portable files in the repo (`.mcp.json`, `.codex/config.toml`, `.cursor/mcp.json`, `.vscode/mcp.json`); user scope writes `~/.codex/config.toml`, `~/.cursor/mcp.json`, `$COPILOT_HOME/mcp-config.json` with an absolute repo path and a per-repo server name. Claude Code user scope is not edited: the `claude mcp add --scope user …` command is printed. Formats and paths: `src/ai_discovery/mcp/targets/__init__.py`. A second server that launches `discover mcp` (another name, or the enabled Claude Code plugin) is refused without `--force`. `doctor` checks every installed entry launches.
+- **`uninstall`:** same `--target`/`--scope`; removes exactly what `install` wrote (TOML: the marker block only; a file or directory it created is removed when left empty).
 
 ### `discover ask "QUESTION"`
 - **Retrieval:** hybrid FTS5 + vector search over pages, with an answer citing page ids and file:line.

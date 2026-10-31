@@ -221,6 +221,17 @@ def check_old_layout(g: Globals, index: Optional[IndexRef]) -> Check:
 
 # ── repairs ───────────────────────────────────────────────────────────────
 
+def check_mcp_targets(g: Globals) -> list[Check]:
+    """MCP client entries written by `discover mcp install` launch (roadmap item M5.14)."""
+    from ...mcp.targets import installed
+
+    layout = g.layout()
+    found = installed(layout.repo or g.repo)
+    if not found:
+        return [Check("mcp clients", "skip", "no MCP client configured", fix="discover mcp install --target all")]
+    return [Check(f"mcp {r['target']} ({r['scope']})", r["status"], r["detail"], fix=r.get("fix")) for r in found]
+
+
 def _repair(check: Check, yes: bool) -> str:
     from ...core.lock import remove_lock
 
@@ -255,6 +266,7 @@ def run_checks(g: Globals, llm: bool) -> list[Check]:
         lambda: check_index(index),
         lambda: check_lock(index, layout.lock_path),
         lambda: check_old_layout(g, index),
+        lambda: check_mcp_targets(g),
     ]
     if llm:
         checks.append(lambda: check_llm(g))
