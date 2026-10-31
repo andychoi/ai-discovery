@@ -175,7 +175,7 @@
 - **Out of scope:** remote telemetry; savings counterfactual estimates (Exploring).
 
 ### M5.14 Multi-client install targets
-- **Status:** Planned
+- **Status:** In progress (rm/M5.14-mcp-targets, 2026-10-31)
 - **Size:** S
 - **Lane:** E
 - **Depends on:** M5.3
