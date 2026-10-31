@@ -8,9 +8,10 @@ Every function returns the ``Answer`` envelope as a dict (``query/answer.py``)::
 """
 
 from .answer import CONTRACT_VERSION, STATUSES, TRI_STATES, Answer
+from .impact import change_impact, impact
 from .search import search
 from .session import Project
 from .views import context, entity, flow, overview, screen, table
 
 __all__ = ["Answer", "CONTRACT_VERSION", "STATUSES", "TRI_STATES", "Project",
-           "overview", "search", "context", "screen", "entity", "flow", "table"]
+           "overview", "search", "context", "screen", "entity", "flow", "table", "impact", "change_impact"]

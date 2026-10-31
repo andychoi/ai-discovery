@@ -91,6 +91,15 @@ Edge kinds and origins are defined in [ADR-0004](../adr/0004-edge-origin-vocabul
 - `co_change` (M8.1) is **listed separately** and never merged into `items`.
 - If the target is not found, the result is `status:"not_found"` with `did_you_mean`. It is never an empty `ok`.
 
+**As implemented (M5.2, 2026-10-31):**
+- **Seeds per target.** Symbol → its node(s); a class seed also seeds its members. `file:` → all symbols in the file. `endpoint:` → the handler. `screen:` → the backend components and API-route handlers in its screen spec ("what else shares this screen's backend"). `entity:` → the entity class plus its state-transition trigger functions. `table:` → `db_model` classes in the files the table page cites, plus screens reading the table and tables with a foreign key to it (depth 1, `reads_table` weight).
+- **Change impact seeds** are the *innermost* symbols whose span intersects a hunk; a containing class is not added when a member already covers the hunk. Line ranges come from the old side of the diff when its base is the indexed commit (working tree; a range starting at the indexed commit); otherwise both sides are used and `_meta.degraded` gets `diff_base_differs_from_index` or `diff_base_unknown`. Files with no indexed symbols (new, non-code) become `unknowns[kind=unmapped_change]`.
+- **Low-confidence edges** (origin confidence < 0.75: `global_unique`, `sql_regex`) are followed only from a seed, marked `certainty: "possible"`, and never expanded. The same holds for `dynamic_hint` edges.
+- **Scoring:** `pw(seed) = 1`; `pw(n) = Σ over parents p on the previous layer of pw(p) · w(edge_kind) · conf(origin)`; `score = min(1, pw(n) · 0.7^(depth-1))`. A screen adds weight 0.8 × its mapping confidence; a table write or entity transition adds weight 1.0.
+- **Hub dampening:** a non-seed node with in-degree ≥ max(99th percentile, 25) is reported but not expanded.
+- **`unknowns[].kind`** ∈ `hub_not_expanded`, `possible_not_expanded`, `low_confidence_edge_not_followed`, `unresolved_call`, `dynamic_hint`, `unmapped_change`.
+- **Extra output fields:** `certainty` (`likely|possible`) and `page_id` per item; `tests_reached`; `overlays_missing` (evidence kinds with no data yet); `get_change_impact` → `{source, changed_files, changed_symbols, impact, screens_affected, tests_to_run:{status:"unknown", tests, reason}}` until the M8.2 coverage overlay exists.
+
 ## 5. Claude Code plugin (`plugin/`, new; M5.4)
 ```
 plugin/

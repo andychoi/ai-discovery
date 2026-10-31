@@ -169,10 +169,11 @@ class Reader:
         return changed
 
     def meta(self, *, files: Iterable[str] = (), untrusted: Iterable[str] = (),
-             degraded: Iterable[str] = (), evidence: Iterable[str] = ()) -> dict:
+             degraded: Iterable[str] = (), evidence: Iterable[str] = (), known_changed: Iterable[str] = ()) -> dict:
+        """``known_changed``: files the caller already knows changed since the index (e.g. a working-tree diff)."""
         meta = self._base_meta()
         meta["degraded"] = sorted({*meta["degraded"], *degraded})
-        changed = self.changed_files(files)
+        changed = sorted({*self.changed_files(files), *(f for f in known_changed if f)})
         meta["stale_warning"] = (f"{len(changed)} of the files in this answer changed since indexing: "
                                  + ", ".join(changed[:5])) if changed else None
         evidence = sorted(set(evidence))

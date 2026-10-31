@@ -348,7 +348,8 @@ def _as_names(items: Iterable[Any]) -> list[str]:
     for it in items or []:
         if isinstance(it, dict):
             label = (f"{it.get('method', '')} {it.get('path', '')}".strip() if "path" in it and "method" in it
-                     else it.get("name") or it.get("qualified_name") or it.get("id") or str(it))
+                     else it.get("class_name") or it.get("name") or it.get("qualified_name") or it.get("id")
+                     or str(it))
             out.append(label)
         else:
             out.append(str(it))
