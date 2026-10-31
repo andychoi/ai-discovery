@@ -18,6 +18,7 @@ import re
 from typing import Callable, Optional
 
 from . import transport
+from .redact import mask_and_count, mask_secrets, record
 from .providers import get_provider, is_openai_compat
 from .settings import DEFAULTS, LLMSettings
 
@@ -133,6 +134,11 @@ def invoke_text(
         tier = settings.tier_for_doc_type(doc_type)
     provider = settings.provider
     model_id = settings.model(tier)
+    # M1.13: secrets in source excerpts never leave the machine (counted, not a degradation)
+    prompt, masked = mask_secrets(prompt)
+    system, masked_sys = mask_secrets(system)
+    masked += masked_sys
+    record(masked)
     result = _text_call(settings, provider, model_id, prompt, max_tokens,
                         enable_thinking=enable_thinking, num_ctx=num_ctx, system=system)
     text, tok_in, tok_out = result
@@ -147,6 +153,7 @@ def invoke_text(
         # transport.TextResult carries cache counts; plain tuples (test doubles) mean 0
         "cache_read_tokens": getattr(result, "cache_read", 0),
         "cache_write_tokens": getattr(result, "cache_write", 0),
+        "secrets_masked": masked,
     }
 
 
@@ -166,6 +173,9 @@ def converse(
     if doc_type:
         tier = settings.tier_for_doc_type(doc_type)
     provider = settings.provider
+    system = mask_and_count(system)
+    messages = [{**m, "content": [{**b, "text": mask_and_count(b["text"])} if isinstance(b, dict) and "text" in b
+                                  else b for b in m.get("content", [])]} for m in messages]
     if provider == "bedrock":
         model_id = settings.model(tier, "bedrock")
         result = transport.converse_bedrock(model_id, messages, system=system, max_tokens=max_tokens,
@@ -208,6 +218,7 @@ def embed(settings: LLMSettings, text: str, *, provider: Optional[str] = None, p
     spec = get_provider(provider)
     if not spec.embeddings:
         raise _no_embeddings(provider)
+    text = mask_and_count(text)
     if spec.protocol == "bedrock":
         model_id = settings.get("tier.embedding.bedrock_model", DEFAULTS["tier.embedding.bedrock_model"])
         vec = transport.embed_bedrock(model_id, text, settings.region())
@@ -234,7 +245,7 @@ def embed_batch(settings: LLMSettings, texts: list[str], *, provider: Optional[s
         raise _no_embeddings(provider)
     results: list[list[float]] = []
     for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
+        batch = [mask_and_count(t) for t in texts[i:i + batch_size]]
         if spec.protocol != "bedrock":
             if is_openai_compat(provider):
                 embed_url = f"{settings.url(provider).rstrip('/')}/embeddings"
