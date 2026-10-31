@@ -118,7 +118,10 @@ def register(app: typer.Typer) -> None:
         specs = _select(tools or os.environ.get(TOOLS_ENV))
         cap = max_tokens or (int(os.environ[MAX_TOKENS_ENV]) if os.environ.get(MAX_TOKENS_ENV, "").isdigit()
                              else None)
-        run_stdio(Project(g.layout()), specs, max_tokens=cap)
+        from ...mcp.ledger import Ledger
+
+        layout = g.layout()
+        run_stdio(Project(layout), specs, max_tokens=cap, ledger=Ledger.for_state_dir(layout.logs_dir))
 
     @mcp_app.callback()
     def main(ctx: typer.Context) -> None:

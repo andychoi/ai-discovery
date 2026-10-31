@@ -158,10 +158,31 @@ def _render(res: dict[str, Any]):
     return human
 
 
+def _with_agent(base, agent: dict[str, Any]):
+    """Append the MCP tool-use summary (roadmap item M5.13) to the human status output."""
+    def human(console) -> None:
+        base(console)
+        console.print("")
+        if not agent["calls"]:
+            console.print("Agent tool use: no MCP calls recorded yet", highlight=False)
+            return
+        rates = agent["rates"]
+        console.print(f"Agent tool use: {agent['calls']} calls ({agent['first'][:10]} → {agent['last'][:10]}), "
+                      f"clients: {', '.join(f'{k} {v}' for k, v in agent['clients'].items())}", highlight=False)
+        console.print(f"  not found {rates['not_found']:.0%} · unknown {rates['unknown']:.0%} · "
+                      f"truncated {rates['truncated']:.0%}", highlight=False)
+        for name, t in agent["tools"].items():
+            console.print(f"  {name:22} {t['calls']:5} calls  ok {t['ok']}  p50 {t['p50_ms']} ms  "
+                          f"~{t['avg_tokens']} tok  repeats {t['repeat_calls']}", highlight=False)
+    return human
+
+
 def register(app: typer.Typer) -> None:
     @app.command("status")
     @handle_errors
-    def status(ctx: typer.Context) -> None:
+    def status(ctx: typer.Context,
+               agent: bool = typer.Option(False, "--agent",
+                                          help="Also summarise MCP tool use from the local call ledger.")) -> None:
         """Show what is indexed for this repo, how fresh it is, and what it cost."""
         g = get_globals(ctx)
         index, layout = find_index(g)
@@ -170,4 +191,10 @@ def register(app: typer.Typer) -> None:
                 f"no index for {layout.repo or g.repo}", "not_indexed",
                 hint="run `discover scan` (v1 index: <repo>/.discovery/discovery.db)")
         res = collect(index)
-        emit(g, json.loads(json.dumps(res, default=str)), _render(res))
+        human = _render(res)
+        if agent:  # M5.13: local MCP call ledger
+            from ...mcp.ledger import FILE_NAME, summarize
+
+            res["agent"] = summarize(layout.logs_dir / FILE_NAME)
+            human = _with_agent(human, res["agent"])
+        emit(g, json.loads(json.dumps(res, default=str)), human)
