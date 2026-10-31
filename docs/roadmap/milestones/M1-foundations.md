@@ -216,7 +216,7 @@
 - **Out of scope:** new language coverage (M6).
 
 ### M1.13 Mask secrets in source before prompts
-- **Status:** Planned
+- **Status:** In progress (rm/M1.13-mask-secrets, 2026-10-31)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M1.10
