@@ -11,7 +11,7 @@
 - The user's own benchmark observed early-stop on Sonnet (Unverified externally). Mitigation: skills that impose a **multi-tier trace protocol** with explicit stop rules, fed by a structured impact list rather than text dumps.
 
 ## 2. Server
-- **Package:** `mcp/` (new), using the official `mcp` Python SDK (verify the current package name and version at M5.3).
+- **Package:** `src/ai_discovery/mcp/`, using the official `mcp` Python SDK **2.x** (`mcp>=2.3,<3`; low-level `Server` with `on_list_tools`/`on_call_tool`; 2.x renamed `FastMCP` to `MCPServer`, which we do not use). Only `mcp/server.py` imports the SDK; `ToolSpec`, the registry and the middleware are SDK-free.
 - **Transport:** stdio, via `discover mcp serve`.
 - **Data access:** every tool calls `query/` (M5.1) and reads `current_scan`, read-only.
 - **Middleware**, in order:
@@ -51,7 +51,9 @@ Opt-in: `get_table`, `get_symbol_source` (exact line bounds, re-checked against 
 | `get_verification_plan` | M5.15 | `{diff?, range?, working_tree?, plan_path?}` | `{build:[cmd], tests:[cmd], impacted_tests, smoke_targets, unplanned_impact}`; each command labelled `detected\|configured` |
 | `record_finding` / `set_finding_status` / `add_note` / `propose_decision` | M5.10 | target + text + evidence | `{id, signer_kind:"agent", status}` — never alters graph facts |
 
-Profiles (M5.3): `default` (8 above), `lean` (≤ 5: `search`, `get_context`, `get_impact`, `get_change_impact`, `get_screen`), `all`.
+Profiles (M5.3): `default` (8 above), `lean` (≤ 5: `search`, `get_context`, `get_impact`, `get_change_impact`, `get_screen`), `all`. Measured tool-list cost (≈ 4 chars/token, M5.3): lean ≈ 1.1k, default ≈ 1.4k, all ≈ 1.8k tokens (`discover mcp print-config --tools X` prints it).
+
+**Implementation notes (M5.3):** every `ToolSpec` declares a `Budget(max_tokens, shed)`; a contract test fails without one. Per-tool caps: overview/search 4k, context 6k, screen/entity/flow/table/path 5k, impact/change impact/symbol source 8k; `--max-tokens` (or `$DISCOVER_MCP_MAX_TOKENS`) overrides all. Shedding keeps the ranked head of each list (binary search for the longest prefix that fits), merges the cut into `omitted` with the true total, and clips strings > 4000 chars only as a last resort (`degraded: strings_clipped`). Arguments are validated against the tool's JSON schema; failures return `status: unknown, reason: bad_arguments`. Unknown or not-enabled tools return `reason: unknown_tool` with the available list. Tools carry `readOnlyHint: true`. `mcp.tools` / `mcp.max_tokens` config keys wait on a config-v2 section (lane A); until then use `--tools` / `$DISCOVER_MCP_TOOLS`.
 
 **Field-naming rule:** no certainty words. Use `may_break` / `may_affect`, never `will_break` (repowise 0.47.0 lesson).
 

@@ -140,11 +140,13 @@ def test_detection_is_printed(repo: Path) -> None:
 
 # ── MCP entry ─────────────────────────────────────────────────────────────
 
-def test_mcp_flag_skipped_until_server_exists(repo: Path) -> None:
+def test_mcp_flag_writes_entry_now_that_server_exists(repo: Path) -> None:
+    # M5.3 shipped `discover mcp`, so `init --mcp` writes the entry instead of a "not available yet" note.
     result = runner.invoke(app, ["--json", "-C", str(repo), "init", "--yes", "--mcp"])
     assert result.exit_code == 0
-    assert any("M5.3" in n for n in _json(result)["notes"])
-    assert not (repo / ".mcp.json").exists()
+    assert not any("M5.3" in n for n in _json(result)["notes"])
+    servers = json.loads((repo / ".mcp.json").read_text())["mcpServers"]
+    assert servers["ai-discovery"] == {"command": "discover", "args": ["mcp", "serve"]}
 
 
 def test_write_mcp_entry_merges(tmp_path: Path) -> None:

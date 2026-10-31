@@ -44,7 +44,7 @@ def test_keyless_scan_writes_v1_layout(repo: Path) -> None:
     c = out["counts"]
     assert c["files"] > 0 and c["symbols"] > 0 and c["edges"] > 0 and c["screens"] > 0
     assert c["docs"] == 0 and out["spend"]["usd"] == 0  # no LLM in keyless mode
-    assert out["next"] == ["discover serve", "discover scan --prose"]
+    assert out["next"] == ["discover serve", "discover mcp install"]   # mcp exists since M5.3
     conn = sqlite3.connect(repo / ".discovery" / "discovery.db")
     assert conn.execute("SELECT scan_id FROM current_scan").fetchone()[0] == out["scan_id"]
 
@@ -84,7 +84,7 @@ def test_quiet_human_output_has_end_panel(repo: Path) -> None:
     res = runner.invoke(app, ["-q", "--no-color", "-C", str(repo), "scan"])
     assert res.exit_code == 0, res.output
     text = " ".join(res.stdout.split())
-    assert "scan completed" in text and "What's next:" in text and "discover scan --prose" in text
+    assert "scan completed" in text and "What's next:" in text and "discover mcp install" in text
     assert "Phase 6" not in res.stdout  # pipeline chatter silenced by -q
 
 

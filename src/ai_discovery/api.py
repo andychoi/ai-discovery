@@ -14,8 +14,9 @@ not_indexed | unknown; ``data``; ``totals``; ``truncated``; ``omitted``;
 ``meta`` with freshness and ``content_trust``).
 """
 
-from .query import (CONTRACT_VERSION, STATUSES, TRI_STATES, Answer, Project, change_impact, context, entity, flow,
-                    impact, overview, screen, search, table)
+from .query import (CONTRACT_VERSION, STATUSES, TRI_STATES, Answer, Project, call_path, change_impact, context,
+                    entity, flow, impact, overview, screen, search, symbol_source, table)
 
 __all__ = ["CONTRACT_VERSION", "STATUSES", "TRI_STATES", "Answer", "Project",
-           "overview", "search", "context", "screen", "entity", "flow", "table", "impact", "change_impact"]
+           "overview", "search", "context", "screen", "entity", "flow", "table", "impact", "change_impact",
+           "symbol_source", "call_path"]

@@ -11,7 +11,9 @@ from .answer import CONTRACT_VERSION, STATUSES, TRI_STATES, Answer
 from .impact import change_impact, impact
 from .search import search
 from .session import Project
+from .source import call_path, symbol_source
 from .views import context, entity, flow, overview, screen, table
 
 __all__ = ["Answer", "CONTRACT_VERSION", "STATUSES", "TRI_STATES", "Project",
-           "overview", "search", "context", "screen", "entity", "flow", "table", "impact", "change_impact"]
+           "overview", "search", "context", "screen", "entity", "flow", "table", "impact", "change_impact",
+           "symbol_source", "call_path"]

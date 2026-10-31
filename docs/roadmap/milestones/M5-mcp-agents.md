@@ -35,7 +35,7 @@
 - **Out of scope:** coverage-based test selection (M8.2).
 
 ### M5.3 MCP server
-- **Status:** In progress (rm/M5.3-mcp-server, 2026-10-31)
+- **Status:** Done (c2164d7)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.1

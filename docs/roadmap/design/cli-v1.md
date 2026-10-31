@@ -107,8 +107,9 @@ Incremental by default (ADR-0002).
 - **Exposure:** a non-loopback host prints a warning, and also requires `--allow-remote`.
 
 ### `discover mcp [serve|install|uninstall|print-config]`
-- **`serve`** (default): stdio MCP server (`design/mcp-and-agents.md`). `--tools a,b,+c,-d` selects tools.
-- **`install`:** writes the project `.mcp.json` entry. `--scope project|user`.
+- **`serve`** (default): stdio MCP server (`design/mcp-and-agents.md`). `--tools a,b,+c,-d` selects tools (profiles `default|lean|all`; also `$DISCOVER_MCP_TOOLS`); `--max-tokens N` caps every response (also `$DISCOVER_MCP_MAX_TOKENS`).
+- **`print-config`:** prints the `.mcp.json` snippet, the selected tools and their schema-token cost.
+- **`install`:** writes the project `.mcp.json` entry (`--tools` is recorded in its args). `--scope project` only; user-level and per-client installs are M5.14.
 - **`uninstall`:** removes exactly what `install` wrote.
 
 ### `discover ask "QUESTION"`
