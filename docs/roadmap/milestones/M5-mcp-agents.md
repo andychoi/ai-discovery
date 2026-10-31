@@ -73,7 +73,7 @@
 - **Out of scope:** editing code.
 
 ### M5.6 `discover-change-plan` skill
-- **Status:** Planned
+- **Status:** In progress (rm/M5.6-change-plan, 2026-10-31)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.5
