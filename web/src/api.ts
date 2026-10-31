@@ -40,3 +40,38 @@ export async function getJson<T>(path: string, fetcher: typeof fetch = fetch): P
   if (!isAnswer(body)) throw new Error(`unexpected response shape for ${path}`);
   return body as Answer<T>;
 }
+
+/** The server refused a write: remote mode needs the bearer token printed by `discover serve`. */
+export class AuthRequired extends Error {
+  constructor() {
+    super("this server requires a token for writes (printed by `discover serve --allow-remote`)");
+    this.name = "AuthRequired";
+  }
+}
+
+export async function postJson<T>(path: string, body: unknown, token: string | null = null,
+                                  fetcher: typeof fetch = fetch): Promise<Answer<T>> {
+  const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetcher(`/api/v1${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+  if (res.status === 401) throw new AuthRequired();
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const err = (await res.json()) as { detail?: unknown };
+      if (typeof err.detail === "string") detail = err.detail;
+    } catch { /* keep status text */ }
+    throw new Error(detail);
+  }
+  const parsed: unknown = await res.json();
+  if (!isAnswer(parsed)) throw new Error(`unexpected response shape for ${path}`);
+  return parsed as Answer<T>;
+}
+
+/** Validate a note before sending: trimmed, non-empty, within the server's 20,000-char limit. */
+export function noteError(body: string): string | null {
+  const text = body.trim();
+  if (!text) return "Write something first.";
+  if (text.length > 20000) return "Notes are limited to 20,000 characters.";
+  return null;
+}

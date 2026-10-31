@@ -101,10 +101,11 @@ def test_federate_rejects_missing_dirs(tmp_path: Path) -> None:
     assert "Not a directory" in _text(result)
 
 
-def test_view_without_scan_fails(tmp_path: Path) -> None:
+def test_view_is_removed_and_points_to_serve(tmp_path: Path) -> None:
+    # M4.6 retired the viewer; old invocations get a pointer instead of a crash.
     result = _invoke("view", "-p", "nope", "-o", str(tmp_path / "o"), "--no-open")
-    assert result.exit_code == 1
-    assert "discover scan" in _text(result)
+    assert result.exit_code == 2
+    assert "discover serve" in _text(result)
 
 
 def test_test_llm_with_all_probes_skipped() -> None:

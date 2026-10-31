@@ -337,63 +337,12 @@ def federate(
         console.print(f"  {name}: {path}")
 
 
-@app.command()
-def view(
-    project_slug: str = typer.Option(..., "--project-slug", "-p", help="Project slug whose scan output to serve."),
-    output: Path = typer.Option(
-        Path("./data/discovery-output"), "--output", "-o",
-        help="Output dir (must match the scan's --output).",
-    ),
-    docs_root: Path = typer.Option(
-        Path("./data"), "--docs-root",
-        help="Root containing rendered markdown at {docs_root}/{slug}/<BUCKET>/*.md.",
-    ),
-    host: str = typer.Option("127.0.0.1", "--host", help="Bind host (default: localhost-only)."),
-    port: int = typer.Option(8765, "--port", help="Bind port."),
-    no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open a browser window."),
-) -> None:
-    """Serve a local HTML quality dashboard for a completed `discover scan`.
-
-    Renders markdown, mermaid, BPMN, and DMN diagrams client-side via CDN
-    libraries — requires internet on first load. Server is read-only.
-
-    Examples:
-
-        discover view -p todoapp
-        discover view -p todoapp --port 9000 --no-open
-    """
-    import webbrowser
-
-    from ai_discovery.viewer.server import ViewerContext, make_server
-
-    slug_output = _layout(output, project_slug, docs_root).state_dir.resolve()
-    if not slug_output.is_dir():
-        console.print(
-            f"[red]No scan output at {slug_output}.[/] Run `discover scan` first, "
-            f"or check --output/--project-slug."
-        )
-        raise typer.Exit(code=1)
-
-    ctx = ViewerContext(slug=project_slug, output_dir=output, docs_root=docs_root)
-    server = make_server(ctx, host=host, port=port)
-    url = f"http://{host}:{port}/"
-    console.print(f"[bold green]discover view[/] serving {project_slug} at [cyan]{url}[/]")
-    console.print(f"  output_dir={slug_output}")
-    if ctx.slug_docs_root.is_dir():
-        console.print(f"  docs_root={ctx.slug_docs_root}")
-    else:
-        console.print(f"  docs_root=[yellow]{ctx.slug_docs_root}[/] [dim](missing — markdown viewer disabled)[/]")
-    console.print("  [dim]Ctrl+C to stop[/]")
-
-    if not no_open:
-        webbrowser.open(url)
-
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        console.print("\n[dim]Shutting down…[/]")
-    finally:
-        server.server_close()
+@app.command(hidden=True, context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def view(ctx: typer.Context) -> None:
+    """Removed: the quality dashboard was replaced by the wiki (`discover serve`)."""
+    console.print("[yellow]`discover view` was removed (roadmap M4.6).[/] "
+                  "Run [bold]discover serve[/] for the wiki: pages, notes, search, freshness and status.")
+    raise typer.Exit(code=2)
 
 
 @app.command("test-llm")

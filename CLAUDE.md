@@ -291,7 +291,7 @@ Five custom skills accelerate development. The first three help build the discov
 
 ### Task: "I ran `discover scan` — how do I check quality?"
 
-1. Open the viewer: `discover view -p <slug>` — quality targets, confidence histogram, weakest-docs ranking, artifact presence, clickable diagrams
+1. Open the wiki: `discover serve` — pages with confidence and freshness badges, citations with source view, search, notes; `discover status` for scan health
 2. Spot-check one entity end-to-end: `discover impact <Entity> -p <slug>`
 3. Probe coverage gaps: `discover chat -p <slug>`
 4. Audit low-confidence edges: `discover query "SELECT ... FROM call_edge WHERE confidence < 0.65 ..."`

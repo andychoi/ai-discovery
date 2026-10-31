@@ -6,6 +6,7 @@ import { docHref, navigate } from "../router";
 import { loadMermaid } from "../vendors";
 import { getJson } from "../api";
 import { Link } from "./Link";
+import { NoteForm } from "./NoteForm";
 import { Empty, ErrorState, Loading, NotIndexed } from "./States";
 
 interface Citation { path: string; line_start: number; line_end: number }
@@ -71,7 +72,8 @@ function SourcePanel({ cite, onClose }: { cite: Citation; onClose: () => void })
 }
 
 export function PageView({ pageId }: { pageId: string }) {
-  const loaded = useAnswer<PageData>(`/pages/${encodeURIComponent(pageId)}`);
+  const [version, setVersion] = useState(0);
+  const loaded = useAnswer<PageData>(`/pages/${encodeURIComponent(pageId)}`, version);
   const [html, setHtml] = useState<string>("");
   const [cite, setCite] = useState<Citation | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -131,9 +133,14 @@ export function PageView({ pageId }: { pageId: string }) {
           <p className="badges">
             {confidenceBadge(p.confidence)}
             {p.freshness === "stale"
-              ? <span className="badge warn" title={p.stale_reason ?? ""}>stale — {p.stale_reason}</span>
+              ? <span className="badge warn" title={p.stale_reason ?? ""}>stale</span>
               : <span className="badge ok">fresh</span>}
           </p>
+          {p.freshness === "stale" && (
+            <p className="banner warn" role="status">
+              The code behind this page changed since the scan ({p.stale_reason}). Run <code>discover scan</code> to refresh it.
+            </p>
+          )}
           {p.confidence < 0.5 && <p className="banner warn">This page is a stub: generation failed, only structure is shown.</p>}
         </header>
         <div className="markdown" ref={body} onClick={onBodyClick} dangerouslySetInnerHTML={{ __html: html }} />
@@ -154,6 +161,7 @@ export function PageView({ pageId }: { pageId: string }) {
         {p.notes.length ? (
           <ul className="notes">{p.notes.map((n) => <li key={n.id}><p>{n.body}</p><p className="muted">{n.author ?? "anonymous"} · {n.created_at.slice(0, 10)}</p></li>)}</ul>
         ) : <Empty>No notes yet.</Empty>}
+        <NoteForm pageId={p.page_id} onAdded={() => setVersion((v) => v + 1)} />
       </aside>
       {cite && <SourcePanel cite={cite} onClose={() => setCite(null)} />}
     </div>

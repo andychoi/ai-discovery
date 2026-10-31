@@ -96,23 +96,7 @@ def test_legacy_read_falls_back_to_pre_track3_tree(tmp_path: Path) -> None:
     assert ProjectLayout.legacy(tmp_path / "out", "shop").state_dir == tmp_path / "out" / "output-shop"
 
 
-# ── readers agree with the writer (fixes the viewer/chat path bugs) ───────
-
-def test_viewer_finds_db_and_docs_of_a_current_scan(tmp_path: Path) -> None:
-    from ai_discovery.viewer.dashboard import discover_artifacts, doc_tree
-    from ai_discovery.viewer.server import ViewerContext
-
-    writer = ProjectLayout.legacy(tmp_path / "out", "shop", tmp_path / "docs").ensure()
-    sqlite3.connect(writer.db_path).close()
-    (writer.docs_dir / "ASIS").mkdir(parents=True)
-    (writer.docs_dir / "ASIS" / "a.md").write_text("---\ndoc_id: a\n---\n# A\n")
-
-    db = next(a for a in discover_artifacts(tmp_path / "out", "shop") if a.key == "db")
-    assert db.exists and db.path == writer.db_path
-    assert "ASIS" in doc_tree(tmp_path / "docs", "shop")
-    ctx = ViewerContext(slug="shop", output_dir=tmp_path / "out", docs_root=tmp_path / "docs")
-    assert ctx.slug_docs_root == writer.docs_dir.resolve()
-
+# ── readers agree with the writer (fixes the chat path bugs) ──────────────
 
 def test_chat_and_ingest_read_the_docs_root_the_scan_writes(tmp_path: Path) -> None:
     from ai_discovery.cli import _layout

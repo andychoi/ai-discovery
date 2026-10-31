@@ -446,20 +446,9 @@ discover ingest-docs ./docs -p myproject \
 
 Stale/duplicate files are ingested with `status=Deprecated` (not skipped). Subsequent runs fetch the next free doc ID to avoid collisions.
 
-### `discover view` — Local Quality Dashboard
+### `discover view` — removed
 
-Serve a read-only HTML dashboard for a completed scan — quality targets, confidence histogram, weakest-docs ranking, artifact presence, and client-rendered markdown/Mermaid/BPMN/DMN diagrams:
-
-```bash
-discover view -p myproject                  # serves on http://127.0.0.1:8765
-discover view -p myproject --port 9000 --no-open
-```
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--host` | Bind host | `127.0.0.1` |
-| `--port` | Bind port | `8765` |
-| `--no-open` | Don't auto-open a browser window | (opens) |
+The old quality dashboard was retired in v1 (roadmap M4.6). Use `discover serve` for the wiki — pages with confidence and freshness badges, citations with a source view, search, human notes — and `discover status` for scan health.
 
 ### `discover test-llm` — Probe LLM Connectivity
 

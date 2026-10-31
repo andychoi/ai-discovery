@@ -1,30 +1,25 @@
 # Exploring Scan Results — Navigation & Quality Checks
 
-Guide for navigating the output of `discover scan` and assessing the quality of the generated artifacts. Fastest path is `discover view` (below); for deeper digging, four commands (`view`, `chat`, `impact`, `query`) work against the same artifacts.
+Guide for navigating the output of `discover scan` and assessing its quality. Fastest path is the wiki, `discover serve` (below). The older `chat` / `impact` / `query` recipes further down use the legacy CLI and are kept until M2.7 replaces them.
 
 ---
 
-## The fast path: `discover view`
+## The fast path: `discover serve`
 
 ```bash
-discover view -p <slug>    # → opens http://127.0.0.1:8765 in your browser
+discover serve            # → http://127.0.0.1:7341 (add --open to launch a browser)
+discover status           # scan history, spend, degradations, stale pages
 ```
 
-A local read-only web viewer that shows, in one page:
+The wiki (React SPA bundled in the wheel, works offline) shows:
 
-- **Quality targets** — pass/fail vs the CLAUDE.md thresholds (≥85% call-resolution, ≤15% low-confidence)
-- **Confidence histogram** — 10-bucket distribution of `call_edges.confidence`
-- **Weakest docs** — `generated_docs` ranked by `(unverified_claims DESC, confidence ASC)`, with one-click open
-- **Artifact presence** — which of the 11 canonical artifacts (DB, FSM JSON, cross-links, BPMN dir, …) actually got written
-- **Docs tree** — every rendered markdown, with confidence / unverified-claim chips
-- **Diagram viewers** — mermaid, BPMN, and DMN render inline (CDN libraries; requires internet on first load)
-- **Node drill-down + search** — search nodes by name and open a per-node detail page (callers/callees, summary) via `/search` and `/node/<qualified_name>`
+- **Docs tree** — screens, domains, modules, entities, tables, flows
+- **Page reader** — markdown and diagrams, a **confidence badge** (structure / model-written / stub) and a **freshness badge**; a stale page says which file changed and to run `discover scan`
+- **Citations** — `file:line` links that open the source next to the page
+- **Backlinks** and **search** (⌘K)
+- **Notes** — add a note to any page; notes are stored in the index and survive rescans (writes are local-only unless `discover serve --allow-remote`, which prints a token)
 
-```bash
-discover view -p myproj --port 9000 --no-open   # custom port, don't auto-open
-```
-
-For programmatic use, `GET /api/summary` returns the same dashboard data as JSON.
+The quality widgets of the retired `discover view` dashboard (confidence histogram, weakest docs) are a follow-up for the wiki's status page.
 
 ---
 
@@ -162,7 +157,7 @@ It's a portable, diffable VIEW of the discovery DB — commit it so teammates an
 SLUG=myproj
 
 # (a) Open the viewer — quality targets + weakest-docs ranking in one glance
-discover view -p $SLUG
+discover serve            # wiki for the current scan
 
 # (b) Pick one important entity, validate its full trace
 discover impact Order -p $SLUG -f /tmp/order-impact.md
@@ -197,8 +192,8 @@ If an audit reveals the low-confidence edge ratio exceeds 15%, that's a signal t
 
 ## Known Gaps
 
-- `discover view` renders diagrams via CDN libraries (mermaid, bpmn-js, dmn-js). First load requires internet; subsequent loads are browser-cached.
-- `discover view` is read-only — for editing/authoring BPMN/DMN you still need Camunda Modeler or bpmn.io.
+- `discover serve` bundles its diagram libraries (mermaid, bpmn-js, dmn-js) and works offline.
+- The wiki renders diagrams read-only — for editing/authoring BPMN/DMN you still need Camunda Modeler or bpmn.io.
 - `discover chat` re-indexes on every invocation unless `--no-index` is passed; for repeated sessions on the same scan, add `--no-index`.
 
 ---

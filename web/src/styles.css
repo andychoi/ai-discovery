@@ -132,3 +132,17 @@ kbd { border: 1px solid var(--border); border-radius: 4px; padding: 0 0.3rem; fo
 .snippet mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .results { list-style: none; padding: 0; }
 .results li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+
+/* M4.6 notes form */
+.note-form { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.note-form textarea, .note-form input { font: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--border);
+  border-radius: 6px; background: transparent; color: inherit; min-width: 0; }
+.note-form textarea { resize: vertical; }
+.note-row { display: flex; gap: 0.4rem; }
+.note-row input { flex: 1; }
+.note-form button { font: inherit; padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid var(--border);
+  background: transparent; color: inherit; cursor: pointer; }
+.note-form button:disabled { opacity: 0.5; cursor: default; }
+.note-error { color: var(--warn-fg); margin: 0; }
+.small { font-size: 0.78rem; margin: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
