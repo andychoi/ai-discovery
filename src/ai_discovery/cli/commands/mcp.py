@@ -25,6 +25,8 @@ MAX_TOKENS_ENV = "DISCOVER_MCP_MAX_TOKENS"
 _TOOLS_HELP = ("Tool selection: a profile (default | lean | all), tool names (allowlist), and +name / -name edits, "
                "comma-separated. Also $" + TOOLS_ENV + ".")
 _TARGET_HELP = "Client(s): claude, codex, cursor, vscode, comma-separated, or all."
+_INSTR_HELP = ("Also write the generated agent instructions block into AGENTS.md (agents), CLAUDE.md (claude), "
+               "both, or none (default).")
 _SCOPE_HELP = "project (portable file in the repo, safe to commit) or user (your home config, absolute repo path)."
 
 
@@ -90,6 +92,15 @@ def resolve_command(command: Optional[str]) -> tuple[str, Optional[str]]:
     return "discover", "`discover` is not on PATH; clients may fail to start it (pass --command /abs/path)"
 
 
+def _instruction_files(spec: Optional[str]) -> list[str]:
+    from ...mcp.instructions import which_files
+
+    try:
+        return which_files(spec)
+    except ValueError as exc:
+        raise DiscoveryError(str(exc), "config_invalid_value") from exc
+
+
 def _repo(ctx: typer.Context) -> Path:
     g = get_globals(ctx)
     return g.layout().repo or g.repo
@@ -137,6 +148,7 @@ def register(app: typer.Typer) -> None:
                                               help="Executable the client runs (default: `discover` if on PATH, "
                                                    "else the absolute path of this executable)."),
         force: bool = typer.Option(False, "--force", help="Write even if another discovery server is configured."),
+        instructions: Optional[str] = typer.Option(None, "--instructions", help=_INSTR_HELP),
     ) -> None:
         """Wire the ai-discovery server into one or more MCP clients (other servers are kept)."""
         from ...mcp import targets as tg
@@ -144,7 +156,21 @@ def register(app: typer.Typer) -> None:
         g = get_globals(ctx)
         if tools:
             _select(tools)
+        files = _instruction_files(instructions)
         repo = _repo(ctx)
+        written = []
+        if files:
+            from ...mcp import instructions as ins
+            from ...query.session import Project
+
+            try:
+                block = ins.render(Project(g.layout()))
+            except ins.NotIndexed as exc:
+                raise DiscoveryError(str(exc), "not_indexed", hint="run `discover scan`, then re-run this install") \
+                    from exc
+            for which in files:
+                path, state = ins.write(repo, block, which)
+                written.append({"file": str(path), "result": state, "tokens": ins.tokens(block)})
         command, command_note = resolve_command(command)
         results, skipped = [], []
         names = _targets(target)
@@ -167,7 +193,9 @@ def register(app: typer.Typer) -> None:
             for s in skipped:
                 console.print(f"{s['target']:7} [yellow]skipped[/]: {s['reason']}"
                               + (f" — {s['hint']}" if s["hint"] else ""), highlight=False)
-        emit(g, {"installed": results, "skipped": skipped}, human)
+            for w in written:
+                console.print(f"instructions {w['result']}: {w['file']} (~{w['tokens']} tokens)", highlight=False)
+        emit(g, {"installed": results, "skipped": skipped, "instructions": written}, human)
 
     @mcp_app.command("uninstall")
     @handle_errors
@@ -175,12 +203,23 @@ def register(app: typer.Typer) -> None:
         ctx: typer.Context,
         target: str = typer.Option("claude", "--target", "-t", help=_TARGET_HELP),
         scope: str = typer.Option("project", "--scope", help=_SCOPE_HELP),
+        instructions: Optional[str] = typer.Option(None, "--instructions",
+                                                   help="Also remove the instructions block from AGENTS.md (agents), "
+                                                        "CLAUDE.md (claude) or both."),
     ) -> None:
         """Remove exactly the entries `install` wrote."""
         from ...mcp import targets as tg
 
         g = get_globals(ctx)
         repo = _repo(ctx)
+        removed = []
+        files = _instruction_files(instructions)
+        if files:
+            from ...mcp import instructions as ins
+
+            for which in files:
+                path, state = ins.remove(repo, which)
+                removed.append({"file": str(path), "result": state})
         results = []
         names = _targets(target)
         for t in names:
@@ -196,7 +235,9 @@ def register(app: typer.Typer) -> None:
         def human(console) -> None:
             for r in results:
                 console.print(f"{r['target']:7} {msg[r['result']]} {r.get('path', '')}", highlight=False)
-        emit(g, {"uninstalled": results}, human)
+            for w in removed:
+                console.print(f"instructions {w['result']}: {w['file']}", highlight=False)
+        emit(g, {"uninstalled": results, "instructions": removed}, human)
 
     @mcp_app.command("print-config")
     @handle_errors
@@ -206,6 +247,8 @@ def register(app: typer.Typer) -> None:
         scope: str = typer.Option("project", "--scope", help=_SCOPE_HELP),
         tools: Optional[str] = typer.Option(None, "--tools", help=_TOOLS_HELP),
         command: Optional[str] = typer.Option(None, "--command", help="Executable the client runs."),
+        instructions: bool = typer.Option(False, "--instructions",
+                                          help="Also print the generated agent instructions block."),
     ) -> None:
         """Print what `install` would write (per client), the tools exposed and their schema-token cost."""
         from ...mcp import targets as tg
@@ -223,6 +266,15 @@ def register(app: typer.Typer) -> None:
                 snippets.append({"target": t, "scope": scope, "error": str(exc), "hint": exc.hint})
         result = {"config": {"mcpServers": {SERVER_NAME: server_entry(tools)}}, "snippets": snippets,
                   "tools": [s.name for s in specs], "schema_tokens": schema_tokens(specs)}
+        if instructions:
+            from ...mcp import instructions as ins
+            from ...query.session import Project
+
+            try:
+                block = ins.render(Project(g.layout()))
+                result["instructions"] = {"text": block, "tokens": ins.tokens(block)}
+            except ins.NotIndexed as exc:
+                result["instructions"] = {"error": str(exc)}
 
         def human(console) -> None:
             for s in snippets:
@@ -235,6 +287,9 @@ def register(app: typer.Typer) -> None:
                 console.print(s["text"], highlight=False, markup=False)
             console.print(f"tools ({len(specs)}, ~{result['schema_tokens']} schema tokens): "
                           + ", ".join(result["tools"]), highlight=False)
+            if "instructions" in result:
+                ins_ = result["instructions"]
+                console.print(ins_.get("text") or f"# instructions: {ins_['error']}", highlight=False, markup=False)
         emit(g, result, human)
 
     app.add_typer(mcp_app, name="mcp")

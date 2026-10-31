@@ -137,7 +137,7 @@
 - **Out of scope:** transcript mining; auto-accepting agent decisions.
 
 ### M5.11 Generated agent instructions block (AGENTS.md / CLAUDE.md)
-- **Status:** In progress (rm/M5.11-agent-instructions, 2026-10-31)
+- **Status:** Done (8960440)
 - **Size:** S
 - **Lane:** E
 - **Depends on:** M5.1
