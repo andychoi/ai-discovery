@@ -497,3 +497,6 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q` → 1749 passed, 2 skipped; `test ! -d src/ai_discovery/viewer` ok; `npx vitest run` → 15 passed; `tsc --noEmit` clean; `python scripts/build_web.py` → ok (79 files, no external loads). Manual: `discover serve` on the fixture → POST note 200, note returned on `/api/v1/pages/table:orders`, deep link `/docs/table:orders` 200, built bundle contains the form and the stale hint. Not checked visually in a browser.
 - **Landing note:** the squash commit 2424420 carried only the viewer deletion (a failed `git add` left the rest unstaged), so main briefly imported the deleted package; d383355 landed the remaining changes the same session — suite green at d383355 (1749 passed).
 - **Follow-ups:** M5.10 (agent write-back) is unblocked — extend `page_notes` with signer kind / client / session and show agent notes distinctly in this rail; `/status` quality widgets (lane D). No repowise code was copied or translated.
+
+## 2026-10-31 — migration reservation
+- `m0004_annotations` reserved for M5.10 (agent/human annotations: findings, notes, proposed decisions; not scan-scoped).

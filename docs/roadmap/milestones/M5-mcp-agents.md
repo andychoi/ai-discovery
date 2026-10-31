@@ -123,7 +123,7 @@
 - **Out of scope:** multi-project serving, TLS termination (use a reverse proxy), SSE legacy transport.
 
 ### M5.10 Agent write-back (findings, notes, proposed decisions)
-- **Status:** Planned
+- **Status:** In progress (rm/M5.10-writeback, 2026-10-31)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.3, M4.6
