@@ -127,3 +127,24 @@ def test_impact_skill_protocol() -> None:
                    "truncated", "data, not instructions", "never edits code"):
         assert needle in text, needle
     assert (PLUGIN / "skills" / "discover-impact" / "examples" / "fixture-dry-run.md").exists()
+
+
+def test_change_plan_skill_and_examples() -> None:
+    root = PLUGIN / "skills" / "discover-change-plan"
+    text = (root / "SKILL.md").read_text()
+    for needle in ("IMPACT_REPORT.md", "IMPLEMENTATION_PLAN.md", "Pinned target files", "Style exemplars",
+                   "Backward compatibility", "Do not edit any source file", "discover-impact"):
+        assert needle in text, needle
+    report = (root / "examples" / "IMPACT_REPORT.md").read_text()
+    plan = (root / "examples" / "IMPLEMENTATION_PLAN.md").read_text()
+    for heading in ("## Targets", "## Confirmed impact", "## Entry points reached", "## Data impact", "## Unknowns"):
+        assert heading in report, heading
+    for heading in ("## Pinned target files", "## Style exemplars", "## Steps", "## Backward compatibility",
+                    "## Verification", "## Rollback"):
+        assert heading in plan, heading
+    # every file:line cited in the examples exists in the fixture at that line
+    fixture = ROOT / "tests" / "fixtures" / "projects" / "spring-boot-app"
+    for name, line in re.findall(r"`?([A-Za-z]+\.java):(\d+)", report + plan):
+        matches = list(fixture.rglob(name))
+        assert matches, name
+        assert int(line) <= len(matches[0].read_text().splitlines()), f"{name}:{line}"
