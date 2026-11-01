@@ -163,7 +163,7 @@
 - **Out of scope:** —
 
 ### M6.12 Entry-point scoring
-- **Status:** In progress (rm/M6.12-entry-points, 2026-11-01)
+- **Status:** Done (c6272e1)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.7.a, M6.7.b, M6.11
@@ -171,7 +171,7 @@
 - **Acceptance:**
   - Evidence-based score (framework registration, route/screen binding, fan-out, in-degree 0, visibility) replaces substring name hints; test/demo paths excluded; precision measured on bench repos.
 - **Verify:** `pytest -q tests -k entry_point`
-- **Out of scope:** —
+- **Out of scope:** the depth-8 / 50-flows-per-entry flow tracer of design §8 (M6.17); feeding the score to `get_overview` / domain entry points (`query/views.py`, `graph/domain_classifier.py`).
 
 ### M6.13 Accuracy gates in CI
 - **Status:** Done (090b2ba)
@@ -225,3 +225,13 @@
 - **Verify:** `pytest -q tests -k chained`
 - **Out of scope:** generic type inference; fluent builders returning `this` beyond one hop.
 
+### M6.17 Flow tracer depth and per-entry flow cap
+- **Status:** Planned
+- **Size:** S
+- **Lane:** C
+- **Depends on:** M6.12
+- **Owns:** `src/ai_discovery/graph/call_graph.py`
+- **Acceptance:**
+  - Slices trace to depth 8 with at most 50 flows per entry point (design §8), keeping the M1.12.b following rules and stop reasons; Tier-2 scenario cost before/after measured on the four pinned bench repos and recorded.
+- **Verify:** `pytest -q tests -k "slice or scenario"`
+- **Out of scope:** changing which edges are followable.

@@ -157,7 +157,7 @@ ADR-0004 / M1.12 defines ai-discovery's own closed vocabulary. It is inspired by
 
 | Edge case | repowise approach | AD status | Pri | Item |
 |---|---|---|---|---|
-| Entry-point detection | Weighted: fan-out .35, in-degree .25, visibility .20, name tier .15, framework .05; threshold 0.3; tests excluded | Substring name hints over-trigger (`AD/graph/call_graph.py:558`) | High | M6.12 |
+| Entry-point detection | Weighted: fan-out .35, in-degree .25, visibility .20, name tier .15, framework .05; threshold 0.3; tests excluded | Done (M6.12): evidence score, threshold 0.5, tests/wiring/mediator handlers excluded | High | M6.12 |
 | Flow tracing | Primary successor only; depth 8; ≤50 flows; drops weak origins; 6 named stop reasons | BFS depth 5 enqueues unresolved/fanned edges; no stop reason | High | M1.12 |
 | Hub explosion (logging/utils) | Structural: no fan-out, dispatch cap 24, PR blast depth 3 | Partial (fan-out 8) | High | M5.2 |
 | Cycles | Tarjan SCC on the file graph; co-change excluded | Absent | Low | M5.2 (cycle-safe traversal) |

@@ -1,0 +1,232 @@
+repo,qualified_name,file,old,new,kind,score,evidence,verdict,reason
+spring-petclinic,org.springframework.samples.petclinic.MysqlTestApplication.main,test/java/org/springframework/samples/petclinic/MysqlTestApplication.java:42,1,0,,,,wrong,test code
+spring-petclinic,org.springframework.samples.petclinic.PetClinicApplication.main,main/java/org/springframework/samples/petclinic/PetClinicApplication.java:32,1,1,cli,1.0,main in_degree_0 public,correct,
+spring-petclinic,org.springframework.samples.petclinic.PetClinicIntegrationTests.main,test/java/org/springframework/samples/petclinic/PetClinicIntegrationTests.java:66,1,0,,,,wrong,test code
+spring-petclinic,org.springframework.samples.petclinic.PostgresIntegrationTests.main,test/java/org/springframework/samples/petclinic/PostgresIntegrationTests.java:71,1,0,,,,wrong,test code
+spring-petclinic,org.springframework.samples.petclinic.owner.OwnerController.initCreationForm,main/java/org/springframework/samples/petclinic/owner/OwnerController.java:72,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.OwnerController.initFindForm,main/java/org/springframework/samples/petclinic/owner/OwnerController.java:89,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.OwnerController.initUpdateOwnerForm,main/java/org/springframework/samples/petclinic/owner/OwnerController.java:136,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.OwnerController.processCreationForm,main/java/org/springframework/samples/petclinic/owner/OwnerController.java:77,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.OwnerController.processFindForm,main/java/org/springframework/samples/petclinic/owner/OwnerController.java:94,1,1,http,1.0,node_type:endpoint in_degree_0 fan_out:4,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.OwnerController.processUpdateOwnerForm,main/java/org/springframework/samples/petclinic/owner/OwnerController.java:141,1,1,http,1.0,node_type:endpoint in_degree_0 fan_out:2,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.OwnerController.showOwner,main/java/org/springframework/samples/petclinic/owner/OwnerController.java:166,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.PetController.initCreationForm,main/java/org/springframework/samples/petclinic/owner/PetController.java:99,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.PetController.initUpdateForm,main/java/org/springframework/samples/petclinic/owner/PetController.java:129,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.PetController.processCreationForm,main/java/org/springframework/samples/petclinic/owner/PetController.java:106,1,1,http,1.0,node_type:endpoint in_degree_0 fan_out:5,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.PetController.processUpdateForm,main/java/org/springframework/samples/petclinic/owner/PetController.java:134,1,1,http,1.0,node_type:endpoint in_degree_0 fan_out:5,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.VisitController.initNewVisitForm,main/java/org/springframework/samples/petclinic/owner/VisitController.java:90,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.owner.VisitController.processNewVisitForm,main/java/org/springframework/samples/petclinic/owner/VisitController.java:97,1,1,http,1.0,node_type:endpoint in_degree_0 fan_out:2,correct,
+spring-petclinic,org.springframework.samples.petclinic.system.CacheConfiguration.petclinicCacheConfigurationCustomizer,main/java/org/springframework/samples/petclinic/system/CacheConfiguration.java:35,1,0,,,,wrong,@Bean factory; matched substring `cli` in `petclinic`
+spring-petclinic,org.springframework.samples.petclinic.system.CrashController.triggerException,main/java/org/springframework/samples/petclinic/system/CrashController.java:31,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.system.WelcomeController.welcome,main/java/org/springframework/samples/petclinic/system/WelcomeController.java:25,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+spring-petclinic,org.springframework.samples.petclinic.vet.VetController.showResourcesVetList,main/java/org/springframework/samples/petclinic/vet/VetController.java:69,1,1,http,1.0,node_type:endpoint in_degree_0 fan_out:2,correct,
+spring-petclinic,org.springframework.samples.petclinic.vet.VetController.showVetList,main/java/org/springframework/samples/petclinic/vet/VetController.java:44,1,1,http,1.0,node_type:endpoint in_degree_0 fan_out:3,correct,
+microblog,auth.basic_auth_error,app/api/auth.py:19,0,1,lifecycle,1.0,decorator:error_handler in_degree_0 public,correct,
+microblog,auth.token_auth_error,app/api/auth.py:29,0,1,lifecycle,1.0,decorator:error_handler in_degree_0 public,correct,
+microblog,auth.verify_password,app/api/auth.py:12,0,1,lifecycle,1.0,decorator:verify_password in_degree_0 public,correct,
+microblog,auth.verify_token,app/api/auth.py:24,0,1,lifecycle,1.0,decorator:verify_token in_degree_0 public,correct,
+microblog,cli.compile,app/cli.py:37,0,1,cli,1.0,decorator:command in_degree_0 public,correct,
+microblog,cli.init,app/cli.py:16,0,1,cli,1.0,decorator:command in_degree_0 public,correct,
+microblog,cli.translate,app/cli.py:9,0,1,cli,1.0,decorator:group in_degree_0 public,correct,
+microblog,cli.update,app/cli.py:27,0,1,cli,1.0,decorator:command in_degree_0 public,correct,
+microblog,errors.handle_exception,app/api/errors.py:18,0,1,lifecycle,1.0,decorator:errorhandler in_degree_0 public,correct,
+microblog,handlers.internal_error,app/errors/handlers.py:20,0,1,lifecycle,1.0,decorator:app_errorhandler in_degree_0 public,correct,
+microblog,handlers.not_found_error,app/errors/handlers.py:13,0,1,lifecycle,1.0,decorator:app_errorhandler in_degree_0 public,correct,
+microblog,microblog.make_shell_context,microblog.py:10,0,1,lifecycle,1.0,decorator:shell_context_processor in_degree_0 public,correct,
+microblog,models.load_user,app/models.py:283,0,1,lifecycle,1.0,decorator:user_loader in_degree_0 public,correct,
+microblog,routes.before_request,app/main/routes.py:17,0,1,lifecycle,1.0,decorator:before_app_request in_degree_0 public,correct,
+microblog,routes.edit_profile,app/main/routes.py:99,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.explore,app/main/routes.py:56,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.export_posts,app/main/routes.py:221,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.follow,app/main/routes.py:116,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.index,app/main/routes.py:28,1,1,http,1.0,node_type:endpoint in_degree_0 public fan_out:2,correct,
+microblog,routes.login,app/auth/routes.py:15,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.logout,app/auth/routes.py:34,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.messages,app/main/routes.py:201,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.notifications,app/main/routes.py:232,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.register,app/auth/routes.py:40,1,1,http,1.0,node_type:endpoint in_degree_0 public fan_out:2,correct,
+microblog,routes.reset_password,app/auth/routes.py:73,1,1,http,1.0,node_type:endpoint in_degree_0 public fan_out:2,correct,
+microblog,routes.reset_password_request,app/auth/routes.py:56,1,1,http,1.0,node_type:endpoint in_degree_0 public fan_out:2,correct,
+microblog,routes.search,app/main/routes.py:167,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.send_message,app/main/routes.py:183,1,1,http,1.0,node_type:endpoint in_degree_0 public fan_out:2,correct,
+microblog,routes.translate_text,app/main/routes.py:158,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.unfollow,app/main/routes.py:137,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.user,app/main/routes.py:73,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,routes.user_popup,app/main/routes.py:91,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,tokens.get_token,app/api/tokens.py:8,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,tokens.revoke_token,app/api/tokens.py:16,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,users.create_user,app/api/users.py:46,1,1,http,1.0,node_type:endpoint in_degree_0 public fan_out:2,correct,
+microblog,users.get_followers,app/api/users.py:27,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,users.get_following,app/api/users.py:37,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,users.get_user,app/api/users.py:12,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,users.get_users,app/api/users.py:18,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,users.update_user,app/api/users.py:66,1,1,http,1.0,node_type:endpoint in_degree_0 public,correct,
+microblog,tasks.export_posts,,0,0,,,,missed,RQ job enqueued by string name `app.tasks.export_posts`
+microblog,models.SearchableMixin.after_commit,,0,0,,,,missed,"registered with `db.event.listen(..., 'after_commit', ...)`"
+node-express-realworld,article.controller.DELETE /articles/:slug,app/routes/article/article.controller.ts:129,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.DELETE /articles/:slug/comments/:id,app/routes/article/article.controller.ts:190,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.DELETE /articles/:slug/favorite,app/routes/article/article.controller.ts:230,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.GET /articles,app/routes/article/article.controller.ts:30,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.GET /articles/:slug,app/routes/article/article.controller.ts:87,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.GET /articles/:slug/comments,app/routes/article/article.controller.ts:149,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.GET /articles/feed,app/routes/article/article.controller.ts:45,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.POST /articles,app/routes/article/article.controller.ts:71,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.POST /articles/:slug/comments,app/routes/article/article.controller.ts:170,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.POST /articles/:slug/favorite,app/routes/article/article.controller.ts:210,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,article.controller.PUT /articles/:slug,app/routes/article/article.controller.ts:110,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,auth.controller.GET /user,app/routes/auth/auth.controller.ts:45,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,auth.controller.POST /users,app/routes/auth/auth.controller.ts:14,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,auth.controller.POST /users/login,app/routes/auth/auth.controller.ts:30,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,auth.controller.PUT /user,app/routes/auth/auth.controller.ts:61,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,main.GET /,main.ts:21,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,profile.controller.DELETE /profiles/:username/follow,app/routes/profile/profile.controller.ts:54,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,profile.controller.GET /profiles/:username,app/routes/profile/profile.controller.ts:14,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,profile.controller.POST /profiles/:username/follow,app/routes/profile/profile.controller.ts:34,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+node-express-realworld,seed.main,prisma/seed.ts:39,1,1,cli,1.0,main in_degree_0 fan_out:3,correct,
+node-express-realworld,tag.controller.GET /tags,app/routes/tag/tag.controller.ts:13,1,1,http,1.0,node_type:endpoint in_degree_0,correct,
+eshop,ClientApp.UnitTests.ViewModels.CatalogItemViewModelTests.AddCatalogItemCommandIsNotNullTest,tests/ClientApp.UnitTests/ViewModels/CatalogItemViewModelTests.cs:33,1,0,,,,wrong,test code
+eshop,ClientApp.UnitTests.ViewModels.CatalogItemViewModelTests.AddCatalogItemCommandSendsAddProductMessageTest,tests/ClientApp.UnitTests/ViewModels/CatalogItemViewModelTests.cs:40,1,0,,,,wrong,test code
+eshop,ClientApp.UnitTests.ViewModels.CatalogViewModelTests.ClearFilterCommandIsNotNullTest,tests/ClientApp.UnitTests/ViewModels/CatalogViewModelTests.cs:38,1,0,,,,wrong,test code
+eshop,ClientApp.UnitTests.ViewModels.CatalogViewModelTests.ClearFilterCommandResetsPropertiesTest,tests/ClientApp.UnitTests/ViewModels/CatalogViewModelTests.cs:136,1,0,,,,wrong,test code
+eshop,ClientApp.UnitTests.ViewModels.CatalogViewModelTests.FilterCommandIsNotNullTest,tests/ClientApp.UnitTests/ViewModels/CatalogViewModelTests.cs:31,1,0,,,,wrong,test code
+eshop,ClientApp.UnitTests.ViewModels.MainViewModelTests.SettingsCommandIsNotNullWhenViewModelInstantiatedTest,tests/ClientApp.UnitTests/ViewModels/MainViewModelTests.cs:15,1,0,,,,wrong,test code
+eshop,IdentityServerHost.Quickstart.UI.AccountController.AccessDenied,src/Identity.API/Quickstart/Account/AccountController.cs:196,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.AccountController.Login,src/Identity.API/Quickstart/Account/AccountController.cs:39,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.AccountController.Logout,src/Identity.API/Quickstart/Account/AccountController.cs:146,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public fan_out:2,correct,
+eshop,IdentityServerHost.Quickstart.UI.ConsentController.CreateScopeViewModel,src/Identity.API/Quickstart/Consent/ConsentController.cs:217,0,1,http,1.0,base:Controller name:controller public,wrong,"public helper on a Controller (routable by convention, not an action)"
+eshop,IdentityServerHost.Quickstart.UI.ConsentController.Index,src/Identity.API/Quickstart/Consent/ConsentController.cs:32,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public fan_out:2,correct,
+eshop,IdentityServerHost.Quickstart.UI.DeviceController.Callback,src/Identity.API/Quickstart/Device/DeviceController.cs:51,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.DeviceController.CreateScopeViewModel,src/Identity.API/Quickstart/Device/DeviceController.cs:191,0,1,http,1.0,base:Controller name:controller public,wrong,"public helper on a Controller (routable by convention, not an action)"
+eshop,IdentityServerHost.Quickstart.UI.DeviceController.Index,src/Identity.API/Quickstart/Device/DeviceController.cs:27,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.DeviceController.UserCodeCapture,src/Identity.API/Quickstart/Device/DeviceController.cs:41,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.DiagnosticsController.Index,src/Identity.API/Quickstart/Diagnostics/DiagnosticsController.cs:11,0,1,http,1.0,base:Controller in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.Extensions.IsNativeClient,src/Identity.API/Quickstart/Extensions.cs:9,1,0,,,,wrong,extension helper; matched substring `cli`
+eshop,IdentityServerHost.Quickstart.UI.ExternalController.Callback,src/Identity.API/Quickstart/Account/ExternalController.cs:63,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public fan_out:3,correct,
+eshop,IdentityServerHost.Quickstart.UI.ExternalController.Challenge,src/Identity.API/Quickstart/Account/ExternalController.cs:33,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.GrantsController.Index,src/Identity.API/Quickstart/Grants/GrantsController.cs:32,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.GrantsController.Revoke,src/Identity.API/Quickstart/Grants/GrantsController.cs:41,1,1,http,1.0,node_type:endpoint in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.HomeController.Error,src/Identity.API/Quickstart/Home/HomeController.cs:39,0,1,http,1.0,base:Controller in_degree_0 name:controller public,correct,
+eshop,IdentityServerHost.Quickstart.UI.HomeController.Index,src/Identity.API/Quickstart/Home/HomeController.cs:24,0,1,http,1.0,base:Controller in_degree_0 name:controller public,correct,
+eshop,Microsoft.AspNetCore.Hosting.MigrationHostedService.ExecuteAsync,src/Shared/MigrateDbContextExtensions.cs:84,0,1,background,1.0,base:BackgroundService in_degree_0,correct,
+eshop,OrdersApi.OrdersApi.CancelOrderAsync,src/Ordering.API/Apis/OrdersApi.cs:22,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,OrdersApi.OrdersApi.CreateOrderAsync,src/Ordering.API/Apis/OrdersApi.cs:118,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,OrdersApi.OrdersApi.CreateOrderDraftAsync,src/Ordering.API/Apis/OrdersApi.cs:106,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,OrdersApi.OrdersApi.GetCardTypesAsync,src/Ordering.API/Apis/OrdersApi.cs:100,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,OrdersApi.OrdersApi.GetOrderAsync,src/Ordering.API/Apis/OrdersApi.cs:80,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,OrdersApi.OrdersApi.GetOrdersByUserAsync,src/Ordering.API/Apis/OrdersApi.cs:93,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,OrdersApi.OrdersApi.ShipOrderAsync,src/Ordering.API/Apis/OrdersApi.cs:51,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,Webhooks.API.IntegrationEvents.OrderStatusChangedToPaidIntegrationEventHandler.Handle,src/Webhooks.API/IntegrationEvents/OrderStatusChangedToPaidIntegrationEventHandler.cs:8,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,Webhooks.API.IntegrationEvents.OrderStatusChangedToShippedIntegrationEventHandler.Handle,src/Webhooks.API/IntegrationEvents/OrderStatusChangedToShippedIntegrationEventHandler.cs:8,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,Webhooks.API.IntegrationEvents.ProductPriceChangedIntegrationEventHandler.Handle,src/Webhooks.API/IntegrationEvents/ProductPriceChangedIntegrationEventHandler.cs:5,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,catalog-sort.GET name-asc,src/WebApp/wwwroot/js/catalog-sort.js:89,1,1,http,1.0,node_type:endpoint in_degree_0,wrong,JS parser: `LABELS.get('name-asc')` read as an Express route
+eshop,chat-dock.DELETE chat,src/WebApp/wwwroot/js/chat-dock.js:198,1,1,http,1.0,node_type:endpoint in_degree_0,wrong,JS parser: `params.delete('chat')` read as an Express route
+eshop,chat-dock.GET chat,src/WebApp/wwwroot/js/chat-dock.js:196,1,1,http,1.0,node_type:endpoint in_degree_0,wrong,JS parser: `params.get('chat')` read as an Express route
+eshop,eShop.Application.UnitTests.IdentityConfigurationTests.ClientsUseConfiguredCallbackUrlsAndExpectedScopes,tests/Application.UnitTests/IdentityConfigurationTests.cs:20,1,0,,,,wrong,test code
+eshop,eShop.Application.UnitTests.WebhookClientTests.HooksRepositoryStoresHooksAndNotifiesActiveSubscribers,tests/Application.UnitTests/WebhookClientTests.cs:17,1,0,,,,wrong,test code
+eshop,eShop.Basket.API.Grpc.BasketService.DeleteBasket,src/Basket.API/Grpc/BasketService.cs:59,0,1,http,1.0,grpc:service in_degree_0 public,correct,
+eshop,eShop.Basket.API.Grpc.BasketService.GetBasket,src/Basket.API/Grpc/BasketService.cs:12,0,1,http,1.0,grpc:service in_degree_0 public,correct,
+eshop,eShop.Basket.API.Grpc.BasketService.UpdateBasket,src/Basket.API/Grpc/BasketService.cs:36,0,1,http,1.0,grpc:service in_degree_0 public fan_out:4,correct,
+eshop,eShop.Basket.API.IntegrationEvents.EventHandling.OrderStartedIntegrationEventHandler.Handle,src/Basket.API/IntegrationEvents/EventHandling/OrderStartedIntegrationEventHandler.cs:10,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Catalog.API.CatalogApi.CreateItem,src/Catalog.API/Apis/CatalogApi.cs:410,0,1,http,1.0,registration:map_route in_degree_0,correct,
+eshop,eShop.Catalog.API.CatalogApi.DeleteItemById,src/Catalog.API/Apis/CatalogApi.cs:435,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetAllItems,src/Catalog.API/Apis/CatalogApi.cs:129,0,1,http,0.8,registration:map_route,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetAllItemsV1,src/Catalog.API/Apis/CatalogApi.cs:121,0,1,http,1.0,registration:map_route in_degree_0,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetCatalogFacets,src/Catalog.API/Apis/CatalogApi.cs:168,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetItemById,src/Catalog.API/Apis/CatalogApi.cs:215,0,1,http,1.0,registration:map_route in_degree_0,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetItemPictureById,src/Catalog.API/Apis/CatalogApi.cs:247,0,1,http,1.0,registration:map_route in_degree_0 fan_out:2,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetItemsByBrandAndTypeId,src/Catalog.API/Apis/CatalogApi.cs:336,0,1,http,1.0,registration:map_route in_degree_0,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetItemsByBrandId,src/Catalog.API/Apis/CatalogApi.cs:346,0,1,http,1.0,registration:map_route in_degree_0,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetItemsByIds,src/Catalog.API/Apis/CatalogApi.cs:206,0,1,http,1.0,registration:map_route in_degree_0,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetItemsByName,src/Catalog.API/Apis/CatalogApi.cs:238,0,1,http,0.8,registration:map_route,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetItemsBySemanticRelevance,src/Catalog.API/Apis/CatalogApi.cs:281,0,1,http,0.8,registration:map_route,correct,
+eshop,eShop.Catalog.API.CatalogApi.GetItemsBySemanticRelevanceV1,src/Catalog.API/Apis/CatalogApi.cs:271,0,1,http,1.0,registration:map_route in_degree_0,correct,
+eshop,eShop.Catalog.API.CatalogApi.UpdateItem,src/Catalog.API/Apis/CatalogApi.cs:369,0,1,http,0.9,registration:map_route public,correct,
+eshop,eShop.Catalog.API.CatalogApi.UpdateItemV1,src/Catalog.API/Apis/CatalogApi.cs:355,0,1,http,1.0,registration:map_route in_degree_0 public,correct,
+eshop,eShop.Catalog.API.IntegrationEvents.EventHandling.OrderStatusChangedToAwaitingValidationIntegrationEventHandler.Handle,src/Catalog.API/IntegrationEvents/EventHandling/OrderStatusChangedToAwaitingValidationIntegrationEventHandler.cs:9,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Catalog.API.IntegrationEvents.EventHandling.OrderStatusChangedToPaidIntegrationEventHandler.Handle,src/Catalog.API/IntegrationEvents/EventHandling/OrderStatusChangedToPaidIntegrationEventHandler.cs:8,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Catalog.FunctionalTests.CatalogApiTests.CreateHttpClient,tests/Catalog.FunctionalTests/CatalogApiTests.cs:21,1,0,,,,wrong,test code
+eshop,eShop.ClientApp.App.App_RequestedThemeChanged,src/ClientApp/App.xaml.cs:86,0,1,ui,1.0,signature:event_handler in_degree_0,correct,
+eshop,eShop.ClientApp.AppShell.OnHandlerChanged,src/ClientApp/AppShell.xaml.cs:18,1,0,,,,correct,
+eshop,eShop.ClientApp.MauiProgram.ConfigureHandlers,src/ClientApp/MauiProgram.cs:59,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.ClientApp.Program.Main,src/ClientApp/Platforms/MacCatalyst/Program.cs:8,1,1,cli,1.0,main in_degree_0,correct,
+eshop,eShop.ClientApp.Services.Basket.BasketService.GetBasketClient,src/ClientApp/Services/Basket/BasketService.cs:118,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.ClientApp.Services.Identity.IdentityService.GetClient,src/ClientApp/Services/Identity/IdentityService.cs:133,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.ClientApp.Services.RequestProvider.RequestProvider.GetOrCreateHttpClient,src/ClientApp/Services/RequestProvider/RequestProvider.cs:112,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.ClientApp.Services.RequestProvider.RequestProvider.HandleResponse,src/ClientApp/Services/RequestProvider/RequestProvider.cs:154,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.ClientApp.ViewModels.BasketViewModel.AddAsync,src/ClientApp/ViewModels/BasketViewModel.cs:53,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.BasketViewModel.CheckoutAsync,src/ClientApp/ViewModels/BasketViewModel.cs:104,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.BasketViewModel.DeleteAsync,src/ClientApp/ViewModels/BasketViewModel.cs:74,0,1,ui,0.8,annotation:RelayCommand,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogItemViewModel.AddCatalogItemAsync,src/ClientApp/ViewModels/CatalogItemViewModel.cs:30,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogItemViewModel.DismissAsync,src/ClientApp/ViewModels/CatalogItemViewModel.cs:60,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogViewModel.ApplyFilterAsync,src/ClientApp/ViewModels/CatalogViewModel.cs:161,0,1,ui,1.0,annotation:RelayCommand in_degree_0 fan_out:2,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogViewModel.ClearFilterAsync,src/ClientApp/ViewModels/CatalogViewModel.cs:178,0,1,ui,1.0,annotation:RelayCommand in_degree_0 fan_out:4,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogViewModel.Filter,src/ClientApp/ViewModels/CatalogViewModel.cs:105,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogViewModel.SelectCatalogBrand,src/ClientApp/ViewModels/CatalogViewModel.cs:111,0,1,ui,0.9,annotation:RelayCommand public,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogViewModel.SelectCatalogType,src/ClientApp/ViewModels/CatalogViewModel.cs:136,0,1,ui,0.9,annotation:RelayCommand public,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogViewModel.ViewBasket,src/ClientApp/ViewModels/CatalogViewModel.cs:192,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.CatalogViewModel.ViewCatalogItemAsync,src/ClientApp/ViewModels/CatalogViewModel.cs:90,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.CheckoutViewModel.CheckoutAsync,src/ClientApp/ViewModels/CheckoutViewModel.cs:104,0,1,ui,1.0,annotation:RelayCommand in_degree_0 fan_out:2,correct,
+eshop,eShop.ClientApp.ViewModels.LoginViewModel.MockSignInAsync,src/ClientApp/ViewModels/LoginViewModel.cs:57,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.LoginViewModel.PerformLogoutAsync,src/ClientApp/ViewModels/LoginViewModel.cs:104,0,1,ui,0.8,annotation:RelayCommand,correct,
+eshop,eShop.ClientApp.ViewModels.LoginViewModel.RegisterAsync,src/ClientApp/ViewModels/LoginViewModel.cs:98,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.LoginViewModel.SettingsAsync,src/ClientApp/ViewModels/LoginViewModel.cs:115,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.LoginViewModel.SignInAsync,src/ClientApp/ViewModels/LoginViewModel.cs:83,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.LoginViewModel.Validate,src/ClientApp/ViewModels/LoginViewModel.cs:121,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.MainViewModel.SettingsAsync,src/ClientApp/ViewModels/MainViewModel.cs:13,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.OrderDetailViewModel.ToggleCancelOrderAsync,src/ClientApp/ViewModels/OrderDetailViewModel.cs:43,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.ProfileViewModel.LogoutAsync,src/ClientApp/ViewModels/ProfileViewModel.cs:35,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.ProfileViewModel.OrderDetailAsync,src/ClientApp/ViewModels/ProfileViewModel.cs:66,0,1,ui,1.0,annotation:RelayCommand in_degree_0,correct,
+eshop,eShop.ClientApp.ViewModels.ProfileViewModel.RefreshAsync,src/ClientApp/ViewModels/ProfileViewModel.cs:48,0,1,ui,0.9,annotation:RelayCommand fan_out:2,correct,
+eshop,eShop.ClientApp.Views.BadgeView.BadgeIndicatorSizeChanged,src/ClientApp/Views/BadgeView.cs:106,0,1,ui,1.0,signature:event_handler in_degree_0,correct,
+eshop,eShop.ClientApp.Views.BadgeView.OnHandlerChanging,src/ClientApp/Views/BadgeView.cs:94,1,0,,,,correct,
+eshop,eShop.ClientApp.Views.CatalogView.Products_OnScrolled,src/ClientApp/Views/CatalogView.xaml.cs:40,0,1,ui,1.0,signature:event_handler in_degree_0,correct,
+eshop,eShop.ClientApp.Views.MapView.Pin_MarkerClicked,src/ClientApp/Views/MapView.xaml.cs:15,1,1,ui,1.0,signature:event_handler in_degree_0,correct,
+eshop,eShop.EventBusRabbitMQ.RabbitMQEventBus.OnMessageReceived,src/EventBusRabbitMQ/RabbitMQEventBus.cs:132,0,1,message,1.0,signature:event_handler in_degree_0 fan_out:2,correct,
+eshop,eShop.EventBusRabbitMQ.RabbitMQEventBus.StartAsync,src/EventBusRabbitMQ/RabbitMQEventBus.cs:226,0,1,background,1.0,base:IHostedService in_degree_0 public,correct,
+eshop,eShop.HybridApp.Program.Main,src/HybridApp/Platforms/MacCatalyst/Program.cs:9,1,1,cli,1.0,main in_degree_0,correct,
+eshop,eShop.Identity.API.Configuration.Config.GetClients,src/Identity.API/Configuration/Config.cs:40,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.OrderProcessor.Services.GracePeriodManagerService.ExecuteAsync,src/OrderProcessor/Services/GracePeriodManagerService.cs:15,0,1,background,1.0,registration:hosted_service in_degree_0,correct,
+eshop,eShop.Ordering.API.Application.IntegrationEvents.EventHandling.GracePeriodConfirmedIntegrationEventHandler.Handle,src/Ordering.API/Application/IntegrationEvents/EventHandling/GracePeriodConfirmedIntegrationEventHandler.cs:15,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Ordering.API.Application.IntegrationEvents.EventHandling.OrderPaymentFailedIntegrationEventHandler.Handle,src/Ordering.API/Application/IntegrationEvents/EventHandling/OrderPaymentFailedIntegrationEventHandler.cs:8,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Ordering.API.Application.IntegrationEvents.EventHandling.OrderPaymentSucceededIntegrationEventHandler.Handle,src/Ordering.API/Application/IntegrationEvents/EventHandling/OrderPaymentSucceededIntegrationEventHandler.cs:8,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Ordering.API.Application.IntegrationEvents.EventHandling.OrderStockConfirmedIntegrationEventHandler.Handle,src/Ordering.API/Application/IntegrationEvents/EventHandling/OrderStockConfirmedIntegrationEventHandler.cs:8,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Ordering.API.Application.IntegrationEvents.EventHandling.OrderStockRejectedIntegrationEventHandler.Handle,src/Ordering.API/Application/IntegrationEvents/EventHandling/OrderStockRejectedIntegrationEventHandler.cs:6,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Ordering.Domain.AggregatesModel.OrderAggregate.Order.AddOrderStartedDomainEvent,src/Ordering.Domain/AggregatesModel/OrderAggregate/Order.cs:170,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.Ordering.Domain.Seedwork.Entity.AddDomainEvent,src/Ordering.Domain/SeedWork/Entity.cs:22,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.Ordering.Domain.Seedwork.Entity.ClearDomainEvents,src/Ordering.Domain/SeedWork/Entity.cs:33,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.Ordering.Domain.Seedwork.Entity.RemoveDomainEvent,src/Ordering.Domain/SeedWork/Entity.cs:28,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.Ordering.FunctionalTests.OrderingApiTests.FakeOrderDraftCommand,tests/Ordering.FunctionalTests/OrderingApiTests.cs:207,1,0,,,,wrong,test code
+eshop,eShop.Ordering.Infrastructure.Idempotency.RequestManager.CreateRequestForCommandAsync,src/Ordering.Infrastructure/Idempotency/RequestManager.cs:21,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.Ordering.Infrastructure.MediatorExtension.DispatchDomainEventsAsync,src/Ordering.Infrastructure/MediatorExtension.cs:5,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.Ordering.UnitTests.Application.IdentifiedCommandHandlerTest.Handler_sends_command_when_order_no_exists,tests/Ordering.UnitTests/Application/IdentifiedCommandHandlerTest.cs:17,1,0,,,,wrong,test code
+eshop,eShop.Ordering.UnitTests.Application.IdentifiedCommandHandlerTest.Handler_sends_no_command_when_order_already_exists,tests/Ordering.UnitTests/Application/IdentifiedCommandHandlerTest.cs:39,1,0,,,,wrong,test code
+eshop,eShop.Ordering.UnitTests.Application.OrdersWebApiTest.Cancel_order_returns_problem_when_command_fails,tests/Ordering.UnitTests/Application/OrdersWebApiTest.cs:157,1,0,,,,wrong,test code
+eshop,eShop.Ordering.UnitTests.Application.OrdersWebApiTest.Ship_order_returns_problem_when_command_fails,tests/Ordering.UnitTests/Application/OrdersWebApiTest.cs:170,1,0,,,,wrong,test code
+eshop,eShop.Ordering.UnitTests.Application.SetStockRejectedOrderStatusCommandTest.Set_Stock_Rejected_OrderStatusCommand_Check_Serialization,tests/Ordering.UnitTests/Application/SetStockRejectedOrderStatusCommandTest.cs:8,1,0,,,,wrong,test code
+eshop,eShop.PaymentProcessor.IntegrationEvents.EventHandling.OrderStatusChangedToStockConfirmedIntegrationEventHandler.Handle,src/PaymentProcessor/IntegrationEvents/EventHandling/OrderStatusChangedToStockConfirmedIntegrationEventHandler.cs:9,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.WebApp.Services.BasketState.NotifyChangeSubscribersAsync,src/WebApp/Services/BasketState.cs:111,1,0,,,,wrong,called by application code; matched a name substring (cli/handler/main)
+eshop,eShop.WebApp.Services.OrderStatus.IntegrationEvents.OrderStatusChangedToAwaitingValidationIntegrationEventHandler.Handle,src/WebApp/Services/OrderStatus/IntegrationEvents/EventHandling/OrderStatusChangedToAwaitingValidationIntegrationEventHandler.cs:10,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.WebApp.Services.OrderStatus.IntegrationEvents.OrderStatusChangedToCancelledIntegrationEventHandler.Handle,src/WebApp/Services/OrderStatus/IntegrationEvents/EventHandling/OrderStatusChangedToCancelledIntegrationEventHandler.cs:10,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.WebApp.Services.OrderStatus.IntegrationEvents.OrderStatusChangedToPaidIntegrationEventHandler.Handle,src/WebApp/Services/OrderStatus/IntegrationEvents/EventHandling/OrderStatusChangedToPaidIntegrationEventHandler.cs:10,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.WebApp.Services.OrderStatus.IntegrationEvents.OrderStatusChangedToShippedIntegrationEventHandler.Handle,src/WebApp/Services/OrderStatus/IntegrationEvents/EventHandling/OrderStatusChangedToShippedIntegrationEventHandler.cs:10,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.WebApp.Services.OrderStatus.IntegrationEvents.OrderStatusChangedToStockConfirmedIntegrationEventHandler.Handle,src/WebApp/Services/OrderStatus/IntegrationEvents/EventHandling/OrderStatusChangedToStockConfirmedIntegrationEventHandler.cs:10,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.WebApp.Services.OrderStatus.IntegrationEvents.OrderStatusChangedToSubmittedIntegrationEventHandler.Handle,src/WebApp/Services/OrderStatus/IntegrationEvents/EventHandling/OrderStatusChangedToSubmittedIntegrationEventHandler.cs:10,0,1,message,1.0,registration:subscription in_degree_0 name:handler public,correct,
+eshop,eShop.Webhooks.FunctionalTests.WebhooksApiTests.CreateClient,tests/Webhooks.FunctionalTests/WebhooksApiTests.cs:10,1,0,,,,wrong,test code
+eshop,openapi::DELETE:/api/catalog/items/{id},src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/catalogbrands,src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/catalogtypes,src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items,src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/by,src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/by/{name},src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/facets,src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/type/all/brand/{brandId},src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/type/{typeId}/brand/{brandId},src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/withsemanticrelevance,src/Catalog.API/Catalog.API_v2.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/withsemanticrelevance/{text},src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/{id},src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::GET:/api/catalog/items/{id}/pic,src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::POST:/api/catalog/items,src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::PUT:/api/catalog/items,src/Catalog.API/Catalog.API.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,openapi::PUT:/api/catalog/items/{id},src/Catalog.API/Catalog.API_v2.json:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,proto::eShop.Basket.API.Grpc.Basket.GetBasket,src/Basket.API/Proto/basket.proto:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code
+eshop,proto::eShop.ClientApp.BasketGrpcClient.Basket.GetBasket,src/ClientApp/Services/Basket/Protos/basket.proto:0,1,0,,,,wrong,spec-only endpoint (OpenAPI/.proto): a contract with no code

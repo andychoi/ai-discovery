@@ -118,6 +118,10 @@ Creates domain metadata (entry points, tech stack).
 **Output**: `Scenario[]` (execution scenarios from each entry point)  
 **Time**: 5–20s
 
+Entry points are the callables `graph/entry_points.py` scores ≥ 0.5 from evidence (framework routes,
+annotations, base-type contracts, registrations, markup bindings, `main`; plus in-degree 0, anchored names,
+visibility and fan-out) — never from name substrings (M6.12; see `docs/architecture/decisions.md`).
+
 Bounded BFS traversal (depth ≤ 5) from each entry point:
 - Primary path: top-15 nodes by confidence, in BFS order
 - Alternate paths: conditional branches detected from nodes with >1 callee

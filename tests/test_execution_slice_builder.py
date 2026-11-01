@@ -65,16 +65,16 @@ def test_identifies_cli_function_by_name():
     assert any(n.name == "main" for n in found)
 
 
-def test_identifies_event_consumer_by_name():
-    nodes = [_node("order_event_consumer", node_type="function")]
-    found = identify_scenarios(nodes)
-    assert any(n.name == "order_event_consumer" for n in found)
+def test_name_substring_alone_is_not_an_entry_point():
+    # M6.12: `consumer` / `listener` / `handler` inside a name is not evidence (it over-triggered)
+    nodes = [_node("order_event_consumer", node_type="function"), _node("payment_listener", node_type="method")]
+    assert identify_scenarios(nodes) == []
 
 
-def test_identifies_listener_by_name():
-    nodes = [_node("payment_listener", node_type="method")]
-    found = identify_scenarios(nodes)
-    assert any(n.name == "payment_listener" for n in found)
+def test_identifies_decorated_event_consumer():
+    node = _node("on_order_paid", node_type="function")
+    node.annotations = ["@celery.task"]
+    assert identify_scenarios([node]) == [node]
 
 
 def test_plain_method_not_identified():
@@ -203,10 +203,12 @@ def test_trigger_type_scheduled_for_batch():
     assert builder._get_trigger_type(entry) == "SCHEDULED"
 
 
-def test_trigger_type_event_for_consumer_by_name():
-    entry = _node("order_event_handler", node_type="function")
+def test_trigger_type_event_for_consumer_by_evidence():
+    entry = _node("on_order_paid", node_type="function")
+    entry.annotations = ["receiver(order_paid)"]
     builder = ExecutionSliceBuilder([entry], [])
     assert builder._get_trigger_type(entry) == "EVENT"
+    assert builder._get_trigger_type(_node("order_event_handler", node_type="function")) == "CLI"
 
 
 def test_unresolved_execution_node_not_classified_as_external_api():

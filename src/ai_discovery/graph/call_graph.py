@@ -1151,27 +1151,16 @@ def _module_prefixes(qualified_name: str) -> list[str]:
     return prefixes
 
 
-_ENTRY_TYPES = frozenset({"endpoint", "batch_job", "cli_command", "event_consumer"})
-_CLI_HINTS = frozenset({"main", "cli", "command", "cmd"})
-_EVENT_HINTS = frozenset({"consumer", "listener", "subscriber", "handler"})
+def identify_scenarios(nodes: list[CodeNode], edges: list[CallEdge] | None = None) -> list[CodeNode]:
+    """Entry points for execution scenarios, highest evidence score first (M6.12, `graph/entry_points.py`).
 
-
-def identify_scenarios(nodes: list[CodeNode]) -> list[CodeNode]:
-    """Identify entry points for execution scenarios.
-
-    Includes HTTP endpoints, batch jobs, CLI entry points, and event consumers.
+    Routes, schedules, message/event handlers, CLI mains, UI event bindings and lifecycle hooks are found
+    from evidence (node type, framework annotations, base-type contracts, registrations, markup bindings);
+    *edges* add the graph signals (in-degree from production code, fan-out). Name substrings never count.
     """
-    scenarios: list[CodeNode] = []
-    for node in nodes:
-        if node.node_type in _ENTRY_TYPES:
-            scenarios.append(node)
-        elif node.node_type in ("function", "method"):
-            name_lower = node.name.lower()
-            if any(h in name_lower for h in _CLI_HINTS):
-                scenarios.append(node)
-            elif any(h in name_lower for h in _EVENT_HINTS):
-                scenarios.append(node)
-    return scenarios
+    from .entry_points import score_entry_points
+
+    return [ep.node for ep in score_entry_points(nodes, edges)]
 
 
 class ExecutionSliceBuilder:
@@ -1180,6 +1169,8 @@ class ExecutionSliceBuilder:
     def __init__(self, nodes: list[CodeNode], call_edges: list[CallEdge],
                  unresolved: list[UnresolvedCall] | None = None):
         self.nodes = {n.qualified_name: n for n in nodes}
+        self.call_edges = list(call_edges)
+        self.entry_kinds: dict[str, str] = {}
         # ADR-0004 following rule: only static/framework/scip edges at or above
         # the floor are walked; name-only guesses (global_unique) never are.
         self.edges_by_caller = defaultdict(list)
@@ -1194,11 +1185,11 @@ class ExecutionSliceBuilder:
             self.unresolved_by_caller[u.caller].add(u.reason)
 
     def build_all_scenarios(self) -> list[Scenario]:
-        entry_points = identify_scenarios(list(self.nodes.values()))
-        scenarios = []
-        for entry in entry_points:
-            scenarios.append(self.build_scenario(entry))
-        return scenarios
+        from .entry_points import score_entry_points
+
+        entry_points = score_entry_points(list(self.nodes.values()), self.call_edges)
+        self.entry_kinds = {ep.node.qualified_name: ep.kind for ep in entry_points}
+        return [self.build_scenario(ep.node) for ep in entry_points]
 
     def build_scenario(self, entry: CodeNode, max_depth: int = 5) -> Scenario:
         """Perform bounded BFS to extract a scenario-specific slice.
@@ -1541,15 +1532,7 @@ class ExecutionSliceBuilder:
         return "CALL"
 
     def _get_trigger_type(self, node: CodeNode) -> str:
-        if node.node_type == "endpoint":
-            return "HTTP"
-        if node.node_type == "batch_job":
-            return "SCHEDULED"
-        if node.node_type == "event_consumer":
-            return "EVENT"
-        if node.node_type == "cli_command":
-            return "CLI"
-        name_lower = node.name.lower()
-        if any(h in name_lower for h in _EVENT_HINTS):
-            return "EVENT"
-        return "CLI"
+        from .entry_points import TRIGGER, node_kind
+
+        kind = self.entry_kinds.get(node.qualified_name) or node_kind(node)
+        return TRIGGER.get(kind, "CLI")

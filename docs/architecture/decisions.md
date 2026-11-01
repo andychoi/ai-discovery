@@ -309,7 +309,56 @@ Depth ≤ 5 means: (Entry) → (Hop 1) → (Hop 2) → ... → (Hop 5) = max 6 l
   hints), `depth_cap`, `cycle` (all followable callees already in the slice), `dynamic_dispatch`
   (the node has `dynamic`/`dispatch_cap`/`di_ambiguous` unresolved calls), `unresolved_call`
   (calls exist but none can be followed), else `leaf_no_callees`.
-- Depth stays 5 here; the depth-8 / 50-flows-per-entry flow tracer is M6.12.
+- Depth stays 5 here; the depth-8 / 50-flows-per-entry flow tracer is M6.17 (split out of M6.12, which
+  scores entry points only).
+
+---
+
+## Entry-Point Scoring: Evidence, Not Name Substrings (M6.12)
+
+### Decision
+Slices start at the callables `graph/entry_points.py` scores at or above **0.5**. An entry point is where
+control enters application code from outside it and starts a unit of work (request, job, message, command,
+UI event, application lifecycle hook).
+
+| Evidence | Weight | Examples |
+|---|---|---|
+| **Strong** (any one suffices) | 0.8 | `endpoint`/`batch_job` node types; framework annotations/decorators from a closed table (`@Scheduled`, `@KafkaListener`, `[Function]`, `@celery.task`, `@cli.command()`, `@bp.before_app_request`, `@login.user_loader`, `[RelayCommand]`); base-type contracts (`BackgroundService.ExecuteAsync`, `HttpServlet.doGet`, `HttpApplication.Application_*`, `CommandLineRunner.run`, `*IntegrationEventHandler.Handle`, public actions of an ASP.NET `Controller`); gRPC `override` taking `ServerCallContext`; source registrations (`MapGet("/x", Handler)`, `AddSubscription<E, H>()`, `AddHostedService<T>()`); `framework` markup/template edges from a `ui_component`; .NET `(object sender, XxxEventArgs e)` handlers; `static main` / module-level `main` |
+| In-degree 0 from production code | 0.2 | callers in test paths do not count |
+| Anchored name pattern | 0.2 | public method of `*Controller`/`*Resource`; `Handle`/`Execute`/`Run`/… on `*Handler`/`*Consumer`/`*Job`/…; `X_Click`; JS `onSubmit`/`handleSave` |
+| Public visibility | 0.1 | `public` (Java/C#), no leading `_` (Python), `exported` (JS) |
+| Fan-out ≥ 2 followable edges | 0.1 | |
+
+**Excluded outright:** test/fixture/mock paths, and demo/example/sample directories at the top of the repo only
+(`com/example/` is a Java package) — all matched on the path *relative to the scanned root*,
+test-annotated methods, abstract and interface members, container wiring and binding helpers (`@Bean`,
+`@InitBinder`, `@ModelAttribute`, `@PostConstruct`, `[NonAction]`), in-process mediator handlers
+(`IRequestHandler`, `INotificationHandler`, …), and spec-only endpoints (an OpenAPI path or `.proto` rpc with no
+code and no edges). The scenario's trigger type comes from the evidence kind (http → HTTP, scheduled/background
+→ SCHEDULED, message/lifecycle → EVENT, cli → CLI, ui → UI).
+
+### Why
+- The previous rule (node type, or a name *containing* `main`/`cli`/`command`/`cmd`/`consumer`/`listener`/
+  `subscriber`/`handler`) over-triggered: `petclinicCacheConfigurationCustomizer` (`cli` in *petclinic*),
+  `GetClient`, `Entity.AddDomainEvent`, every test class's `main`. On eShop 16 of its 67 picks were right.
+- Strong evidence is what a framework or runtime actually binds; it is checkable in source and explains itself
+  (`EntryPoint.evidence`). Weak signals alone need three of four to pass, so a public `*Controller` method
+  with no route still needs in-degree 0 — and services reached only through unresolved DI (in-degree 0,
+  public, fan-out) score 0.4 and stay out.
+- MediatR-style handlers are excluded although they look like handlers: application code sends to them, so
+  they continue an endpoint's flow; making them entries would duplicate flows and mislabel triggers.
+- Measured on the four pinned bench repos (graded from source,
+  `docs/roadmap/benchmarks/2026-11-01-entry-points.md`): precision 0.95–1.00 (eShop 0.24 → 0.95,
+  spring-petclinic 0.82 → 1.00), recall against all known entry points 0.95–1.00 (eShop 0.17 → 0.98,
+  microblog 0.62 → 0.95).
+
+### Limits
+- Callbacks registered only by string or by passing a function value (`queue.enqueue('app.tasks.x')`,
+  `event.listen(session, 'after_commit', f)`) are not seen; nor are framework overrides with no contract in the
+  table (MAUI `OnHandlerChanged`). Add a contract or registration pattern when a bench repo needs it.
+- A public helper on an ASP.NET `Controller` is counted (it *is* routable by convention unless `[NonAction]`).
+- `bases` are parse-time only (not persisted), so a resumed scan that rehydrates nodes from the DB loses the
+  base-type contracts; other evidence still applies.
 
 ---
 
@@ -552,6 +601,7 @@ rank = max(0, 5 - depth) + state_transition*4 + boundary*3 + external*2 + depend
 |-----------|----------|-----------|-----------|
 | Call Resolution | 7-level confidence | Precision vs recall | `docs/guides/call-graph/resolution-heuristics.md` |
 | Execution Slices | BFS ≤ 5 depth | Coverage vs manageability | Phase 6 in pipeline docs |
+| Entry Points | Evidence score ≥ 0.5 (framework binding strong; in-degree/name/visibility/fan-out weak) | Precision vs recall of unregistered callbacks | "Entry-Point Scoring" above (M6.12) |
 | Manual Nodes | Heuristic injection | Accuracy vs completeness | `docs/guides/pipeline/phase-breakdown.md` |
 | LLM Routing | Tier 1/2/3 (Haiku→Sonnet→Opus) | Cost vs quality | `docs/guides/pipeline/cost-tracking.md` |
 | Domain Classification | Namespace heuristics | Scalability vs precision | Phase 4 in pipeline docs |

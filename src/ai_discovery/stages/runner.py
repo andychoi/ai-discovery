@@ -46,7 +46,7 @@ STAGES: tuple[StageSpec, ...] = (
     StageSpec("walk", (5,)),
     StageSpec("parse", (6,)),
     StageSpec("graph", (7,), version="2"),     # M1.12 ADR-0004 resolver
-    StageSpec("slices", (8,), version="2"),    # M1.12.b following rules
+    StageSpec("slices", (8,), version="3"),    # M1.12.b following rules; M6.12 entry-point scoring
     StageSpec("sql"),
     StageSpec("entities"),
     StageSpec("embed", (9, 10), ("no_llm", "provider", "rag.enabled", "rag.chunk_size",

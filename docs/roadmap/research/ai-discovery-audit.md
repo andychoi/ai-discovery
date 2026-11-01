@@ -26,7 +26,7 @@ File paths are relative to `src/ai_discovery/` unless they start with a top-leve
 | 9 | Ambiguous calls fan out to ≤8 candidates; unresolved calls become edges to bare names at 0.5 | `graph/call_graph.py:15,196` | S1 | M1.12 |
 | 10 | Short-name stage has no language or builtin guard (JS `save()` binds to Java `save()`) | `graph/call_graph.py` (stage 4) | S1 | M1.12 |
 | 11 | C#/Java `using`/`import` bind only the first segment, so the import stage rarely fires | `graph/call_graph.py:300` | S2 | M6.2, M6.3 |
-| 12 | Entry-point detection uses substring hints (`cmd`, `handler`) that over-trigger | `graph/call_graph.py:558` | S2 | M6.12 |
+| 12 | Entry-point detection uses substring hints (`cmd`, `handler`) that over-trigger — **fixed (M6.12)** | `graph/call_graph.py:558` | S2 | M6.12 |
 | 13 | Flow BFS (depth 5) enqueues unresolved and fanned-out edges; no stop reason | `graph/call_graph.py` (`ExecutionSliceBuilder`) | S2 | M1.12 |
 | 14 | `.sql` skip check runs on the absolute path, so a repo under e.g. `/build/` loses all SQL | `extractors/sql_extractor.py` | S2 | M6.8 |
 | 15 | Self-review 300 s timeout never fires: `result(timeout=)` is called on futures already yielded by `as_completed` | `pipeline.py:1535-1541` | S2 | M0.6 |
