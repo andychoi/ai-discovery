@@ -194,21 +194,10 @@ Stores in `business_flows` and `scenario_flows` tables.
 
 Per-scenario LLM pass that turns each execution slice into a business-readable flow with IPO and alternate paths. Uses the Tier 2 model. Skippable; if absent the visual artifacts phase falls back to the empty-list rebuild path.
 
-### Phase 14: Tier 3 Doc Rollup
-**Input**: `domain[]` + `business_flows` + `scenario_flows`  
-**Output**: `generated_docs` (markdown content, BPMN, diagrams)  
-**Time**: 10–60 min (Opus model, per-domain×doc_type)
+### Phase 14: (removed)
 
-Final document generation per domain×doc_type:
-- as-is.md (business overview)
-- as-is-detail.md (technical details)
-- as-is-schema.md (data models)
-- process-flow.md (BPMN + IPO)
-
-Uses Claude Opus (Bedrock), or Ollama gemma4:26b (dev) / gemma4:31b (prod, `--prod` flag).  
-Stores in `generated_docs` table.
-
----
+The Tier-3 ASIS/ASD/ASSC doc rollup was removed in M3.7.b. Narratives are written per wiki page by the page
+prose layer (`pages/prose.py`, M3.7.a) after the scan, grounded against the index (`pages/grounding.py`, M3.8).
 
 ## Phases 15–19: Artifact Generation, Verification & Output
 
@@ -227,37 +216,14 @@ Generates diagram artifacts from the inferred flows. Persists scenario+artifact 
 Runs only when `process_mining.enabled: true` in `discovery.yaml`. When disabled, no checkpoint is written — resume logic skips it cleanly. Skip via `--skip-phases=16`.
 
 ### Phase 17: Self-Review
-**Input**: `generated_docs`  
-**Output**: `review_claims` (verified/unverified/contradicted)  
-**Time**: 5–20 min
 
-Claim extraction + RAG verification:
-1. Extract factual claims from generated docs
-2. Search code chunks (RAG) to verify claims
-3. Mark as verified, unverified, or contradicted
+Under `quality: final`, screen specs are claim-verified against source (RAG). (Until M3.7.b this phase also
+reviewed the Tier-3 rollups.)
 
-Stores findings in `review_claims` table.  
-High unverified rate (>20%) triggers human review flag.
+### Phase 18: (removed)
 
-### Phase 18: Render Markdown
-**Input**: `generated_docs` + artifacts (BPMN, Mermaid, IPO tables)  
-**Output**: `.md` files on disk  
-**Time**: 1–5s
-
-Jinja2 template rendering:
-```
-data/{slug}/
-├── ASIS/
-│   └── myproj-orders-as-is.md
-├── ASD/
-│   └── myproj-orders-as-is-detail.md
-├── ASSC/
-│   └── myproj-orders-as-is-schema.md
-├── PF/
-│   └── myproj-scenario-create-order-process-flow.md
-└── event-logs/
-    └── scenario_create_order_1.json
-```
+Markdown rendering of the legacy SDLC tree was removed in M3.7.b. Pages are built by the post-scan `pages`
+hook; `discover export --format markdown` writes one file per page.
 
 ### Phase 19: Finalize
 **Input**: Scan metadata  

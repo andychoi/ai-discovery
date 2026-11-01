@@ -57,7 +57,6 @@ def test_no_llm_scan_completes_without_keys_or_network(provider, tmp_path, no_ne
     assert conn.execute("SELECT COALESCE(SUM(est_usd), 0) FROM llm_costs").fetchone()[0] == 0
     # Deterministic artifacts still written
     assert (tmp_path / "out" / "output-k" / "interfaces.json").exists()
-    assert list((tmp_path / "docs").rglob("*dependencies.md"))
     assert list((tmp_path / "docs").rglob("screens/*.md"))
     conn.close()
 

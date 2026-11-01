@@ -33,9 +33,7 @@ _SCREEN_CALL = (3000, 1500)
 _DOMAIN_FLOW_CALL = (6000, 2000)
 _SCENARIO_CALLS = 3                # steps + IPO + interfaces
 _SCENARIO_CALL = (1500, 500)
-_ROLLUP_CALL = (8000, 3000)        # per domain × doc type
 _REVIEW_PER_DOC = (6000 + 10 * 1500, 1500 + 10 * 50)   # claim extraction + ~10 verifications
-_ONBOARD_CALL = (4000, 1500)
 _PAGE_PROSE_CALL = (2500, 300)     # M3.7.a: one narrative per overview/domain/screen/flow/entity/onboarding page
 RANGE_LOW, RANGE_HIGH = 0.5, 2.0
 
@@ -47,7 +45,6 @@ class ScanShape:
     domains: int = 0
     scenarios: int = 0
     screens: int = 0
-    doc_types: int = 6
 
 
 @dataclass
@@ -95,10 +92,8 @@ def estimate(config: Any, shape: ScanShape) -> Estimate:
     stages.append(_stage(config, "screens", "screen", shape.screens, *_SCREEN_CALL))
     stages.append(_stage(config, "flows", "standard", shape.domains, *_DOMAIN_FLOW_CALL))
     stages.append(_stage(config, "scenario_flows", "standard", shape.scenarios * _SCENARIO_CALLS, *_SCENARIO_CALL))
-    docs = shape.domains * shape.doc_types
-    stages.append(_stage(config, "rollup", "deep", docs, *_ROLLUP_CALL))
-    stages.append(_stage(config, "review", "fast", docs, *_REVIEW_PER_DOC))
-    stages.append(_stage(config, "onboarding", "standard", shape.domains, *_ONBOARD_CALL))
+    if getattr(config, "quality", "draft") == "final":   # phase 17: source verification of screen specs
+        stages.append(_stage(config, "screen_review", "fast", shape.screens, *_REVIEW_PER_DOC))
     prose_pages = (1 if shape.tier1_chunks or shape.domains else 0) + 2 * shape.domains + shape.scenarios \
         + shape.screens
     stages.append(_stage(config, "page_prose", "standard", prose_pages, *_PAGE_PROSE_CALL))
@@ -118,7 +113,6 @@ def shape_from_db(db_path: Path, scan_id: int) -> ScanShape:
     execution slice each; slices are not persisted, and parse-time base types are
     not stored, so base-type contracts are not seen here).
     """
-    from ..ai.rollup import DOC_TYPES
     from ..ai.summarizer import _SUMMARIZE_TYPES, _is_test_chunk
 
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -139,7 +133,7 @@ def shape_from_db(db_path: Path, scan_id: int) -> ScanShape:
         conn.close()
     avg_tokens = max(50, min(1500, int((avg_chars or 1600) / 4)))
     return ScanShape(tier1_chunks=n, avg_chunk_tokens=avg_tokens, domains=domains, scenarios=scenarios,
-                     screens=screens, doc_types=len(DOC_TYPES))
+                     screens=screens)
 
 
 def _json(text: str | None, default):

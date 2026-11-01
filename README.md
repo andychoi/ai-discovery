@@ -110,14 +110,12 @@ Code → Parse (Tree-sitter) → Build call graph → Classify domains
 | 11    | `tier1_summarize`           | Haiku: per-chunk summaries                                 |
 | 12    | `tier2_flow_analysis`       | Sonnet: per-domain business flows                          |
 | 13    | `scenario_flow_inference`   | Scenario + cross-entity transitions                        |
-| 14    | `tier3_doc_rollup`          | Sonnet/Opus: final docs                                    |
 | 15    | `visual_artifacts`          | BPMN + DMN + EARS + entity-backbone Mermaid generation     |
 | 16    | `process_mining` *(opt.)*   | Per-scenario flow statistics (edge frequencies)            |
-| 17    | `self_review`               | Verify claims against source via RAG                       |
-| 18    | `render_markdown`           | Render with ai-docs frontmatter                            |
-| 19    | `finalise`                  | Write artifacts; optional push to DocHub/Gitea             |
+| 17    | `self_review`               | `quality: final`: verify screen specs against source        |
+| 19    | `finalise`                  | Totals and scan status; then the post-scan hook builds the wiki pages (+ page prose with `--prose`) |
 
-Phases 8 and 16 are opt-in. All phase numbers are integers — there are no decimal sub-phases. Phase numbers were re-issued (2026-05-07) so optional / inserted stages get their own integer slot instead of decimal half-steps; CLI flags accept the phase name (`--skip-phases=process_mining`) as a stable alternative.
+Phases 8 and 16 are opt-in. Phases 14 (`tier3_doc_rollup`) and 18 (`render_markdown`) were removed with the legacy SDLC tree (M3.7.b): documents are wiki pages now. All phase numbers are integers — there are no decimal sub-phases. Phase numbers were re-issued (2026-05-07) so optional / inserted stages get their own integer slot instead of decimal half-steps; CLI flags accept the phase name (`--skip-phases=process_mining`) as a stable alternative.
 
 ### Why 3 Model Roles?
 
@@ -131,7 +129,7 @@ Phases 8 and 16 are opt-in. All phase numbers are integers — there are no deci
 
 Tier 1 groups related chunks via **Louvain semantic batching** (`ai/semantic_batching.py`) so each summarization call sees a coherent code community instead of arbitrary slices. Call resolution reuses those communities to **narrow candidates** to the caller's community before fanning out globally (`graph/call_graph.py`), reducing same-name false matches.
 
-> ⚠ **Bedrock: use model ids your account can invoke.** The Bedrock defaults are Global cross-region inference profiles: `global.anthropic.claude-haiku-5-5` (from AWS's Haiku 5.5 launch post) and `global.anthropic.claude-sonnet-5-5` / `global.anthropic.claude-opus-5-5` (same pattern, not yet confirmed). If a model id isn't enabled in your account/region, **every call on that role fails** with `ValidationException: The provided model identifier is invalid` — with `quality: final` that is every document rollup, while the scan still completes. Check with `discover doctor --llm`, and set `bedrock.fast|standard|deep` (or `models.*`) to ids you have access to.
+> ⚠ **Bedrock: use model ids your account can invoke.** The Bedrock defaults are Global cross-region inference profiles: `global.anthropic.claude-haiku-5-5` (from AWS's Haiku 5.5 launch post) and `global.anthropic.claude-sonnet-5-5` / `global.anthropic.claude-opus-5-5` (same pattern, not yet confirmed). If a model id isn't enabled in your account/region, **every call on that role fails** with `ValidationException: The provided model identifier is invalid` while the scan still completes. Check with `discover doctor --llm`, and set `bedrock.fast|standard|deep` (or `models.*`) to ids you have access to.
 
 **Typical scan (2000 classes):** $5–15 end-to-end on Bedrock, depending on codebase complexity and tier3 selection.
 
@@ -159,20 +157,8 @@ Produces verified-fact tables (endpoints, entities, schema) directly from parser
 discover -C /path/to/repo scan
 ```
 
-Output layout (one folder per project, named after the source repo):
-
-```
-data/output-myapp/
-├── ASIS/{domain}.md           # Current state per domain
-├── ASD/{domain}.md            # As-is detail (use cases, business rules)
-├── ASSC/{domain}.md           # Schema (entities, FKs, constraints)
-├── PF/{domain}-{scenario}.md  # Process flows, grouped by domain
-├── BPMN/{actor}.md            # BPMN per business actor lane
-├── DMN/entity-decisions.md    # Decision tables, all entities in one file
-└── EARS/entity-ears.md        # EARS requirements, all entities in one file
-```
-
-Per-entity DMN/EARS views and blast-radius (impact) pages are roadmap items (wiki entity pages, M3.3; impact, M5.2); today `discover impact <Entity>` prints to stdout and writes no file.
+Everything lands in `<repo>/.discovery/` (`discovery.db` holds the graph and the wiki pages). Browse it with
+`discover serve`, export it with `discover export --format markdown|html|json`, deliver it with `discover push`.
 
 Each row in API and schema tables links back to source via `file:line`, so trust signals are at the row level, not just the doc level.
 
@@ -191,8 +177,8 @@ Cost-bounded: an agent runs only over flagged rows (typically ~5–15% of all ro
 
 Once individual rows are triaged, run the consistency skill across the full output. The skill:
 
-1. Builds the link graph from `links_to` frontmatter across ASIS / ASD / ASSC / PF / BPMN / DMN / EARS.
-2. Verifies every endpoint in ASIS appears in a PF doc, every entity in ASSC appears in EARS, every PF scenario references an ASD use case, etc.
+1. Reads the page link graph (`page_links`) across overview, domain, flow, entity, table, screen and endpoint pages.
+2. Verifies links resolve, every endpoint is reached by a flow, every table is touched by something, entities have transitions, etc.
 3. For domain-tagged repos (e.g., `tags=[ecommerce]`), flags missing flows expected for that domain (logout, password-reset, refund, payment-webhook) — and **distinguishes code gaps from doc gaps**: if there's no source evidence, it's a code gap to track, not a discovery failure.
 4. Emits `consistency-report.md`. Read-only; no in-place edits.
 
@@ -627,8 +613,8 @@ discover -C ./my-app scan --resume
 ### Integration with Existing Docs
 
 Screen specs do **not replace** domain docs. They **link to** them:
-- Each screen links to database table specs (ASSC)
-- Each screen links to backend controller specs (ASD)
+- Each screen links to its table pages
+- Each screen links to its backend (endpoint and symbol pages)
 - Each screen links to batch job docs
 - Each screen links to external interface specs
 
@@ -712,20 +698,16 @@ python examples/01_local_scan.py
 ## Output
 
 ```
-data/output-<project-slug>/
-├── discovery-<slug>.db              # SQLite: code nodes, calls, flows, costs, summaries, embeddings
-├── entity_state_machines.json       # Per-entity FSMs (Phase 3 backbone)
-├── cross_entity_transitions.json    # Cross-entity links (Phase 3b/3.1c)
-├── entity_conditions.json           # Entity-guard correlations (Phase 3d)
-├── ASIS/{domain}.md                 # As-is overview per domain
-├── ASD/{domain}.md                  # As-is detail (use cases, business rules)
-├── ASSC/{domain}.md                 # Schema (entities, FKs, constraints)
-├── PF/{domain}-{scenario}.md        # Process flows, domain-grouped filenames
-├── BPMN/{actor}.md                  # BPMN per business-actor lane (Phase 15)
-├── DMN/entity-decisions.md          # DMN decision tables, all entities (Phase 15)
-├── EARS/entity-ears.md              # EARS requirements, all entities (Phase 15)
-└── ONBOARD/{slug}-onboard-{domain}.md  # Per-domain tour guides (pedagogical path through the call graph)
+<repo>/.discovery/
+├── config.yaml                      # project config (commit it)
+├── discovery.db                     # SQLite: code nodes, edges, pages, flows, costs, summaries, embeddings
+├── cache/                           # parse cache, LLM response cache
+├── exports/{json,html,markdown}/    # `discover export` output
+└── logs/                            # e.g. hook.log from the post-commit hook
 ```
+
+The legacy ASIS/ASD/ASSC/PF/BPMN/DMN/EARS/ONBOARD markdown tree was removed in M3.7.b — every one of those
+views is a wiki page now (domain, flow, onboarding, entity with FSM + DMN + EARS, table, interface, …).
 
 For tooling outside the wiki, `discover export --format json` writes the portable knowledge graph (`ai-discovery/knowledge-graph` v2); `.discovery/discovery.db` is plain SQLite.
 

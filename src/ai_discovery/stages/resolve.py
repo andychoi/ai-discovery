@@ -18,7 +18,7 @@ def run(ctx: RunContext) -> None:
     from ..pipeline import (
         _PHASE_SPECS, _SKIPPABLE_PHASES, _display_checkpoint_status, _finalise_scan,
         _find_previous_run, _get_start_phase, _parse_phase_spec, _repo_keys,
-        _rewrite_docs_from_db, _timed, console,
+        _timed, console,
     )
 
     repo, config = ctx.repo, ctx.config
@@ -80,14 +80,8 @@ def run(ctx: RunContext) -> None:
 
     if resume and prev_run:
         if prev_run["status"] in ("push_failed", "llm_complete"):
-            console.print(
-                f"[yellow]Scan #{prev_run['id']} finished LLM tiers — re-rendering markdown from DB.[/]"
-            )
-            _rewrite_docs_from_db(
-                prev_run["id"], db_path, docs_dir, project_slug,
-                repo_url=resolved.url or str(resolved.repo_path),
-                repo_commit=resolved.commit_sha,
-            )
+            # LLM tiers finished; only finalising was left (there is no markdown tree to re-render, M3.7.b)
+            console.print(f"[yellow]Scan #{prev_run['id']} finished its LLM stages — finalising it.[/]")
             _finalise_scan(prev_run["id"], db_path, "completed")
             return ctx.halt()
         if prev_run["status"] == "completed":
@@ -144,40 +138,6 @@ def run(ctx: RunContext) -> None:
             )
             return ctx.halt()
 
-    # Same-SHA fast-path: --rescan but commit unchanged and scan already done.
-    # Skip parse + LLM tiers — reuse cached rollups and re-render markdown.
-    # Only valid if the cached scan actually produced rollup docs; otherwise fall
-    # through to a real rescan (a "completed" scan with zero docs is a sticky
-    # cache trap — see prior bug where empty cache was reused forever).
-    cached_doc_count = 0
-    if rescan and prev_run and prev_run["commit_sha"] == resolved.commit_sha \
-            and prev_run["status"] in ("completed", "push_failed", "llm_complete"):
-        _conn = get_conn(db_path)
-        try:
-            _row = _conn.execute(
-                "SELECT COUNT(*) AS n FROM generated_docs WHERE scan_id = ?",
-                (prev_run["id"],),
-            ).fetchone()
-            cached_doc_count = _row["n"] if _row else 0
-        finally:
-            _conn.close()
-
-    if rescan and prev_run and prev_run["commit_sha"] == resolved.commit_sha \
-            and prev_run["status"] in ("completed", "push_failed", "llm_complete") \
-            and cached_doc_count > 0 and not adds_prose and not dirty:
-        console.print(
-            f"[cyan]Commit {resolved.commit_sha[:10]} already analysed "
-            f"(scan #{prev_run['id']}, status={prev_run['status']}, "
-            f"docs={cached_doc_count})[/]\n"
-            f"[dim]Skipping parse + LLM tiers — re-rendering cached rollups.[/]"
-        )
-        _rewrite_docs_from_db(
-            prev_run["id"], db_path, docs_dir, project_slug,
-            repo_url=resolved.url or str(resolved.repo_path),
-            repo_commit=resolved.commit_sha,
-        )
-        _finalise_scan(prev_run["id"], db_path, "completed")
-        return ctx.halt()
 
     # ------------------------------------------------------------------
     # 4. Create scan_run record (if not resuming)

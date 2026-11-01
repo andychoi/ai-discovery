@@ -93,7 +93,7 @@ def test_verify_screen_specs_end_to_end(monkeypatch, tmp_path):
     (screens / "orders.md").write_text(_SCREEN_MD)
 
     import ai_discovery.ai.self_review as sr
-    import ai_discovery.ai.rollup as rollup
+    import ai_discovery.ai.confidence as rollup
     monkeypatch.setattr(sr, "review_document", lambda *a, **k: _claims()[:1])
     monkeypatch.setattr(rollup, "blend_confidence", lambda n, s: 0.9)
 

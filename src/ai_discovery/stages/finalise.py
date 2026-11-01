@@ -20,7 +20,6 @@ def run(ctx: RunContext) -> None:
     project_slug = ctx.project_slug
     all_nodes = ctx.all_nodes
     domains = ctx.domains
-    rollups = ctx.rollups
     # ------------------------------------------------------------------
     # 19. Finalise (offline-only — no push)
     # ------------------------------------------------------------------
@@ -40,7 +39,6 @@ def run(ctx: RunContext) -> None:
         console.print(f"  Scan ID:     [bold]{scan_id}[/]")
         console.print(f"  Code nodes:  {len(all_nodes)}")
         console.print(f"  Domains:     {len(domains)}")
-        console.print(f"  Documents:   {len(rollups)}")
         console.print(f"  LLM cost:    [bold]${cost:.4f}[/]")
         console.print(f"  Total time:  [bold]{total_elapsed:.1f}s[/]")
         console.print(f"  Output:      {docs_dir}")

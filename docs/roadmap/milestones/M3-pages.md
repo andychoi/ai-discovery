@@ -92,7 +92,7 @@
 - **Out of scope:** removing the legacy SDLC output (M3.7.b); groundedness checks (M3.8).
 
 ### M3.7.b Legacy SDLC output removed
-- **Status:** In progress (rm/M3.7b-legacy-removal, 2026-11-01)
+- **Status:** Done (b02e829)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M3.7.a, M3.10, M2.7

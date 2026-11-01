@@ -773,3 +773,13 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/cli` → all pass; full `pytest -q` → 1870 passed, 2 skipped (the drop is the deleted legacy tests); `bench gate` ok; `roadmap_lint` ok; `gen_cli_reference.py --check` ok.
 - **Unblocks:** M3.7.b (nothing delivers the legacy SDLC tree any more). No repowise code was copied or translated.
 
+## 2026-11-01 — M3.7.b — Legacy SDLC output removed
+- **Branch/commit:** rm/M3.7b-legacy-removal @ b02e829
+- **Unblocked by:** M2.6 (`push` delivers the page export) and M2.7 (legacy `ingest` gone) — nothing read the tree any more.
+- **Deleted:** `ai/rollup.py`, `stages/rollup.py`, `stages/render.py`, `generators/doc_generator.py` (ASIS/ASD/ASSC/PF trees, INTERFACES catalog doc), six doc templates, entity-stage BPMN/DMN/EARS markdown + "legacy mirror" copies, ONBOARD docs + their narrative call (`generate_onboarding_docs`), `pipeline._rewrite_docs_from_db` and its two resolve paths, plus modules orphaned by M2.7 (`rag/chat.py`, `generators/graph_export.py`); their tests.
+- **Kept / moved:** `review` stage = `quality: final` screen verification only; `blend_confidence` → `ai/confidence.py`; `build_tour_steps` (onboarding pages); flows stage and `scenario_flows` (MCP `get_flow`); entity JSON artifacts; screen spec files.
+- **Scope note:** beyond the Owns list (stages, pipeline, estimate, generators, docs) — the acceptance names the whole legacy output.
+- **Measured:** golden snapshots lose exactly 46 tree files (11 ASIS, 11 ASD, 11 ASSC, 10 PF, 1 INTERFACES, 2 ONBOARD), 33 tier-3 rollup calls and 2 onboarding calls; `generated_docs` 35 → 0; everything else identical. The cost estimate no longer prices rollup (deep, per domain × 3), rollup review or ONBOARD narratives.
+- **Verify:** `pytest -q tests -k prose` ok; full `pytest -q` → 1782 passed, 2 skipped (the drop is deleted legacy tests); `bench gate` ok; `roadmap_lint` ok.
+- **Follow-ups:** `generated_docs` table and `ScanContext`-era phase numbers 14/18 remain in the schema/phase registry for old stores; the `deep` role now has no default consumer (kept for `quality: final` overrides). No repowise code was copied or translated.
+

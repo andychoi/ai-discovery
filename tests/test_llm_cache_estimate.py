@@ -130,25 +130,26 @@ def test_anthropic_transport_sends_a_cache_control_system_block(monkeypatch) -> 
 
 def _shape(**kw) -> ScanShape:
     return ScanShape(**{"tier1_chunks": 1000, "avg_chunk_tokens": 400, "domains": 20, "scenarios": 100,
-                        "screens": 30, "doc_types": 6, **kw})
+                        "screens": 30, **kw})
 
 
 def test_estimate_has_a_range_and_per_stage_breakdown() -> None:
     cfg = DiscoveryConfig(provider="anthropic")
     est = estimate(cfg, _shape())
     assert 0 < est.low_usd < est.expected_usd < est.high_usd
-    assert {s.stage for s in est.stages} >= {"summaries", "flows", "rollup", "review", "screens"}
+    assert {s.stage for s in est.stages} >= {"summaries", "flows", "scenario_flows", "screens", "page_prose"}
+    assert not {"rollup", "review", "onboarding"} & {s.stage for s in est.stages}   # removed in M3.7.b
     assert est.expected_usd == pytest.approx(sum(s.usd for s in est.stages))
     assert estimate(cfg, _shape(tier1_chunks=2000, domains=40, scenarios=200, screens=60)).expected_usd \
         > est.expected_usd
 
 
-def test_final_quality_prices_documents_with_the_deep_model() -> None:
+def test_final_quality_adds_screen_source_verification() -> None:
     draft = DiscoveryConfig(provider="anthropic")
     final = DiscoveryConfig(provider="anthropic", quality="final")
-    rollup = lambda c: next(s for s in estimate(c, _shape()).stages if s.stage == "rollup")  # noqa: E731
-    assert rollup(draft).model == draft.anthropic.standard and rollup(final).model == final.anthropic.deep
-    assert rollup(final).usd > rollup(draft).usd
+    stages = lambda c: {s.stage for s in estimate(c, _shape()).stages}  # noqa: E731
+    assert "screen_review" in stages(final) and "screen_review" not in stages(draft)
+    assert estimate(final, _shape()).expected_usd > estimate(draft, _shape()).expected_usd
 
 
 def test_local_provider_estimates_zero_with_a_note() -> None:

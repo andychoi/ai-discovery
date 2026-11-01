@@ -548,7 +548,7 @@ def verify_screen_specs(
     - contradicted/unverified claims are annotated into the doc body
     """
     from .self_review import review_document, get_review_summary
-    from .rollup import blend_confidence
+    from .confidence import blend_confidence
 
     conn = get_conn(db_path)
     try:

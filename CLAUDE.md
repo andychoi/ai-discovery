@@ -43,7 +43,7 @@ No single heuristic is authoritative. Call resolution uses depth, state transiti
 Adding a new language (Go, Rust, etc.) follows a checklist in `docs/guides/parsers/extension-checklist.md`. Don't improvise; follow the template.
 
 ### 5. Measure Before Optimizing
-Profile phases to find bottlenecks (Phase 6: parsing? Phase 14: Tier 1? Phase 16: Tier 3?). See `docs/guides/pipeline/profiling.md`.
+Profile phases to find bottlenecks (Phase 6: parsing? Phase 11: Tier 1? Phase 12–13: Tier 2? page prose?). See `docs/guides/pipeline/profiling.md`.
 
 ### 6. Screen-Centric Documentation as User Entry Point
 New feature (v0.3+): Generate screen-centric specs that serve as user-facing entry points to the entire system. Screens link OUT to supporting docs (backend, batch, database, interfaces). This reverses the traditional domain-centric model—instead of organizing by business domain, organize by user-facing screens.
@@ -94,13 +94,12 @@ docs/
 │   ├── customer-search.md
 │   ├── customer-edit.md
 │   └── ...
-├── ASIS/, ASD/, ASSC/         # EXISTING: Domain-centric docs
-├── PF/, BPMN/, DMN/, EARS/     # EXISTING: Process/visual artifacts (DMN/EARS: one combined file each)
-└── INTERFACES/                 # EXISTING: External dependency catalog
 ```
 
-> No writer produces `database/`, `batch-jobs/` or per-entity `IMPACT/` files. Table, endpoint and entity
-> views live in the v1 wiki (`discover serve`, M3.3/M4.3); impact is roadmap item M5.2.
+> Everything else is a wiki page (`discover serve`; `discover export --format markdown|html|json`): domain,
+> flow, onboarding, entity (FSM + DMN + EARS), table, endpoint, batch-job, stored-procedure and interface
+> pages, plus `discover impact` / the `/impact` view. The legacy ASIS/ASD/ASSC/PF/BPMN/DMN/EARS/INTERFACES/
+> ONBOARD markdown tree was removed in M3.7.b.
 
 Screen specs **link out** to supporting docs. Screens do NOT replace domain docs.
 
@@ -272,7 +271,7 @@ Five custom skills accelerate development. The first three help build the discov
 ### Task: "The pipeline is slow. Where should I optimize?"
 
 1. Run with profiling: `discover scan repo --project-slug myproj --profile`
-2. Identify bottleneck phase (parsing? Tier 1? Tier 3?)
+2. Identify bottleneck phase (parsing? Tier 1? Tier 2? page prose?)
 3. Check `/pipeline-analyze` for optimization strategies
 4. Measure cost/benefit trade-offs
 5. Update discovery.yaml and re-profile
@@ -300,19 +299,23 @@ Five custom skills accelerate development. The first three help build the discov
 2. Spot-check one entity end-to-end: `discover impact entity:<Entity>` (or any symbol / `table:` / `screen:`)
 3. Probe coverage gaps: `discover ask "<what you expect to find>"`
 4. Audit low-confidence edges: `sqlite3 .discovery/discovery.db "SELECT ... FROM call_edges WHERE confidence < 0.65 ..."`
-5. Onboard onto a domain: read the per-domain tour guides under `ONBOARD/` (`generators/onboarding_generator.py`) — a pedagogical path through the resolved call graph, entry point first.
+5. Onboard onto a domain: open its onboarding page in the wiki (`onboarding:<domain>`, built by `pages/builders/flows.py`) — a pedagogical path through the resolved call graph, entry point first.
 
 **Reference**: `docs/guides/exploring-results/navigation.md`
 
 ---
 
-### Task: "A `quality: final` scan finished but ASIS/ASD/ASSC rollups are missing"
+### Task: "A `quality: final` scan spent more but the narratives look the same"
 
-`quality: final` (formerly `--prod`) switches doc rollup to the `deep` model role. If that model isn't enabled in your Bedrock account/region, **every Tier-3 rollup fails** with `ValidationException: The provided model identifier is invalid` — the scan still exits 0 (Tier-1/2, screens, PF, FK, dependency catalog all run), so it's easy to miss.
+`quality: final` (formerly `--prod`) adds source-verification passes — scenario flows and screen specs are
+claim-checked against the code (phase 17) — and lets the `deep` role be used where configured. If a model id
+isn't enabled in your Bedrock account/region, **every call on that role fails** with `ValidationException: The
+provided model identifier is invalid` while the scan still completes.
 
-1. Check the scan log for repeated `Rollup failed for …/as-is*: … model identifier is invalid`.
-2. Set `bedrock.deep` (or top-level `models.deep`) in `discovery.yaml` to a model you can invoke; `discover doctor --llm` probes the configuration.
-3. Re-run with `--quality final`. `quality: draft` uses the `standard` model for documents and is unaffected.
+1. Check the scan's degradations (`discover status`) and the log for `model identifier is invalid`.
+2. Set `bedrock.fast|standard|deep` (or top-level `models.*`) to models you can invoke; `discover doctor --llm`
+   probes the configuration.
+3. Page narratives (`--prose`) always use the `standard` role (M3.7.a) and are grounded (M3.8).
 
 ---
 

@@ -53,10 +53,8 @@ STAGES: tuple[StageSpec, ...] = (
                                   "rag.chunk_overlap", "rag.skip_tests")),
     StageSpec("summaries", (11,), ("no_llm", "provider", "model:fast", "semantic_batching")),
     StageSpec("flows", (12, 13), ("no_llm", "quality", "provider", "model:standard")),
-    StageSpec("rollup", (), ("no_llm", "quality", "provider", "model:deep")),
     StageSpec("visuals", (), ("no_llm", "process_mining.enabled")),
     StageSpec("review", (), ("no_llm", "quality", "provider", "model:fast")),
-    StageSpec("render"),
     StageSpec("finalise"),
 )
 ALIASES = {"domains": "graph", "chunk": "embed", "rag_embed": "embed"}

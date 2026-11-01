@@ -105,52 +105,9 @@ def run(ctx: RunContext) -> None:
             console.print(
                 f"  Entity conditions: [green]{len(conditions)}[/] correlations → {conditions_path.name}"
             )
-        # Phase 4: L1/L2 entity-backbone Mermaid view. First consumer of
-        # entity_kind + cross_entity_transitions as a unified artifact.
-        # Track 2: route into BPMN/ folder alongside ASIS/ASD/ASSC/PF so it
-        # ships as a first-class DocHub artifact, not a flat scan-root file.
-        from ..generators.bpmn_generator import BPMNGenerator
-        from ..generators.doc_generator import _doc_type_prefix
-        bpmn_dir = output_dir / _doc_type_prefix("entity-backbone")
-        bpmn_dir.mkdir(parents=True, exist_ok=True)
-        backbone_path = bpmn_dir / "entity-backbone.md"
-        backbone_path.write_text(
-            "# Entity Backbone (Mermaid)\n\n```mermaid\n"
-            + BPMNGenerator().generate_entity_backbone_mermaid(fsms, cross_links)
-            + "\n```\n"
-        )
-        # Keep a copy at the legacy path for tools that still read it directly
-        # (e.g. external scripts) — same content, two locations during transition.
-        (output_dir / "entity_backbone.mmd").write_text(
-            BPMNGenerator().generate_entity_backbone_mermaid(fsms, cross_links)
-        )
-        console.print(f"  Entity backbone: → {backbone_path.relative_to(output_dir)}")
-
-        # Phase 3 deliverable: DMN decision tables on guarded/conditioned
-        # transitions. Consumes guards (3c) + conditions (3d) as merged
-        # rule inputs; Markdown for PR review (DMN XML export can layer on).
-        from ..generators.dmn_generator import generate_entity_decisions_markdown
-        decisions_md = generate_entity_decisions_markdown(fsms, conditions)
-        if "No guarded or conditioned transitions" not in decisions_md:
-            dmn_dir = output_dir / _doc_type_prefix("entity-decisions")
-            dmn_dir.mkdir(parents=True, exist_ok=True)
-            decisions_path = dmn_dir / "entity-decisions.md"
-            decisions_path.write_text(decisions_md)
-            (output_dir / "entity_decisions.md").write_text(decisions_md)  # legacy mirror
-            console.print(f"  Entity decisions: → {decisions_path.relative_to(output_dir)}")
-
-        # Phase 3 deliverable: EARS requirement skeletons. Unlike DMN, emits
-        # for every transition with a to_state — each state change is a
-        # behavioral fact worth documenting, not only the guarded ones.
-        from ..generators.ears_generator import generate_entity_ears_markdown
-        ears_md = generate_entity_ears_markdown(fsms, conditions)
-        if "No transitions found" not in ears_md:
-            ears_dir = output_dir / _doc_type_prefix("entity-ears")
-            ears_dir.mkdir(parents=True, exist_ok=True)
-            ears_path = ears_dir / "entity-ears.md"
-            ears_path.write_text(ears_md)
-            (output_dir / "entity_ears.md").write_text(ears_md)  # legacy mirror
-            console.print(f"  Entity EARS: → {ears_path.relative_to(output_dir)}")
+        # The entity backbone, DMN decision tables and EARS requirements are sections of the entity pages
+        # (`pages/builders/business.py`); the BPMN/DMN/EARS markdown files and their "legacy mirror" copies
+        # at the scan root were removed with the SDLC tree (M3.7.b).
 
 
 execute = run

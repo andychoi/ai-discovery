@@ -146,7 +146,7 @@ openai:                 # block name matches the selected provider
 
 Override any slot via `discovery.yaml` to pin a deeper model where you want it.
 
-> ⚠ **`--prod` requires a `tier3p` model enabled in your Bedrock account.** If the configured `tier3p` id isn't invokable, every Tier-3 doc rollup fails with `ValidationException: The provided model identifier is invalid` — the scan still completes (Tier-1/2 run) but ASIS/ASD/ASSC rollups are absent. Set `bedrock.tier3p` in `discovery.yaml` to a model you have access to. `tier3d` (non-`--prod`) is unaffected.
+> ⚠ **Use model ids your Bedrock account can invoke.** If a role's model id isn't enabled, every call on that role fails with `ValidationException: The provided model identifier is invalid` while the scan still completes. Set `bedrock.fast|standard|deep` (or `models.*`) and check with `discover doctor --llm`.
 
 Budget guard: each tier checks `total_cost_usd < budget_limit_usd` before running.
 
@@ -170,12 +170,14 @@ Budget guard: each tier checks `total_cost_usd < budget_limit_usd` before runnin
 | `llm_costs` | Per-tier token counts and estimated USD cost |
 | `schema_version` | Migration tracking |
 
-### Generated Docs (`data/{slug}/{PREFIX}/{doc_id}.md`)
+### Wiki pages (`pages` table)
 
-DocHub prefix folders:
+Every document is a page (ADR-0005): `overview`, `domain`, `module`, `file`, `symbol`, `endpoint`, `screen`,
+`entity` (FSM + DMN + EARS), `table`, `stored_proc`, `batch_job`, `interface`, `flow`, `onboarding`. Read them
+with `discover serve`, `discover export --format markdown|html|json`, MCP, or `discover push`. The legacy
+`data/{slug}/{PREFIX}/` tree (ASIS/ASD/ASSC/PF/SPEC/ONBOARD) was removed in M3.7.b.
 
-| Doc Type | Folder | doc_id example |
-|----------|--------|----------------|
+----------|--------|----------------|
 | as-is | `ASIS/` | `myproj-orders-as-is.md` |
 | as-is-detail | `ASD/` | `myproj-orders-as-is-detail.md` |
 | as-is-schema | `ASSC/` | `myproj-orders-as-is-schema.md` |

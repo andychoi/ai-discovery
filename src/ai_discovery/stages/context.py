@@ -46,7 +46,6 @@ class RunContext:
     summaries_dict: dict = field(default_factory=dict)             # summaries
     flows_by_domain: dict = field(default_factory=dict)            # flows
     scenario_flows: list = field(default_factory=list)             # flows
-    rollups: list = field(default_factory=list)                    # rollup
     scenario_artifacts: dict = field(default_factory=dict)         # visuals
     mining_results: dict = field(default_factory=dict)             # visuals
     final_status: Optional[str] = None                             # finalise

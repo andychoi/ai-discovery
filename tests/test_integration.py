@@ -280,22 +280,10 @@ def test_full_pipeline(tmp_path):
     flows = conn.execute("SELECT * FROM business_flows").fetchall()
     assert len(flows) >= 1, f"Expected >=1 flow, got {len(flows)}"
 
-    # generated_docs — Tier 3 should produce entries
-    docs = conn.execute("SELECT * FROM generated_docs").fetchall()
-    assert len(docs) >= 1, f"Expected >=1 generated doc, got {len(docs)}"
+    # (the Tier-3 ASIS/ASD/ASSC rollup documents were removed in M3.7.b; pages are built by the post-scan hook)
 
     conn.close()
 
-    # ── Verify markdown output ─────────────────────────────────────────
-    # Pipeline writes markdown under docs_root/{project_slug}/{PREFIX}/…
+    # ── Verify output directory ──────────────────────────────────────────
     docs_dir = output_dir / "output-test-proj"
     assert docs_dir.exists(), f"{docs_dir} should exist"
-
-    md_files = list(docs_dir.rglob("*.md"))
-    assert len(md_files) >= 1, f"Expected >=1 markdown file, got {len(md_files)}"
-
-    # Check frontmatter of the first markdown file
-    sample = md_files[0].read_text(encoding="utf-8")
-    assert sample.startswith("---"), "Markdown should start with YAML frontmatter"
-    assert "doc_id:" in sample
-    assert "discovery_confidence:" in sample

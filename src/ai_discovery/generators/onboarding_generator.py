@@ -1,14 +1,9 @@
-"""Tour/onboarding generator (assessment 07 A-7).
+"""Onboarding tour steps (assessment 07 A-7; pages since M3.4).
 
-ONBOARD/{domain}.md: a pedagogical learning path through a domain — entry
-points first, then BFS down the high-confidence call chain, each step carrying
-its file:line and Tier-1 purpose. Ported from Understand-Anything's
-tour-builder idea, with strictly better inputs: a real resolved call graph
-with confidence, instead of LLM-guessed topology.
-
-Facts/prose separation (same rule as rollups): the step table is deterministic
-verified structure; ONE Tier-2 call per domain writes the narrative around it.
-A narrative failure never blocks the table — facts don't depend on prose.
+A pedagogical learning path through a domain — entry points first, then BFS down the high-confidence call
+chain, each step carrying its file:line. ``pages/builders/flows.py`` renders it as the domain's onboarding
+page; the narrative around it is the page prose layer (M3.7.a). The ONBOARD/ markdown docs and their own
+LLM narrative were removed with the legacy SDLC tree (M3.7.b).
 """
 
 from __future__ import annotations
@@ -16,9 +11,6 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from pathlib import Path
-
-from ..ai.rollup import unreviewed_confidence
 from ..graph.models import CallEdge, CodeNode, Domain
 
 logger = logging.getLogger(__name__)
@@ -113,130 +105,3 @@ def build_tour_steps(
         )
         for i, node in enumerate(ordered, start=1)
     ]
-
-
-def _build_narrative_prompt(domain_name: str, steps: list[TourStep]) -> str:
-    step_lines = "\n".join(
-        f"{s.order}. {s.qualified_name} ({s.node_type}, {s.file_path}) — {s.purpose or 'no summary'}"
-        for s in steps
-    )
-    return (
-        f"You are writing the orientation narrative for a developer-onboarding "
-        f"guide to the `{domain_name}` domain of a codebase.\n\n"
-        f"The learning path below was derived from the real call graph (entry "
-        f"points first, then the call chain). Do NOT restate it as a list — it "
-        f"is rendered separately as a table.\n\n"
-        f"Learning path:\n{step_lines}\n\n"
-        f"Write 2-3 short paragraphs: what this domain does, why the path is "
-        f"ordered this way, and what a newcomer should pay attention to while "
-        f"reading the listed code. Plain markdown prose, no headings, no code "
-        f"fences. Ground every statement in the path above — do not invent "
-        f"functionality."
-    )
-
-
-def render_onboarding_md(
-    domain_name: str,
-    steps: list[TourStep],
-    narrative: str,
-    project_slug: str,
-    confidence: float,
-) -> str:
-    """Render the onboarding doc: honest frontmatter, LLM narrative, and the
-    deterministic Learning Path table with file:line citations."""
-    doc_id = f"{project_slug}-onboard-{domain_name}"
-    rows = "\n".join(
-        f"| {s.order} | `{s.qualified_name}` | {s.node_type} | "
-        f"`{s.file_path}:{s.line_start}` | {s.purpose or '—'} |"
-        for s in steps
-    )
-    return f"""---
-doc_id: {doc_id}
-doc_type: onboard
-domain: {domain_name}
-discovery_confidence: {confidence}
-content_provenance: llm-narrative-unverified
----
-
-# Onboarding: {domain_name}
-
-> ⚠ **LLM-authored narrative, not source-verified.** The Learning Path table
-> below is deterministic (derived from the resolved call graph and Tier-1
-> summaries); only the prose narrative is generated.
-
-{narrative.strip()}
-
-## Learning Path
-
-*Ordered from entry points down the call chain — read in this order.*
-
-| # | Symbol | Kind | Source | Purpose |
-|---|--------|------|--------|---------|
-{rows}
-"""
-
-
-def generate_onboarding_docs(
-    domains: list[Domain],
-    edges: list[CallEdge],
-    summaries: dict[str, dict],
-    llm_client,
-    docs_dir: Path,
-    project_slug: str,
-    on_progress=None,
-) -> list[dict]:
-    """Generate ONBOARD/{slug}-onboard-{domain}.md per tourable domain.
-
-    One Tier-2 call per domain (narrative only). Returns doc dicts ready for
-    generated_docs persistence: doc_id, doc_type, domain, title, content_md,
-    confidence, verified_row_count.
-    """
-    out_dir = Path(docs_dir) / "ONBOARD"
-    docs: list[dict] = []
-
-    for i, domain in enumerate(domains, start=1):
-        steps = build_tour_steps(domain, edges, summaries)
-        if len(steps) < _MIN_STEPS:
-            logger.info(
-                "Onboarding: domain %s has %d tourable steps (< %d) — skipped",
-                domain.name, len(steps), _MIN_STEPS,
-            )
-            continue
-
-        try:
-            response = llm_client.invoke(
-                "tier2", _build_narrative_prompt(domain.name, steps), max_tokens=1024
-            )
-            narrative = response.text.strip()
-        except Exception as exc:
-            logger.warning(
-                "Onboarding narrative failed for %s (%s) — shipping the "
-                "deterministic table without prose",
-                domain.name, exc,
-            )
-            narrative = (
-                "*Narrative generation failed — follow the Learning Path "
-                "table below; it is derived directly from the call graph.*"
-            )
-
-        confidence = unreviewed_confidence(len(steps))
-        content = render_onboarding_md(
-            domain.name, steps, narrative, project_slug, confidence
-        )
-        doc_id = f"{project_slug}-onboard-{domain.name}"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / f"{doc_id}.md").write_text(content, encoding="utf-8")
-
-        docs.append({
-            "doc_id": doc_id,
-            "doc_type": "onboard",
-            "domain": domain.name,
-            "title": f"Onboarding: {domain.name}",
-            "content_md": content,
-            "confidence": confidence,
-            "verified_row_count": len(steps),
-        })
-        if on_progress:
-            on_progress(i, len(domains))
-
-    return docs

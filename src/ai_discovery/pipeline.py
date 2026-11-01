@@ -467,7 +467,7 @@ def _run_pipeline_unlocked(
         ctx.llm_client.attach_cache(layout.cache_dir / "llm_cache.db", read=not rescan)
 
     # screens → walk → parse → graph → slices → sql → entities → embed → summaries
-    # → flows → rollup → visuals → review → render → finalise (stages/runner.py)
+    # → flows → visuals → review → finalise (stages/runner.py; pages are built by the post-scan hook)
     return StageRunner(ctx).run()
 
 
@@ -751,46 +751,3 @@ def _finalise_scan(
         conn.commit()
     finally:
         conn.close()
-
-
-def _rewrite_docs_from_db(
-    scan_id: int,
-    db_path: Path,
-    docs_dir: Path,
-    project_slug: str,
-    *,
-    repo_url: str = "",
-    repo_commit: str = "",
-) -> None:
-    """Re-materialise markdown from cached rollups without re-running LLM tiers.
-
-    Used when a previous scan reached llm_complete (Tier 3 done, write skipped
-    or crashed) or when `--rescan` hits a same-SHA cache. Writes each doc to
-    docs_dir/{PREFIX}/{doc_id}.md using content_md stored in generated_docs.
-    """
-    from .generators.doc_generator import _doc_type_prefix
-
-    conn = get_conn(db_path)
-    try:
-        rows = conn.execute(
-            "SELECT doc_id, doc_type, domain, confidence, content_md "
-            "FROM generated_docs WHERE scan_id = ?",
-            (scan_id,),
-        ).fetchall()
-    finally:
-        conn.close()
-
-    if not rows:
-        console.print("[yellow]No cached rollups to re-render.[/]")
-        return
-
-    written = 0
-    for row in rows:
-        if not row["content_md"]:
-            continue
-        prefix_dir = docs_dir / _doc_type_prefix(row["doc_type"])
-        prefix_dir.mkdir(parents=True, exist_ok=True)
-        (prefix_dir / f"{row['doc_id']}.md").write_text(row["content_md"], encoding="utf-8")
-        written += 1
-
-    console.print(f"  Re-rendered [green]{written}[/] markdown file(s) to {docs_dir}")

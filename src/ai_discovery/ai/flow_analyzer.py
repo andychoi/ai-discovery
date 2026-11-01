@@ -131,7 +131,7 @@ class ScenarioFlowInference:
         (e.g. prod scans only). On any failure it leaves an explicit low score.
         """
         from .self_review import review_document, get_review_summary
-        from .rollup import blend_confidence
+        from .confidence import blend_confidence
 
         narrative = "\n".join(
             f"{s.get('name', '')}: {s.get('description', '')}" for s in flow.steps

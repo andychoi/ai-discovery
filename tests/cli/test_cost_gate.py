@@ -109,7 +109,7 @@ def test_cost_gate_dry_run_writes_nothing_and_prints_stages(repo: Path) -> None:
     data = _out(res)
     assert data["dry_run"] is True and data["estimate"]["source"] == "structure_scan"
     stages = {s["stage"] for s in data["estimate"]["stages"]}
-    assert {"summaries", "scenario_flows", "rollup"} <= stages
+    assert {"summaries", "scenario_flows", "page_prose"} <= stages and "rollup" not in stages
     est = data["estimate"]
     assert 0 < est["low_usd"] < est["expected_usd"] < est["high_usd"]
     assert data["estimate"]["shape"]["scenarios"] == 10          # 9 endpoints + 1 @Scheduled job (M6.12)

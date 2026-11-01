@@ -10,12 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from ai_discovery.generators.onboarding_generator import (
-    TourStep,
-    build_tour_steps,
-    generate_onboarding_docs,
-    render_onboarding_md,
-)
+from ai_discovery.generators.onboarding_generator import TourStep, build_tour_steps  # noqa: F401
 from ai_discovery.graph.models import CallEdge, CodeNode, Domain
 
 
@@ -79,71 +74,3 @@ def test_build_tour_steps_falls_back_to_fan_in_seed():
     edges = [_edge("d.a.fa", "d.core.hub"), _edge("d.b.fb", "d.core.hub")]
     steps = build_tour_steps(domain, edges, {})
     assert steps[0].qualified_name == "d.core.hub"
-
-
-def test_render_onboarding_md_structure():
-    steps = [
-        TourStep(order=1, qualified_name="orders.api.create_order",
-                 file_path="src/orders.py", line_start=10, node_type="endpoint",
-                 purpose="POST endpoint", fan_in=0, fan_out=1),
-    ]
-    md = render_onboarding_md("orders", steps, "Welcome to orders.", "demo", 0.6)
-    assert "doc_id: demo-onboard-orders" in md
-    assert "discovery_confidence: 0.6" in md
-    assert "llm-narrative-unverified" in md  # honest provenance banner
-    assert "src/orders.py:10" in md          # deterministic citation
-    assert "POST endpoint" in md
-    assert "Welcome to orders." in md
-
-
-def test_generate_onboarding_docs_writes_files_one_call_per_domain(tmp_path):
-    domain, edges, summaries = _orders_domain()
-
-    @dataclass
-    class _Resp:
-        text: str = "Start at the API endpoint, then follow the service layer."
-        tokens_in: int = 100
-        tokens_out: int = 50
-        model: str = "sonnet-test"
-        tier: str = "tier2"
-
-    client = MagicMock()
-    client.invoke.return_value = _Resp()
-
-    docs = generate_onboarding_docs([domain], edges, summaries, client, tmp_path, "demo")
-    assert client.invoke.call_count == 1
-    assert client.invoke.call_args[0][0] == "tier2"
-
-    (doc,) = docs
-    assert doc["doc_type"] == "onboard"
-    assert doc["domain"] == "orders"
-    assert doc["verified_row_count"] == 3   # deterministic steps count as facts
-    assert doc["confidence"] == 0.6         # UNREVIEWED_WITH_FACTS_CONFIDENCE
-
-    out = tmp_path / "ONBOARD" / "demo-onboard-orders.md"
-    assert out.exists()
-    content = out.read_text()
-    assert "Start at the API endpoint" in content
-    assert "orders.svc.process" in content
-
-
-def test_generate_onboarding_docs_skips_tiny_domains(tmp_path):
-    lone = _node("tiny.f")
-    domain = Domain(name="tiny", nodes=[lone], entry_points=[])
-    client = MagicMock()
-    docs = generate_onboarding_docs([domain], [], {}, client, tmp_path, "demo")
-    assert docs == []
-    assert client.invoke.call_count == 0  # no LLM spend on un-tourable domains
-
-
-def test_generate_onboarding_docs_survives_llm_failure(tmp_path):
-    """The deterministic table must ship even when the narrative call fails —
-    facts don't depend on prose."""
-    domain, edges, summaries = _orders_domain()
-    client = MagicMock()
-    client.invoke.side_effect = RuntimeError("provider down")
-    docs = generate_onboarding_docs([domain], edges, summaries, client, tmp_path, "demo")
-    (doc,) = docs
-    content = (tmp_path / "ONBOARD" / "demo-onboard-orders.md").read_text()
-    assert "orders.repo.save" in content       # deterministic table present
-    assert doc["verified_row_count"] == 3

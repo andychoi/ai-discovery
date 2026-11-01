@@ -43,16 +43,15 @@ src/ai_discovery/
 ├── rag/
 │   ├── embedder.py      ← Embed chunks into sqlite-vec; resume-aware
 │   ├── doc_embedder.py  ← Embed generated docs for doc-level search
-│   ├── retriever.py     ← KNN semantic search
-│   └── chat.py          ← Interactive RAG REPL
+│   └── retriever.py     ← KNN semantic search (used by `discover ask` / MCP search)
 │
 ├── generators/
-│   ├── doc_generator.py ← Jinja2 render; slug doc_ids; PREFIX folder layout
 │   ├── bpmn_generator.py← Mermaid (sequence + flowchart), BPMN 2.0 XML, IPO table, FSM, pseudo event log
-│   ├── onboarding_generator.py ← ONBOARD/ per-domain tour guides from the call graph (table = deterministic, narrative = 1 Tier-2 call)
-│   ├── graph_export.py  ← Canonical knowledge-graph JSON (`discover export --format json`)
-│   ├── push.py          ← Ingest to DocHub API / Gitea / offline copy
-│   └── templates/       ← *.md.j2 per doc type
+│   ├── onboarding_generator.py ← per-domain tour steps (rendered as onboarding pages, `pages/builders/flows.py`)
+│   └── templates/       ← screen-spec templates (screen_doc_writer)
+│
+├── pages/               ← the wiki: builders/ (one module per page family), prose.py, grounding.py, build.py
+├── export/              ← `discover export`: json.py (knowledge graph v2), html.py (file:// wiki), markdown.py
 │
 └── ingest/
     ├── frontmatter.py   ← Parse/generate doc frontmatter
@@ -113,13 +112,9 @@ src/ai_discovery/
   - IPO markdown tables
   - Pseudo event logs for process mining
 
-- **`generators/doc_generator.py`** — Jinja2 rendering
-  - Converts generated content to markdown
-  - Folder layout: `data/{slug}/{PREFIX}/{doc_id}.md`
-
-- **`generators/onboarding_generator.py`** — ONBOARD tour guides
-  - `ONBOARD/{domain}.md`: a per-domain learning path — entry points first, then BFS down the high-confidence call chain, each step carrying its file:line + Tier-1 purpose
-  - Deterministic step table; one Tier-2 call per domain writes the narrative around it (a narrative failure never blocks the table)
+- **`pages/`** — the wiki (ADR-0005): builders turn the scan into pages; with `--prose` one grounded narrative
+  per overview/domain/screen/flow/entity/onboarding page (`prose.py`, `grounding.py`). The legacy
+  `doc_generator.py` SDLC tree (ASIS/ASD/ASSC/PF/…) and the ONBOARD docs were removed in M3.7.b.
 
 ### Configuration & Execution
 - **`pipeline.py`** — Orchestrator
