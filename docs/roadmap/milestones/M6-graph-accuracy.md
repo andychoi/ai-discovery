@@ -69,7 +69,7 @@
 - **Out of scope:** dynamic `require(expr)`; `module.exports = class …` default-export typing.
 
 ### M6.5.b Vue SFC
-- **Status:** Planned
+- **Status:** In progress (rm/M6.5b-vue-sfc, 2026-10-31)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.5.a
