@@ -45,7 +45,7 @@
 - **Out of scope:** cost gate (M2.4).
 
 ### M2.4 Cost gate + `--dry-run`
-- **Status:** Planned
+- **Status:** In progress (rm/M2.4-cost-gate, 2026-11-01)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M2.3, M1.11

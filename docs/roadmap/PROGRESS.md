@@ -20,6 +20,9 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 |---|---|---|---|
 | migration | 0001 | M1.4 (baseline) | 2026-10-09 |
 | migration | 0002 | M1.5 (v1 tables) | 2026-10-09 |
+| migration | 0003 | M1.12.a (edge kinds) | 2026-10-13 |
+| migration | 0004 | M5.10 (annotations) | 2026-10-31 |
+| migration | 0005 | M2.4 (cost estimates vs actual) | 2026-11-01 |
 
 ---
 
