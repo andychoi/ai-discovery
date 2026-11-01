@@ -190,7 +190,7 @@ function go() {
 """)
     nodes = parser.parse_file(f)
     fn = next(n for n in nodes if n.name == "go")
-    assert {"module": "./svc/orders", "name": "OrderService", "alias": None} in fn.imports
+    assert {"module": "./svc/orders", "name": "OrderService", "alias": None, "default": True} in fn.imports
 
 
 def test_captures_namespace_import(parser: JavaScriptParser, tmp_path: Path):

@@ -1,0 +1,17 @@
+{
+  "project": "java-validator-decoy",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "ValidatorTests.rejectsEmptyName", "callee_suffix": "Pet.getName", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "ValidatorTests.rejectsEmptyName", "callee_suffix": "PetValidator.validate"}
+  ],
+  "external_systems": [],
+  "language": "java",
+  "_README": "Labelled from source (shape of spring-petclinic's ValidatorTests, found in the M6.14 re-grade). The test's validator is jakarta.validation.Validator; PetValidator implements Spring's org.springframework.validation.Validator — a different interface with the same short name. validator.validate(pet) is a library call and must never reach PetValidator.validate.",
+  "hard_case": {"catalog": "Interface implementations matched by short name", "item": "M6.15"}
+}

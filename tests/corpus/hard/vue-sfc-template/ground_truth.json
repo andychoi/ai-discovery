@@ -1,0 +1,17 @@
+{
+  "project": "vue-sfc-template",
+  "framework": "vue",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "OrderForm", "callee_suffix": "OrderForm.onSubmit", "min_confidence": 0.75},
+    {"caller_suffix": "OrderForm.onSubmit", "callee_suffix": "orders.saveOrder", "min_confidence": 0.75},
+    {"caller_suffix": "OrderPage", "callee_suffix": "OrderForm", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "javascript",
+  "_README": "Labelled from source. OrderForm's template binds @submit to onSubmit (script setup), which calls saveOrder imported from ../api/orders. OrderPage's template renders the imported OrderForm component. Catalog: Vue SFC script + template edges.",
+  "hard_case": {"catalog": "Vue SFC <script setup> and template component/@event edges", "item": "M6.5.b"}
+}

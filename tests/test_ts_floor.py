@@ -44,7 +44,11 @@ SAMPLES = [
 def test_every_module_query_compiles(module_name: str) -> None:
     # Queries are built at import time; a grammar/binding mismatch raises here.
     module = importlib.import_module(module_name)
-    queries = [v for v in vars(module).values() if isinstance(v, Query)]
+    # module-level Query objects, or per-grammar tables of them (javascript.py compiles each query for JS,
+    # TS and TSX — M6.5.a)
+    def _flat(v):
+        return [x for d in v.values() for x in _flat(d)] if isinstance(v, dict) else [v]
+    queries = [q for v in vars(module).values() for q in _flat(v) if isinstance(q, Query)]
     assert queries, f"{module_name} defines no module-level tree-sitter Query"
 
 

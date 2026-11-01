@@ -55,7 +55,7 @@
 - **Out of scope:** —
 
 ### M6.5.a CommonJS bindings + TS barrels
-- **Status:** In progress (rm/M6.5a-commonjs-barrels, 2026-10-31)
+- **Status:** Done (031ee4d)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M0.3

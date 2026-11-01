@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar
 from pathlib import Path
 
 import tree_sitter_javascript as tsjs
@@ -43,6 +44,7 @@ def _is_minified(source: bytes) -> bool:
 
 JS_LANGUAGE = Language(tsjs.language())
 TS_LANGUAGE = Language(tsts.language_typescript())
+TSX_LANGUAGE = Language(tsts.language_tsx())
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "options"})
 
@@ -50,8 +52,7 @@ _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "opt
 # environment problem (tree-sitter version drift, grammar mismatch) — we want
 # the import to fail loudly rather than degrade silently at parse time, where
 # _matches(None, node) would raise a cryptic AttributeError mid-scan.
-_ASSIGNMENT_QUERY_JS = Query(
-    JS_LANGUAGE,
+_ASSIGNMENT_QUERY_JS = (
     """(assignment_expression
         left: [
             (member_expression
@@ -68,11 +69,10 @@ _ASSIGNMENT_QUERY_JS = Query(
             (number) @assign.val
             (identifier) @assign.val
         ]
-    )""",
+    )"""
 )
 
-_CALL_QUERY_JS = Query(
-    JS_LANGUAGE,
+_CALL_QUERY_JS = (
     """(call_expression
         function: [
             (member_expression
@@ -81,14 +81,13 @@ _CALL_QUERY_JS = Query(
             )
             (identifier) @call.name
         ]
-    )""",
+    )"""
 )
 
 # Phase 1.1: per-call-site records (with receiver). `(_)` accepts any shape
 # under `object:` so `this.svc.save()` and `a.b.c()` both match, not just the
 # narrow `obj.method()` form captured by _CALL_QUERY_JS.
-_CALL_SITE_QUERY_JS = Query(
-    JS_LANGUAGE,
+_CALL_SITE_QUERY_JS = (
     """(call_expression
         function: [
             (member_expression
@@ -97,20 +96,34 @@ _CALL_SITE_QUERY_JS = Query(
             )
             (identifier) @site.name
         ]
-    ) @site.call""",
+    ) @site.call"""
 )
 
-_IMPORT_QUERY_JS = Query(
-    JS_LANGUAGE,
-    "(import_statement) @import.decl",
+_IMPORT_QUERY_JS = (
+    "(import_statement) @import.decl"
 )
 
 _DB_OPERATIONS = frozenset({"save", "insert", "update", "delete", "remove", "execute", "query", "persist", "merge", "commit"})
 _EXTERNAL_CLIENTS = frozenset({"axios", "fetch", "got", "request", "superagent", "prisma", "sequelize", "typeorm", "mongoose", "knex", "pg", "kafka", "amqp"})
 
 
-def _matches(query: Query, node) -> list[dict[str, list]]:
-    return [caps for _pat_idx, caps in QueryCursor(query).matches(node)]
+# M6.5.a: a query compiled for one grammar matches nothing on another grammar's tree (node-type ids
+# differ), so every query is compiled once per grammar and picked by the file being parsed. Before this,
+# `.ts`/`.tsx` files got no call sites and no imports, and every call fell back to a name-only guess.
+_QUERY_SOURCES = {"assignment": _ASSIGNMENT_QUERY_JS, "call": _CALL_QUERY_JS, "call_site": _CALL_SITE_QUERY_JS,
+                  "import": _IMPORT_QUERY_JS}
+_GRAMMARS = {"js": JS_LANGUAGE, "ts": TS_LANGUAGE, "tsx": TSX_LANGUAGE}
+_QUERIES = {g: {k: Query(lang, src) for k, src in _QUERY_SOURCES.items()} for g, lang in _GRAMMARS.items()}
+_GRAMMAR: ContextVar[str] = ContextVar("js_grammar", default="js")
+
+
+def _grammar_for(file_path: Path) -> str:
+    return {".ts": "ts", ".mts": "ts", ".cts": "ts", ".tsx": "tsx"}.get(file_path.suffix.lower(), "js")
+
+
+def _matches(query: str, node) -> list[dict[str, list]]:
+    """Captures of the named query, compiled for the grammar of the file being parsed."""
+    return [caps for _pat_idx, caps in QueryCursor(_QUERIES[_GRAMMAR.get()][query]).matches(node)]
 
 
 class JavaScriptParser(LanguageParser):
@@ -136,10 +149,14 @@ class JavaScriptParser(LanguageParser):
         if _is_minified(source):
             logger.debug("Skipping minified file: %s", file_path)
             return []
-        lang = TS_LANGUAGE if file_path.suffix in (".ts", ".tsx") else JS_LANGUAGE
-        parser = Parser(lang)
-        tree = parser.parse(source)
-        root = tree.root_node
+        grammar = _grammar_for(file_path)
+        token = _GRAMMAR.set(grammar)
+        try:
+            return self._parse_tree(Parser(_GRAMMARS[grammar]).parse(source).root_node, file_path, _enc_hints)
+        finally:
+            _GRAMMAR.reset(token)
+
+    def _parse_tree(self, root, file_path: Path, _enc_hints: dict) -> list[CodeNode]:
         file_stem = file_path.stem
         fp = str(file_path)
 
@@ -686,7 +703,7 @@ class JavaScriptParser(LanguageParser):
         trace key across modules even when short names collide.
         """
         transitions = []
-        for match in _matches(_ASSIGNMENT_QUERY_JS, node):
+        for match in _matches("assignment", node):
             obj_node = match.get("assign.obj", [None])[0]
             attr_node = match.get("assign.attr", [None])[0]
             val_node = match.get("assign.val", [None])[0]
@@ -719,7 +736,7 @@ class JavaScriptParser(LanguageParser):
     def _detect_boundaries(self, node) -> list[dict]:
         """Detect DB operations or external API calls."""
         boundaries = []
-        for match in _matches(_CALL_QUERY_JS, node):
+        for match in _matches("call", node):
             call_node = match.get("call.name", [None])[0]
             if not call_node:
                 continue
@@ -805,9 +822,7 @@ class JavaScriptParser(LanguageParser):
         receiver=`this.svc`.
         """
         sites: list[dict] = []
-        if _CALL_SITE_QUERY_JS is None:
-            return sites
-        for match in _matches(_CALL_SITE_QUERY_JS, node):
+        for match in _matches("call_site", node):
             name_nodes = match.get("site.name", [])
             if not name_nodes:
                 continue
@@ -835,9 +850,7 @@ class JavaScriptParser(LanguageParser):
           `import 'mod'`                 → no record (side effect only)
         """
         out: list[dict] = []
-        if _IMPORT_QUERY_JS is None:
-            return out
-        for match in _matches(_IMPORT_QUERY_JS, root):
+        for match in _matches("import", root):
             decl = match["import.decl"][0]
             module_node = JavaScriptParser._find_child(decl, "string")
             if module_node is None:
@@ -854,6 +867,7 @@ class JavaScriptParser(LanguageParser):
                         "module": module,
                         "name": child.text.decode(),
                         "alias": None,
+                        "default": True,   # M6.5.a: may also be found as the module's `export default`
                     })
                 elif child.type == "namespace_import":
                     # `import * as X from 'mod'`
@@ -884,7 +898,53 @@ class JavaScriptParser(LanguageParser):
                             "name": name_ident.text.decode(),
                             "alias": alias_ident.text.decode() if alias_ident else None,
                         })
+        out.extend(JavaScriptParser._require_bindings(root))
         return out
+
+    @staticmethod
+    def _require_bindings(root) -> list[dict]:
+        """CommonJS bindings at module level (M6.5.a), in the same record shape as ES imports:
+
+          `const x = require('m')`             → name=None, alias=x   (namespace, like `import * as x`)
+          `const { a, b: c } = require('m')`   → name=a; name=b, alias=c
+        Dynamic `require(expr)` binds nothing.
+        """
+        out: list[dict] = []
+        for stmt in root.children:
+            decl_stmt = JavaScriptParser._unwrap_export(stmt)
+            if decl_stmt is None or decl_stmt.type not in ("lexical_declaration", "variable_declaration"):
+                continue
+            for decl in decl_stmt.children:
+                if decl.type != "variable_declarator":
+                    continue
+                target, value = decl.child_by_field_name("name"), decl.child_by_field_name("value")
+                module = JavaScriptParser._required_module(value)
+                if target is None or module is None:
+                    continue
+                if target.type == "identifier":
+                    out.append({"module": module, "name": None, "alias": target.text.decode()})
+                elif target.type == "object_pattern":
+                    for prop in target.named_children:
+                        if prop.type == "shorthand_property_identifier_pattern":
+                            out.append({"module": module, "name": prop.text.decode(), "alias": None})
+                        elif prop.type == "pair_pattern":
+                            key, val = prop.child_by_field_name("key"), prop.child_by_field_name("value")
+                            if key is not None and val is not None and val.type == "identifier":
+                                out.append({"module": module, "name": key.text.decode(), "alias": val.text.decode()})
+        return out
+
+    @staticmethod
+    def _required_module(value) -> str | None:
+        """`require('m')` → 'm' (a string literal argument only)."""
+        if value is None or value.type != "call_expression":
+            return None
+        fn, args = value.child_by_field_name("function"), value.child_by_field_name("arguments")
+        if fn is None or fn.type != "identifier" or fn.text != b"require" or args is None:
+            return None
+        lits = [a for a in args.named_children if a.type != "comment"]
+        if len(lits) != 1 or lits[0].type != "string":
+            return None
+        return lits[0].text.decode().strip("\"'`")
 
     def _collect_exports(self, root, exported_names: set[str]) -> None:
         """Collect names that are exported."""
@@ -912,3 +972,48 @@ class JavaScriptParser(LanguageParser):
                     return child
             return None
         return node
+
+
+def extract_reexports(file_path: Path) -> list[dict]:
+    """Re-exports of a JS/TS module (M6.5.a barrels), read from disk.
+
+      `export * from './a'`              → {"module": "./a", "name": "*", "exported": "*"}
+      `export { a, b as c } from './x'`  → {"module": "./x", "name": "a", "exported": "a"}, {… "b", "c"}
+      `export { a as b }` (no source)    → {"module": None, "name": "a", "exported": "b"}  (local rename)
+      `export default a` / `export default function a() {}` → {"module": None, "name": "a", "exported": "default"}
+    `export * as ns from` is skipped (it binds a namespace, not a name). Unreadable files give [].
+    """
+    try:
+        source = read_source(file_path).data
+    except OSError:
+        return []
+    root = Parser(_GRAMMARS[_grammar_for(file_path)]).parse(source).root_node
+    out: list[dict] = []
+    for stmt in root.children:
+        if stmt.type != "export_statement":
+            continue
+        src = stmt.child_by_field_name("source")
+        module = src.text.decode().strip("\"'`") if src is not None else None
+        default = stmt.child_by_field_name("value") if any(c.type == "default" for c in stmt.children) else None
+        decl = stmt.child_by_field_name("declaration")
+        if default is None and decl is not None and any(c.type == "default" for c in stmt.children):
+            default = decl.child_by_field_name("name")   # `export default function foo() {}`
+        if default is not None and default.type in ("identifier", "type_identifier"):
+            out.append({"module": None, "name": default.text.decode(), "exported": "default"})
+            continue
+        clause = next((c for c in stmt.named_children if c.type == "export_clause"), None)
+        if clause is None:
+            if module and any(c.type == "*" for c in stmt.children) and \
+                    not any(c.type == "namespace_export" for c in stmt.named_children):
+                out.append({"module": module, "name": "*", "exported": "*"})
+            continue
+        for spec in clause.named_children:
+            if spec.type != "export_specifier":
+                continue
+            name, alias = spec.child_by_field_name("name"), spec.child_by_field_name("alias")
+            if name is None:
+                continue
+            out.append({"module": module, "name": name.text.decode(),
+                        "exported": (alias or name).text.decode()})
+    return out
+

@@ -1,0 +1,54 @@
+{
+  "cost_usd": 0,
+  "docs": 0,
+  "edges_by_resolved_by": {
+    "external_client": 21,
+    "import_exact": 37,
+    "same_file": 6
+  },
+  "edges_total": 64,
+  "files": {
+    "indexed": 16,
+    "skipped": {
+      "no_symbols": 23,
+      "skip_dir": 8,
+      "unsupported_extension": 20
+    },
+    "top_unsupported_extensions": {
+      "(none)": 5,
+      ".json": 12,
+      ".md": 1,
+      ".png": 1,
+      ".prisma": 1
+    }
+  },
+  "ground_truth": {
+    "call_edge_recall": 1.0,
+    "labelled": 2,
+    "missing": [],
+    "status": "ok"
+  },
+  "mode": "keyless",
+  "nodes_by_kind": {
+    "class": 1,
+    "endpoint": 20,
+    "external_system": 1,
+    "function": 31,
+    "method": 1
+  },
+  "ok": true,
+  "pages_hook": "93 pages, 93 indexed",
+  "repo": "node-express-realworld",
+  "scan_status": "completed",
+  "screens": 0,
+  "sha": "30b68e1e881462b2f4164ea09ab4c4f5699c7b0b",
+  "source": "cache",
+  "stack": "ts-js-backend",
+  "tool": "ai-discovery",
+  "unresolved": {
+    "edges_without_target": 0,
+    "unresolved_calls_rows": 136
+  },
+  "void": false,
+  "wall_seconds": 0.53
+}

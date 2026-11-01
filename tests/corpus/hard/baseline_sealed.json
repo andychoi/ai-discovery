@@ -126,5 +126,37 @@
       "recall": 1.0,
       "f1": 1.0
     }
+  },
+  "vue-sfc-template": {
+    "endpoints": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "entities": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "relationships": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "call_edges": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "di_resolution": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "external_systems": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
   }
 }

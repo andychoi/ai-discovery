@@ -90,6 +90,25 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
   120 → 20; `receiver_typed` 19 → 113, `inherited` 8 → 62 (a 24-edge spot check of the new typed and
   inherited edges was all correct; the graded sample needs re-drawing before precision is re-quoted).
 
+### JS/TS module rules (M6.5.a)
+- **One query table per grammar.** Tree-sitter queries are compiled for JS, TS and TSX and chosen by file
+  extension. A query compiled for the JS grammar silently matches nothing on a TS tree, which had left every
+  `.ts`/`.tsx` file without call sites or imports (every call fell to a 0.5 name guess). `.tsx` uses the TSX
+  grammar (JSX parses).
+- **CommonJS is an import.** `const x = require('./m')` binds a namespace (like `import * as x`);
+  `const { a, b: c } = require('./m')` binds names. Only module-level, string-literal `require`s.
+- **A relative import names a file, so the call binds there** (`import_exact`): `x.fn()` on a namespace
+  binding, or `fn()` on a named/default binding, resolves to the module-level function defined in the file
+  the specifier points to (extensions and `index` files tried). An aliased binding looks up the original
+  name. A default import also tries the module's `export default <name>`.
+- **Barrels are followed.** A module without the definition is read from disk for re-exports
+  (`export * from`, `export { a as b } from`, `export { a as b }`, `export default a`), followed to a fixed
+  point — cycle-safe, at most 8 hops. `export * as ns` is not followed.
+- **Library requires never bind repo code.** A non-relative module that is not a repo file keeps the
+  existing rule: the call is `external`, never a same-named repo function.
+- Effect on node-express-realworld (@30b68e1): key-edge recall 0.0 → 1.0; 37 `global_unique` edges → `import_exact`;
+  21 Prisma `external_client` edges now found. Re-graded sample: all correct (`bench/precision/sheets/CURRENT.json`).
+
 ### History (pre-ADR-0004)
 The 2026-05/06 cascade — stage 0 index (1.0), exact (1.0), import-scope
 (0.95), receiver-type (0.93; HIGH-3), short-name contextual 0.95…0.6 with A-3

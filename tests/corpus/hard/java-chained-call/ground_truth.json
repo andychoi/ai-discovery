@@ -1,0 +1,18 @@
+{
+  "project": "java-chained-call",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "CheckoutService.amountDue", "callee_suffix": "OrderRepository.find", "min_confidence": 0.75},
+    {"caller_suffix": "CheckoutService.amountDue", "callee_suffix": "Order.total", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "CheckoutService.amountDue", "callee_suffix": "Invoice.total"}
+  ],
+  "external_systems": [],
+  "language": "java",
+  "_README": "Labelled from source. amountDue calls orders.find(id) (OrderRepository field) and then .total() on its declared return type Order. Invoice.total in another package shares the name and must never be linked. Catalog: chained calls typed from declared return types.",
+  "hard_case": {"catalog": "Chained call a().b() typed from the declared return type", "item": "M6.16"}
+}

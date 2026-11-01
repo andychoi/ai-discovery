@@ -166,6 +166,17 @@ class _Resolver:
                 if imp not in self.global_usings[proj]:
                     self.global_usings[proj].append(imp)
         self.files = sorted({n.file_path for n in nodes if n.file_path})
+        # M6.5.a: JS/TS module-level definitions by (file, name) — file stems collide across directories
+        self.js_top: dict[tuple[str, str], list[CodeNode]] = defaultdict(list)
+        self._posix_files: dict[str, str] = {}
+        for n in nodes:
+            if _family(n.language) == "javascript" and n.file_path:
+                posix = posixpath.normpath(n.file_path.replace("\\", "/"))
+                self._posix_files[posix] = n.file_path
+                if n.qualified_name == f"{Path(n.file_path).stem}.{n.name}":
+                    self.js_top[(posix, n.name)].append(n)
+        self._js_files: dict[tuple[str, str], str | None] = {}
+        self._reexports: dict[str, list[dict]] = {}
         self._import_cache: dict[tuple, bool] = {}
         self.edges: list[CallEdge] = []
         self.unresolved: list[UnresolvedCall] = []
@@ -267,6 +278,10 @@ class _Resolver:
             return False
         module = imp.get("module") or ""
         imported = imp.get("name")
+        if _family(caller.language) == "javascript" and module.startswith("."):
+            handled = self._via_js_module(caller, site, name, receiver, imp, call_ref)
+            if handled is not None:
+                return handled
         exact: list[CodeNode] = []
         loose: list[CodeNode] = []
         for cand in self.by_name.get(name, []):
@@ -298,6 +313,68 @@ class _Resolver:
             self._miss(caller, site, call_ref, "external")
             return True
         return False
+
+    def _via_js_module(self, caller, site, name, receiver, imp, call_ref) -> bool | None:
+        """M6.5.a: a relative JS/TS import (ES or CommonJS) names the module file, so the call binds to the
+        function defined there — following barrel re-exports — instead of a repo-wide name guess.
+        None = not decidable here (the module is not a repo file, or the binding is used as an object)."""
+        file = self._js_module_file(imp.get("module") or "", caller.file_path)
+        if file is None:
+            return None
+        if receiver:
+            if imp.get("name") is not None or "." in receiver:
+                return None   # `import { svc }` + `svc.m()`, or `ns.obj.m()`: a property, not a module function
+            lookups = [name]
+        else:
+            lookups = [imp.get("name") or name] + (["default"] if imp.get("default") else [])
+        for lookup in lookups:
+            found = {t.qualified_name + t.file_path: t for t in self._js_exports(file, lookup, 0, set())
+                     if t.node_type in O.CALLABLE_TYPES and t.qualified_name != caller.qualified_name}
+            if len(found) == 1:
+                self._edge(caller, next(iter(found.values())), "import_exact", call_ref,
+                           **({"receiver": receiver} if receiver else {}), **{"import": imp})
+                return True
+            if found:
+                self._miss(caller, site, call_ref, "ambiguous", len(found))
+                return True
+        return None
+
+    def _js_module_file(self, module: str, importer: str) -> str | None:
+        """`./x`, `../svc/x` → the posix path of the file it names (extensions, `index` files), known to the
+        scan or present on disk (a barrel that declares nothing emits no node). None if not found."""
+        key = (module, posixpath.dirname(importer.replace("\\", "/")))
+        if key in self._js_files:
+            return self._js_files[key]
+        base = posixpath.normpath(posixpath.join(key[1], module))
+        cands = [base + ext for ext in ("", *_JS_EXTS)] + [f"{base}/index{ext}" for ext in _JS_EXTS]
+        hit = next((c for c in cands if c in self._posix_files), None) or \
+            next((c for c in cands if Path(c).suffix in _JS_EXTS and Path(c).is_file()), None)
+        self._js_files[key] = hit
+        return hit
+
+    def _js_exports(self, file: str, name: str, depth: int, seen: set) -> list[CodeNode]:
+        """Definitions *name* resolves to from module *file*: its own top-level symbol, else its re-exports
+        (`export * from`, `export { a as b } from`, `export { a as b }`, `export default a`) followed to a
+        fixed point — cycle-safe and depth-capped."""
+        if (file, name) in seen or depth > _MAX_REEXPORT_DEPTH:
+            return []
+        seen.add((file, name))
+        own = self.js_top.get((file, name))
+        if own:
+            return list(own)
+        if file not in self._reexports:
+            from ..parsers.javascript import extract_reexports
+            self._reexports[file] = extract_reexports(Path(self._posix_files.get(file, file)))
+        out: list[CodeNode] = []
+        for rx in self._reexports[file]:
+            if rx["exported"] not in (name, "*") or (rx["exported"] == "*" and name == "default"):
+                continue
+            inner = name if rx["name"] == "*" else rx["name"]
+            if rx["module"] is None:
+                out += self._js_exports(file, inner, depth + 1, seen)
+            elif (target := self._js_module_file(rx["module"], file)) is not None:
+                out += self._js_exports(target, inner, depth + 1, seen)
+        return out
 
     def _import_in_repo(self, imp: dict, importer: str) -> bool:
         """Does this import refer to code in the repository (vs. a library)?"""
@@ -383,7 +460,7 @@ class _Resolver:
         for imp in imports.values():
             module = imp.get("module") or ""
             if imp.get("name") == t.name and (not module or t.qualified_name in (f"{module}.{t.name}", t.name)
-                                              or _module_matches_file(module, t.file_path)):
+                                              or _module_matches_file(module, t.file_path, caller.file_path)):
                 return True
             if not imp.get("name") and module == pkg:   # C# `using Ns;`, Java `import pkg.*`
                 return True
@@ -645,6 +722,7 @@ def _build_import_index(caller: CodeNode, extra: list[dict] | None = None) -> di
 
 
 _JS_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue")
+_MAX_REEXPORT_DEPTH = 8   # barrel chains deeper than this are left unresolved (M6.5.a)
 
 
 def _module_matches_file(module: str, file_path: str, importer: str = "") -> bool:
