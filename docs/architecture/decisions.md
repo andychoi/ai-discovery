@@ -90,6 +90,25 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
   120 → 20; `receiver_typed` 19 → 113, `inherited` 8 → 62 (a 24-edge spot check of the new typed and
   inherited edges was all correct; the graded sample needs re-drawing before precision is re-quoted).
 
+### Precision rules from the M6.14 re-grade (M6.15)
+- **Same short name, different interface.** An implementation is a dispatch target only if it does not
+  explicitly import a *different* type of that name than the caller (`jakarta.validation.Validator` vs
+  Spring's `Validator`). Unknown on either side (wildcards, C# namespace usings) keeps the old behaviour.
+- **Loop variables are typed** (`for (PropertySource<?> s : list)`), so a library-typed one is `external`
+  rather than a `global_unique` guess. **Type parameters are not types:** `<T extends BaseEntity>` types `T`
+  locals as `BaseEntity`; an unbounded `T`/`E` types nothing.
+- **Client-library names need the library.** Registry tokens that name JS/Python libraries (`request`,
+  `requests`, `axios`, `prisma`, …) never match in Java/C#/VB (there they are variable names: a MediatR
+  command, an `HttpRequestMessage`), and in JS/Python only when the file imports that name (`fetch` is a
+  global). Type-like tokens (`HttpClient`, `RestTemplate`, `KafkaTemplate`, …) are unchanged.
+- **Duplicate `.proto` contracts** (a client's copy of a service's file) are qualified by the namespace their
+  generated code lives in (`csharp_namespace` → `java_package` → `package`): `proto::<ns>.<Message>`, and a
+  caller in that namespace binds to its own copy (`receiver_typed`). A message defined once keeps `proto::<Message>`.
+- Effect (graded, `bench/precision/sheets/CURRENT.json`): eShop `external_client` 0.667 → 1.0 (10 wrong `request`
+  edges gone; one correct edge that was only found through a variable named `request` is lost), `receiver_global`
+  0.864 → 0.95; spring-petclinic `global_unique` 0.9 → 1.0, the two wrong `framework` edges gone; four loop-variable
+  calls become `inherited`, `EntityUtils.getById` becomes `receiver_typed`.
+
 ### Chained calls and extension methods (M6.16)
 - **`a.b().c()` is typed from `b`'s declared return type** when `b` resolves to exactly one repo method
   (Java, C#; up to 3 hops; `this.m().x()` and bare `m().x()` included). The outer type is used, so a library

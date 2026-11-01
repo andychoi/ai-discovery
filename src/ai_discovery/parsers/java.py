@@ -577,7 +577,8 @@ class JavaParser(LanguageParser):
             for c in n.children:
                 if c.type in ("class_body", "lambda_expression", "class_declaration"):
                     continue   # inner scopes declare their own names
-                if c.type in ("formal_parameter", "spread_parameter", "catch_formal_parameter"):
+                if c.type in ("formal_parameter", "spread_parameter", "catch_formal_parameter",
+                              "enhanced_for_statement"):   # `for (PropertySource<?> s : list)` (M6.15)
                     tn = c.child_by_field_name("type")
                     nn = c.child_by_field_name("name")
                     if tn is not None and nn is not None and (t := cls._receiver_type(tn.text.decode())):
@@ -599,6 +600,23 @@ class JavaParser(LanguageParser):
                 walk(c)
 
         walk(m_node)
+        # M6.15: a type parameter is not a type — `<T extends BaseEntity>` types `T` locals as the bound;
+        # an unbounded parameter (`T`, `E`) types nothing (it must not read as a foreign type)
+        bounds = {}
+        tparams = m_node.child_by_field_name("type_parameters") or next(
+            (c for c in m_node.children if c.type == "type_parameters"), None)
+        for tp in (tparams.named_children if tparams is not None else []):
+            name = next((c for c in tp.named_children if c.type in ("type_identifier", "identifier")), None)
+            bound = next((c for c in tp.named_children if c.type == "type_bound"), None)
+            first = next((c for c in bound.named_children), None) if bound is not None else None
+            if name is not None:
+                bounds[name.text.decode()] = cls._receiver_type(first.text.decode()) if first is not None else ""
+        for var, t in list(out.items()):
+            if t in bounds or (len(t) == 1 and t.isupper()):
+                if bounds.get(t):
+                    out[var] = bounds[t]
+                else:
+                    del out[var]
         return out
 
     @classmethod

@@ -490,7 +490,7 @@ class _Resolver:
     def _is_local_type(self, caller: CodeNode, t: CodeNode, imports: dict[str, dict]) -> bool:
         if t.file_path == caller.file_path:
             return True
-        pkg = t.qualified_name.rsplit(".", 1)[0]
+        pkg = t.qualified_name.rsplit(".", 1)[0].removeprefix("proto::")   # proto: its csharp_namespace (M6.15)
         if caller.qualified_name.startswith(pkg + "."):
             return True
         for imp in imports.values():
@@ -681,8 +681,10 @@ class _Resolver:
         ``bases`` is the declared type's base list, or None when the type is
         not a node (then no implementation means "not ours": return False).
         """
+        want = _imported_qn(caller, type_short)
         impl_targets = {x.qualified_name: x for impl in self.impls.get(type_short, [])
-                        if (x := self.qualified.get(f"{impl.qualified_name}.{name}")) is not None}
+                        if (x := self.qualified.get(f"{impl.qualified_name}.{name}")) is not None
+                        and not _different_import(want, _imported_qn(impl, type_short))}
         if not impl_targets and bases is None:
             return False
         if len(impl_targets) == 1:
@@ -832,6 +834,21 @@ def _build_import_index(caller: CodeNode, extra: list[dict] | None = None) -> di
 _JS_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue")
 _MAX_REEXPORT_DEPTH = 8   # barrel chains deeper than this are left unresolved (M6.5.a)
 _MAX_CHAIN_DEPTH = 3      # `a().b().c().d()`: deeper call chains are not typed (M6.16)
+
+
+def _imported_qn(node: CodeNode, short: str) -> str:
+    """Fully-qualified name a file's explicit import gives *short* (`import jakarta.validation.Validator;`
+    → `jakarta.validation.Validator`); '' when the file has no single-name import of it."""
+    for imp in node.imports or []:
+        if imp.get("name") == short and not imp.get("alias") and imp.get("module") and not imp.get("static"):
+            return f"{imp['module']}.{short}"
+    return ""
+
+
+def _different_import(want: str, have: str) -> bool:
+    """M6.15: two files that import *different* types of the same short name (`jakarta.validation.Validator`
+    vs Spring's `org.springframework.validation.Validator`) are not talking about one interface."""
+    return bool(want and have and want != have)
 
 
 def _strip_call(text: str) -> str:

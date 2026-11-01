@@ -64,3 +64,17 @@ The *Before* column is the M1.12 sample, graded on the pre-M6.2/M6.3 graph. The 
 | eShop / receiver_global | 3 of 22 | `BeginAnimation` linked to an unrelated `Triggers` type. ClientApp's own generated copy of basket.proto was linked to the Basket.API copy. These were already graded wrong in M1.12. | Prefer the caller's project for duplicate generated types. |
 
 These edges stay listed under `known_wrong_still_emitted` in the gate report. The gate does not fail on them; it tracks them.
+
+## Follow-up: M6.15 (same day)
+
+Every to-fix row above was addressed in M6.15. The drifted strata were re-sampled with seed 13: eShop external_client, and petclinic global_unique and framework. The sheets are `*-seed13-m615.csv` and are named in `CURRENT.json`. All 33 re-sampled edges had already been graded.
+
+| Repo / origin | Before M6.15 | After |
+|---|---|---|
+| eShop / external_client | 20/30 = 0.667 | 21/21 = 1.000 (the 10 wrong `request` edges are no longer emitted) |
+| eShop / receiver_global | 19/22 = 0.864 | 0.95 among graded edges still emitted (the proto copies bind to the caller's own file) |
+| petclinic / global_unique | 18/20 = 0.900 | 12/12 = 1.000 |
+| petclinic / framework | 0/2 | no edges emitted |
+
+**Still open:** `BeginAnimation` (eShop receiver_global, 1 edge) and the `framework` rows graded wrong for NSubstitute mocks (7). The mock rows belong to M6.7, the DI adapters item.
+

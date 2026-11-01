@@ -75,7 +75,28 @@ _EXTERNAL_REGISTRY: dict[str, tuple[str, str]] = {
 }
 
 
-def _match_external(receiver: str | None) -> str | None:
+# Library names of JS/Python clients. In Java/C# the same words are ordinary variable names (`request` is a
+# MediatR command, `requests` a list) — there they never denote a client (M6.15; eShop: 10 of 30 graded wrong).
+_DYNAMIC_ONLY = frozenset({"axios", "fetch", "got", "request", "requests", "superagent", "httpx", "aiohttp",
+                           "urllib", "prisma", "sequelize", "typeorm", "knex", "pg", "mongoose", "ioredis",
+                           "pika", "boto3", "nodemailer"})
+_TYPED_LANGS = frozenset({"java", "csharp", "vbnet"})
+
+
+_GLOBALS = frozenset({"fetch"})   # needs no import
+
+
+def _imported_names(node: CodeNode) -> set[str]:
+    """Lower-cased names a file's imports bind (alias, name, module root) — a library client must be one."""
+    out: set[str] = set()
+    for imp in node.imports or []:
+        for v in (imp.get("alias"), imp.get("name"), (imp.get("module") or "").split(".")[0]):
+            if v:
+                out.add(v.lower())
+    return out
+
+
+def _match_external(receiver: str | None, language: str = "") -> str | None:
     """Return the registry token if the call receiver denotes a known client."""
     if not receiver:
         return None
@@ -84,7 +105,7 @@ def _match_external(receiver: str | None) -> str | None:
         if r.startswith(prefix):
             r = r[len(prefix):]
     for segment in r.split("."):
-        if segment in _EXTERNAL_REGISTRY:
+        if segment in _EXTERNAL_REGISTRY and not (language in _TYPED_LANGS and segment in _DYNAMIC_ONLY):
             return segment
     return None
 
@@ -111,9 +132,11 @@ def extract_external_systems(nodes: list[CodeNode]) -> tuple[list[CodeNode], lis
     for node in nodes:
         sites = node.call_sites or [{"name": c, "receiver": None} for c in node.calls]
         for site in sites:
-            token = _match_external(site.get("receiver"))
+            token = _match_external(site.get("receiver"), node.language)
             if not token:
                 continue
+            if token in _DYNAMIC_ONLY and token not in _GLOBALS and token not in _imported_names(node):
+                continue   # `request` as a lambda parameter / local, not the library (M6.15)
             display, kind = _EXTERNAL_REGISTRY[token]
             qn = f"external::{token}"
             if qn not in systems:

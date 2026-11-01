@@ -26,9 +26,21 @@ _SERVICE_RE = re.compile(r"\bservice\s+(\w+)\s*\{([^}]*)\}", re.DOTALL)
 _RPC_RE = re.compile(r"\brpc\s+(\w+)\s*\(", re.MULTILINE)
 
 
+_NAMESPACE_RE = re.compile(r'^\s*option\s+(csharp_namespace|java_package)\s*=\s*"([\w.]+)"\s*;', re.MULTILINE)
+_PACKAGE_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.MULTILINE)
+
+
+def proto_namespace(text: str) -> str:
+    """The namespace generated code lives in: `csharp_namespace`, else `java_package`, else `package`."""
+    opts = dict((k, v) for k, v in _NAMESPACE_RE.findall(text or ""))
+    pkg = _PACKAGE_RE.search(text or "")
+    return opts.get("csharp_namespace") or opts.get("java_package") or (pkg.group(1) if pkg else "")
+
+
 def extract_proto(text: str, source: str = "proto") -> list[CodeNode]:
     out: list[CodeNode] = []
     text = text or ""
+    namespace = proto_namespace(text)
     for m in _MESSAGE_RE.finditer(text):
         name, body = m.group(1), m.group(2)
         fields = _FIELD_RE.findall(body)
@@ -37,7 +49,7 @@ def extract_proto(text: str, source: str = "proto") -> list[CodeNode]:
                 file_path=source, language="proto", node_type="db_model",
                 name=name, qualified_name=f"proto::{name}", source_code="",
                 line_start=0, line_end=0, fields=fields,
-                framework_hints={"table": name, "source": "proto"},
+                framework_hints={"table": name, "source": "proto", "proto_namespace": namespace},
             ))
     for m in _SERVICE_RE.finditer(text):
         svc, body = m.group(1), m.group(2)
@@ -46,7 +58,8 @@ def extract_proto(text: str, source: str = "proto") -> list[CodeNode]:
                 file_path=source, language="proto", node_type="endpoint",
                 name=rpc, qualified_name=f"proto::{svc}.{rpc}", source_code="",
                 line_start=0, line_end=0,
-                framework_hints={"method": "RPC", "route": f"/{svc}/{rpc}", "source": "proto"},
+                framework_hints={"method": "RPC", "route": f"/{svc}/{rpc}", "source": "proto",
+                                 "proto_namespace": namespace},
             ))
     return out
 
@@ -64,4 +77,13 @@ def read_proto_files(repo_path) -> list[CodeNode]:
         except OSError:
             continue
         out.extend(extract_proto(text, source=str(path)))
+    # M6.15: the same message in two .proto copies (a client's copy of a service's contract) would share one
+    # qualified name and be merged; qualify the duplicates by the namespace their generated code lives in
+    counts: dict[str, int] = {}
+    for n in out:
+        counts[n.qualified_name] = counts.get(n.qualified_name, 0) + 1
+    for n in out:
+        ns = n.framework_hints.get("proto_namespace")
+        if counts[n.qualified_name] > 1 and ns:
+            n.qualified_name = f"proto::{ns}.{n.qualified_name.removeprefix('proto::')}"
     return out

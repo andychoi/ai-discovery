@@ -1,0 +1,17 @@
+{
+  "project": "csharp-di-two-impls",
+  "framework": "aspnetcore",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "OrdersController.Create", "callee_suffix": "OrderService.Place", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "OrdersController.Create", "callee_suffix": "CachedOrderService.Place"}
+  ],
+  "external_systems": [],
+  "language": "csharp",
+  "_README": "Labelled from source. OrdersController depends on IOrderService; Program.cs registers AddScoped<IOrderService, OrderService>(), so _orders.Place resolves to OrderService.Place at run time. CachedOrderService also implements IOrderService but is never registered: dispatching to it is wrong.",
+  "hard_case": {"catalog": "DI registration picks one of several implementations (ASP.NET AddScoped<I,T>)", "item": "M6.7"}
+}

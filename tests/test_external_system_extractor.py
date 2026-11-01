@@ -6,10 +6,12 @@ from ai_discovery.graph.models import CodeNode
 
 
 def _caller(call_sites):
+    # JS/Python library-name clients count only when the file imports them (M6.15)
     return CodeNode(
         file_path="svc.js", language="javascript", node_type="method",
         name="charge", qualified_name="svc.Pay.charge", source_code="",
         line_start=1, line_end=9, call_sites=call_sites,
+        imports=[{"module": "axios", "name": "axios", "alias": None, "default": True}],
     )
 
 

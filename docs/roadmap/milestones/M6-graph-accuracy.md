@@ -183,7 +183,7 @@
 - **Out of scope:** microblog, node-express (no drift).
 
 ### M6.15 Precision fixes from the M6.14 re-grade
-- **Status:** In progress (rm/M6.15-precision-fixes, 2026-10-31)
+- **Status:** Done (348f4e7)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.14
