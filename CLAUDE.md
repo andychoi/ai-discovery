@@ -245,7 +245,7 @@ Five custom skills accelerate development. The first three help build the discov
 - Dynamic calls can't be resolved statically
 - Confidence scoring must balance false positives vs false negatives
 
-**Key insight**: Multi-signal confidence (0.5–1.0) allows nuanced decisions. A call with 0.65 confidence might be good enough for BPMN but needs human review in tech specs.
+**Key insight**: Multi-signal confidence (0.5–1.0) allows nuanced decisions. A call with 0.65 confidence is drawn in the graph view but marked for review; flow traces follow only resolved edges. Process views are evidence-backed, with no BPMN from static analysis (ADR-0007).
 
 **Start here**: `docs/guides/call-graph/resolution-heuristics.md`
 

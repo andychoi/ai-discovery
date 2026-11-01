@@ -11,9 +11,7 @@
   },
   "dependencies": {
     "@fontsource/inter": "5.1.0",
-    "bpmn-js": "17.11.1",
     "cytoscape": "3.30.4",
-    "dmn-js": "16.8.2",
     "dompurify": "3.2.3",
     "lucide-react": "0.460.0",
     "marked": "14.1.4",

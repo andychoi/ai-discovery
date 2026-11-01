@@ -53,16 +53,23 @@
 - **Verify:** `cd web && npm test`
 - **Out of scope:** drilldowns and BPMN/DMN rendering (M4.4.b).
 
-### M4.4.b Drilldowns + BPMN/DMN rendering
-- **Status:** In progress (rm/M4.4b-drilldowns, 2026-11-01)
+### M4.4.b Drilldowns + evidence-backed process views
+- **Status:** Done (e25a3ab)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M4.4.a
-- **Owns:** `web/src/`, `src/ai_discovery/pages/builders/`
+- **Owns:** `web/src/`, `src/ai_discovery/pages/builders/`, `docs/roadmap/adr/0007-evidence-backed-process-views.md` (new)
 - **Acceptance:**
-  - Screen → flow → entity → table drilldown; BPMN/DMN rendering for flow/entity pages.
-- **Verify:** `cd web && npm test`
-- **Out of scope:** —
+  - Screen → flow → entity → table drilldown from stored facts only. Screen pages list the flows they start
+    (`routes_to`; the same mapping rule as impact's "screen uses node") and the business state those flows can
+    change. Flow pages list the literal state assignments their trace reaches (`writes` → entity) and the
+    screens that start them. Entity pages have a "What drives each change" table (trigger, guard, flows,
+    screens) plus a stated limit: actors, waits, frequencies and off-system steps are not visible from code.
+  - The wiki rail groups links and backlinks by level (↓ deeper, ↑ shallower).
+  - **No BPMN rendering** (ADR-0007, which replaces the original "BPMN/DMN rendering" scope). DMN stays a markdown
+    decision table built from parsed guards. bpmn-js and dmn-js are removed from the web bundle.
+- **Verify:** `cd web && npm test`; `pytest -q tests/test_builders_drilldown_m44b.py`
+- **Out of scope:** retiring phase-15 BPMN generation (M3.11); observed process discovery (M8.6).
 
 ### M4.5 `serve` + install-from-wheel smoke ★
 - **Status:** Done (2006bd6)

@@ -1,6 +1,6 @@
 # Exploring Scan Results — Navigation & Quality Checks
 
-Guide for navigating the output of `discover scan` and assessing its quality. Fastest path is the wiki, `discover serve` (below). The older `chat` / `impact` / `query` recipes further down use the legacy CLI and are kept until M2.7 replaces them.
+Guide for navigating the output of `discover scan` and assessing its quality. Fastest path is the wiki, `discover serve` (below).
 
 ---
 
@@ -16,7 +16,8 @@ The wiki (React SPA bundled in the wheel, works offline) shows:
 - **Docs tree** — screens, domains, modules, entities, tables, flows
 - **Page reader** — markdown and diagrams, a **confidence badge** (structure / model-written / stub) and a **freshness badge**; a stale page says which file changed and to run `discover scan`
 - **Citations** — `file:line` links that open the source next to the page
-- **Backlinks** and **search** (⌘K)
+- **Drill down**: screen → flow → entity (state change) → table, in the right rail; **backlinks** and **search** (⌘K)
+- **What drives each change** on entity pages: the trigger, its guard, the flows that reach it and the screens that start them. Who does a step, waits and frequencies are not visible from code, and the page says so (ADR-0007)
 - **Notes** — add a note to any page; notes are stored in the index and survive rescans (writes are local-only unless `discover serve --allow-remote`, which prints a token)
 
 The quality widgets of the retired pre-v1 viewer dashboard (confidence histogram, weakest docs) are a follow-up for the wiki's status page.
@@ -25,30 +26,20 @@ The quality widgets of the retired pre-v1 viewer dashboard (confidence histogram
 
 ## Output Layout
 
-`discover scan` writes to two trees with different audiences:
+`discover scan` writes everything under `.discovery/` in the repository:
 
 ```
-data/discovery-output/<slug>/          ← canonical (machine-readable)
-  discovery-<slug>.db                  SQLite: nodes, calls, flows, confidences, costs
-  entity_state_machines.json           Phase 3 FSM backbone
-  cross_entity_transitions.json        Phase 3b/3c cross-entity links
-  entity_conditions.json               Phase 3d guard correlations
-  entity_backbone.mmd                  Mermaid L1/L2 diagram
-  entity_decisions.md                  Decision log
-  entity_ears.md                       EARS requirement summary
-  bpmn/  dmn/  ears/                   Phase 15 generators (XML / md)
-
-data/<slug>/                           ← human-readable markdown
-  ASIS/    as-is — high-level current-state summary
-  ASD/     as-is-detail — module-by-module deep dives
-  ASSC/    as-is-schema — data-layer / persistence detail
-  PF/      process-flow — scenario process flows
-  SPEC/ DM/ IF/ …                      (other doc types if generated)
-  discovery.log
-  discovery.yaml
+.discovery/
+  discovery.db        SQLite index: nodes, call edges, pages, screens, entity FSMs, costs (the source of truth)
+  config.yaml         project config (`discover init`)
+  docs/screens/       screen spec markdown (drift-hashed)
+  exports/            `discover export` / `discover push` output (json, html, markdown)
+  reports/            post-scan skill reports (triage, consistency)
+  logs/  cache/
 ```
 
-For tooling outside the wiki, `discover export --format json` writes the portable knowledge graph; `.discovery/discovery.db` is plain SQLite.
+Every document is a wiki page (`pages` table). The legacy ASIS/ASD/ASSC/PF/BPMN/DMN/EARS tree was removed in
+M3.7.b. For tooling outside the wiki, `discover export --format json` writes the portable knowledge graph.
 
 ---
 
@@ -56,38 +47,30 @@ For tooling outside the wiki, `discover export --format json` writes the portabl
 
 Work from cheapest signal to deepest inspection. Stop when you've found enough to answer your question.
 
-### 1. Frontmatter triage
+### 1. Confidence triage
 
-Every generated markdown carries `discovery_confidence` and `unverified_claims` in its frontmatter — the per-doc quality signals, written by Phase 17 (self-review).
-
-```bash
-# List docs ranked by unverified-claim count
-grep -rH "unverified_claims" data/<slug>/ | sort -t: -k3 -n -r
-
-# Or filter low-confidence docs
-grep -rHB1 "discovery_confidence: 0\.[0-5]" data/<slug>/
-```
-
-Open the worst offenders first.
-
-### 2. Read the markdown
+Every page carries a confidence: `structure` (1.0, built from parsed code), `model-written` (narrative from
+`--prose`, grounded by M3.8) or `stub` (generation failed). Lowest first:
 
 ```bash
-glow data/<slug>/ASIS/              # terminal preview
-# or open the folder in VSCode / Obsidian for graph + preview
+sqlite3 .discovery/discovery.db \
+  "SELECT page_id, confidence FROM pages WHERE scan_id = (SELECT scan_id FROM current_scan) \
+   AND confidence < 0.65 ORDER BY confidence LIMIT 30"
 ```
 
-The four buckets map to SDLC layers: ASIS (as-is), ASD (spec), ASSC (interface), PF (data-model). Start with ASIS to sanity-check that the pipeline understood the repo, then move to the layer relevant to your question.
+Open the worst ones first in `discover serve`.
 
-### 3. View diagrams natively
+### 2. Read the wiki top-down
 
-| Artifact | How to view |
-|----------|-------------|
-| `entity_backbone.mmd`, `mermaid/*.mmd` | VSCode "Markdown Preview Mermaid" extension, or paste into <https://mermaid.live> |
-| `bpmn/*.bpmn` | <https://bpmn.io> demo viewer, or Camunda Modeler |
-| `dmn/*.dmn` | bpmn.io (DMN tab) |
+Start at the overview, then a domain, then follow **Drill down** in the right rail: screen → flow → entity →
+table. A screen with no flows means the screen-to-backend mapping found nothing, which is a mapping gap
+(M6.18), not proof that the screen is static. An entity transition with "no traced flow reaches it" means the
+trigger is not on any traced flow: it is dead code, reached through an unresolved call, or past the depth cap.
 
-Mermaid rendering is the fastest way to eyeball whether entity relationships make structural sense.
+### 3. Diagrams
+
+The wiki renders Mermaid (entity lifecycles, ERDs) inline, and `/graph` draws the call graph. For a file
+outside the wiki, paste the Mermaid into <https://mermaid.live>. No BPMN is produced (ADR-0007).
 
 ### 4. Probe with built-in commands
 
@@ -96,11 +79,13 @@ This is where real quality checking happens — each command pulls from the cano
 **Entity-level end-to-end trace**
 
 ```bash
-discover impact Order -p <slug>
-discover impact Order -p <slug> -f /tmp/order-impact.md    # write to file
+discover impact entity:Order
+discover --json impact entity:Order > /tmp/order-impact.json
 ```
 
-Walks one entity across FSM states, cross-entity links, and guard conditions — validates the *reasoning chain*, not just a doc page. If `entity_state_machines.json` is missing, the scan didn't reach Phase 3 (resume with `--resume`).
+Ranks what may break if the entity changes: its writers and readers, the screens and endpoints that reach them, and
+the unknowns (unresolved calls, dynamic dispatch). Then open the entity page: **What drives each change** lists
+every literal state assignment with its trigger, guard, flows and screens.
 
 **Conversational Q&A over code + docs**
 
@@ -108,17 +93,17 @@ Walks one entity across FSM states, cross-entity links, and guard conditions —
 discover ask "<question>"
 ```
 
-Re-indexes both code chunks and generated docs, so you can probe the pipeline's own output for hallucinations and coverage gaps. Sample probes: "what entities were detected?", "which domains have the least coverage?", "show me the weakest-confidence claims in the Orders doc".
+Searches the index. Every hit cites its page and source lines, so you can probe for coverage gaps. Sample probes: "where are orders paid?", "which screens write the customer table?".
 
 **Ad-hoc SQL audits**
 
 ```bash
 # Find low-confidence call edges to hand-verify
 sqlite3 .discovery/discovery.db \
-  "SELECT src_file, src_name, dst_name, confidence
-   FROM call_edge WHERE confidence < 0.65
-   ORDER BY confidence LIMIT 30" \
-  --db data/discovery-output/<slug>/discovery-<slug>.db
+  "SELECT c.file_path, c.qualified_name, e.callee_name, e.resolved_by, e.confidence
+   FROM call_edges e JOIN code_nodes c ON c.id = e.caller_id
+   WHERE e.scan_id = (SELECT scan_id FROM current_scan) AND e.confidence < 0.65
+   ORDER BY e.confidence LIMIT 30"
 ```
 
 The graded confidence scheme (a 4-stage cascade plus a stage-0 symbol-index tier, confidences 0.5–1.0) is designed for triage — sort ascending and hand-verify the bottom 10-20 edges. See `guides/call-graph/resolution-heuristics.md` for what each stage means.
@@ -133,10 +118,8 @@ Scan each service on its own and use `discover impact` per repository.
 For downstream tooling that shouldn't depend on the SQLite file, export one canonical knowledge-graph JSON — nodes, call edges (with confidence + resolution stage), domains, FK relationships, entity FSMs, and a doc/screen index:
 
 ```bash
-discover export --format json
-# → writes data/discovery-output/<slug>/knowledge-graph-<slug>.json
-
-discover export --format json --out ./kg.json   # specific scan / path
+discover export --format json            # → .discovery/exports/json/
+discover export --format json --out ./kg   # another directory
 ```
 
 It's a portable, diffable VIEW of the discovery DB — commit it so teammates and tools can consume scan results without the `.db`.
@@ -146,24 +129,21 @@ It's a portable, diffable VIEW of the discovery DB — commit it so teammates an
 ## Suggested First-Pass Recipe
 
 ```bash
-SLUG=myproj
+# (a) Open the wiki and drill down from one screen: screen → flow → entity → table
+discover serve
 
-# (a) Open the viewer — quality targets + weakest-docs ranking in one glance
-discover serve            # wiki for the current scan
-
-# (b) Pick one important entity, validate its full trace
-discover impact Order -p $SLUG -f /tmp/order-impact.md
-glow /tmp/order-impact.md
+# (b) Pick one important entity and check what may break
+discover impact entity:Order
 
 # (c) Ask coverage questions over code + docs
 discover ask "<question>"
 
 # (d) Audit low-confidence edges with ad-hoc SQL
 sqlite3 .discovery/discovery.db \
-  "SELECT src_file, src_name, dst_name, confidence
-   FROM call_edge WHERE confidence < 0.65
-   ORDER BY confidence LIMIT 30" \
-  --db data/discovery-output/$SLUG/discovery-$SLUG.db
+  "SELECT c.qualified_name, e.callee_name, e.confidence FROM call_edges e
+   JOIN code_nodes c ON c.id = e.caller_id
+   WHERE e.scan_id = (SELECT scan_id FROM current_scan) AND e.confidence < 0.65
+   ORDER BY e.confidence LIMIT 30"
 ```
 
 About 10-15 minutes for a first-pass audit on a medium-sized scan.
@@ -184,8 +164,8 @@ If an audit reveals the low-confidence edge ratio exceeds 15%, that's a signal t
 
 ## Known Gaps
 
-- `discover serve` bundles its diagram libraries (mermaid, bpmn-js, dmn-js) and works offline.
-- The wiki renders diagrams read-only — for editing/authoring BPMN/DMN you still need Camunda Modeler or bpmn.io.
+- `discover serve` bundles its diagram libraries (mermaid, cytoscape) and works offline.
+- No BPMN is generated or rendered: a call graph cannot tell sequence from choice, or see people, waits or timers (ADR-0007). Decision tables (DMN) are markdown tables built from parsed guards. A process model needs observed events (M8.6).
 
 ---
 

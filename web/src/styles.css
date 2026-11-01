@@ -99,6 +99,8 @@ div.state { display: block; }
 .rail { font-size: 0.88rem; min-width: 0; }
 .rail ul { list-style: none; padding: 0; margin: 0; }
 .rail li { padding: 0.15rem 0; overflow-wrap: anywhere; }
+.drill-group { margin-bottom: 0.5rem; }
+.drill-level { margin: 0.25rem 0; font-weight: 600; }
 .notes li { border-left: 3px solid var(--border); padding-left: 0.5rem; margin-bottom: 0.5rem; }
 .notes p { margin: 0; }
 .linklike { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: left; }

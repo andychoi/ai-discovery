@@ -5,6 +5,7 @@ import { markdownToHtml } from "../markdown";
 import { docHref, graphHref, impactHref, navigate } from "../router";
 import { loadMermaid } from "../vendors";
 import { getJson } from "../api";
+import { drilldown, drillLabel } from "../drilldown";
 import { Link } from "./Link";
 import { NoteForm } from "./NoteForm";
 import { Annotations, type Annotation } from "./Annotations";
@@ -35,6 +36,28 @@ function confidenceBadge(c: number) {
   if (c >= 0.5) return <span className="badge prose" title="Narrative written by a model">model-written · {c.toFixed(2)}</span>;
   return <span className="badge warn" title="Generation failed; structural stub">stub · {c.toFixed(2)}</span>;
 }
+
+/** Screen → flow → business state → table, from this page's links and backlinks (M4.4.b). */
+function DrillDown({ page }: { page: PageData }) {
+  const groups = drilldown(page);
+  if (!groups.length) return null;
+  return (
+    <>
+      <h3>Drill down</h3>
+      {groups.map((g) => (
+        <div key={g.type} className="drill-group">
+          <p className="drill-level">{g.direction === "down" ? "↓" : "↑"} {g.label} <span className="muted">{g.items.length}</span></p>
+          <ul>
+            {g.items.slice(0, DRILL_CAP).map((it) => (
+              <li key={it.id}><Link href={docHref(it.id)}>{drillLabel(it.id)}</Link> <span className="muted">{it.kind}</span></li>))}
+            {g.items.length > DRILL_CAP && <li className="muted">…and {g.items.length - DRILL_CAP} more (see Backlinks)</li>}
+          </ul>
+        </div>
+      ))}
+    </>
+  );
+}
+const DRILL_CAP = 8;
 
 const IMPACT_TYPES = new Set(["symbol", "file", "table", "screen", "entity", "endpoint"]);
 
@@ -166,6 +189,7 @@ export function PageView({ pageId }: { pageId: string }) {
         <div className="markdown" ref={body} onClick={onBodyClick} dangerouslySetInnerHTML={{ __html: html }} />
       </article>
       <aside className="rail">
+        <DrillDown page={p} />
         <Explore page={p} />
         <h3>Citations</h3>
         {p.citations.length ? (

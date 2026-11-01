@@ -8,7 +8,7 @@
 ## 1. Constraints
 - **Stack:** Vite + React + TypeScript SPA in `web/` (new). It is built at release time into `src/ai_discovery/server/static/` (new, gitignored) and shipped as wheel package-data.
 - **No Node at runtime.** `pip install ai-discovery` followed by `discover serve` must work on a machine without Node (M4.5 smoke test).
-- **Offline / air-gapped.** No CDN, web fonts or remote images. mermaid, bpmn-js, the graph library, fonts and icons are vendored into the bundle. CI fails if `server/static/**` contains `http://` or `https://` asset references, other than the allowlisted `localhost` (M4.2).
+- **Offline / air-gapped.** No CDN, web fonts or remote images. mermaid, the graph library, fonts and icons are vendored into the bundle (no BPMN/DMN viewer: ADR-0007). CI fails if `server/static/**` contains `http://` or `https://` asset references, other than the allowlisted `localhost` (M4.2).
 - **One port.** FastAPI serves `/api/v1/*` and the SPA, with history fallback to `index.html`.
 - **Read-only, `current_scan`, one project per process** (ADR-0002).
 
@@ -17,12 +17,12 @@
 | Route | Content | Item |
 |---|---|---|
 | `/` | Overview page: system summary, stats tiles (files, symbols, screens, entities, tables), freshness (indexed vs HEAD), degradations, "start here" links | M4.3 |
-| `/docs/*pageId` | Docs explorer: left tree (by type: Screens / Domains / Modules / Entities / Tables / Flows / Interfaces), reader (markdown + mermaid + BPMN), right rail (backlinks, citations as file:line, confidence badge, freshness badge, human notes) | M4.3, M4.6 |
+| `/docs/*pageId` | Docs explorer: left tree (by type: Screens / Domains / Modules / Entities / Tables / Flows / Interfaces), reader (markdown + mermaid), right rail (drill down screen → flow → entity → table, backlinks, citations as file:line, confidence badge, freshness badge, human notes) | M4.3, M4.6 |
 | `/screens` | Menu tree → screen; each screen shows the downstream chain: UI events → endpoints → services → tables, plus batch jobs and interfaces | M4.4 |
 | `/graph?focus=…` | Graph explorer: neighborhood of a node (depth 1–2), evidence-kind legend and filters, path finder A→B | M4.4 |
 | `/impact?target=…` | Ranked blast radius (same data as MCP `get_impact`), the unknowns section, and a "copy as IMPACT_REPORT.md" button | M4.4 (needs M5.2) |
-| `/entities/:name` | FSM diagram, DMN rules, EARS requirements, writers/readers | M4.4 |
-| `/flows/:id` | Flow / BPMN view (bpmn-js vendored) | M4.4 |
+| `/entities/:name` | FSM diagram, what drives each change (trigger, guard, flows, screens) and its limits, DMN rules as a markdown table, EARS requirements | M4.4.b |
+| `/flows/:id` | Flow trace from one entry point: main path, where it stops, data touched, state changes, screens that start it. **No BPMN**: a call slice is not a process model (ADR-0007) | M4.4.b |
 | `/db` | Tables, FK ERD (mermaid `erDiagram`), table → readers/writers, stored procedures | M4.4 |
 | `/search?q=` and ⌘K palette | Hybrid FTS5 + vector search over pages and symbols | M4.3 |
 | `/status` | Scan history, stage table, spend, stale pages, degradations | M4.6 |

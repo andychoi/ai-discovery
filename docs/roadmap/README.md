@@ -27,7 +27,7 @@ ai-discovery works but grew too wide: 13 CLI commands / 69 options, a 2,071-line
 | Folder | Contents |
 |---|---|
 | `milestones/` | M0–M8 work items (status, deps, lane, owned files, acceptance, verify) |
-| `adr/` | Architecture decision records (0001–0006; more added as decisions are made) |
+| `adr/` | Architecture decision records (0001–0007; more added as decisions are made) |
 | `design/` | architecture-v1, cli-v1, wiki-web, mcp-and-agents, graph-accuracy, sap-abap-ui5, evidence-overlays, benchmark-protocol |
 | `research/` | repowise benchmark, agent-platform assessment (readiness levels, capability matrix), edge-case catalog, ai-discovery audit, review of `docs/new-requirement-research.md` |
 | `benchmarks/` | Benchmark results (created by M0.12) |

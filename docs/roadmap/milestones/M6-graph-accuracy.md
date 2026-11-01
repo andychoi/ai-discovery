@@ -235,3 +235,19 @@
   - Slices trace to depth 8 with at most 50 flows per entry point (design §8), keeping the M1.12.b following rules and stop reasons; Tier-2 scenario cost before/after measured on the four pinned bench repos and recorded.
 - **Verify:** `pytest -q tests -k "slice or scenario"`
 - **Out of scope:** changing which edges are followable.
+
+### M6.18 Screen → backend mapping for server-rendered screens
+- **Status:** Planned
+- **Size:** M
+- **Lane:** C
+- **Depends on:** M6.11
+- **Owns:** `src/ai_discovery/screen_mapper.py`
+- **Acceptance:**
+  - WebForms screens map to their code-behind class (`Inherits=`/`CodeBehind=`) and its event handlers. JSP
+    screens map to the controller methods that return their view name. Both are recorded as `be_controllers`
+    with a confidence for each mapping.
+  - On the `java-spring-jsp` and `dotnet-webforms` golden fixtures, at least one screen has a backend mapping
+    (today: 0 of 11 and 0), so the M4.4.b screen → flow drilldown has data on server-rendered apps.
+- **Verify:** `pytest -q tests -k screen_mapp`; golden diff justified in PROGRESS.md
+- **Out of scope:** SPA menu → front-end component → API resolution (needs front-end call extraction).
+

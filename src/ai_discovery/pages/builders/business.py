@@ -19,7 +19,7 @@ from ..model import Citation, Link, Page, Section, make_page_id
 from ..registry import BuildContext, page_builder
 from .code import FOOTER, Snapshot, _footer, _md_table, _symbol_page_ids
 
-VERSION = "1"
+VERSION = "2"
 WRITE_CRUD = {"create", "update", "delete", "crud", "write", "read_write", "create_update"}
 
 
@@ -81,9 +81,17 @@ def _screen_access(spec: dict) -> str:
     return "writes" if crud in WRITE_CRUD or "write" in crud or "update" in crud else "reads"
 
 
-@page_builder("business.screens", emits={"screen"}, inputs=("screen_specs",), version=VERSION)
+@page_builder("business.screens", emits={"screen"},
+              inputs=("screen_specs", "code_nodes", "call_edges", "state_transitions", "entity_state_machines"),
+              version=VERSION)
 def build_screens(ctx: BuildContext):
-    for spec in _screens(ctx):
+    specs = list(_screens(ctx))
+    g = None
+    if specs:
+        from .flows import FlowGraph, transition_rows
+
+        g = FlowGraph.of(ctx)
+    for spec in specs:
         sid = spec["screen_id"]
         tables = sorted({_table_key(t) for t in spec.get("db_tables") or []})
         access = _screen_access(spec)
@@ -100,6 +108,15 @@ def build_screens(ctx: BuildContext):
         flow_rows += [["Controller", f"`{getattr_name(c)}`"] for c in spec.get("be_controllers") or []]
         flow_rows += [["Service", f"`{getattr_name(c)}`"] for c in spec.get("be_services") or []]
         sections.append(Section("Actions → backend", _md_table(["Step", "Target"], flow_rows)))
+        started = sorted(g.screen_flows(spec), key=lambda x: (-x[2], x[0])) if g is not None else []
+        if started:
+            sections.append(Section("Flows it starts", _md_table(
+                ["Flow", "Matched by", "Mapping confidence"],
+                ([g.flow_ref(e), how, f"{conf:.2f}"] for e, how, conf in started))))
+            changes = g.state_changes({n for e, _h, _c in started for n in [e, *(x.id for x in g.scenario(e).nodes)]})
+            if changes:
+                sections.append(Section("Business state it can change", _md_table(
+                    ["Entity", "Field", "Change", "Done by", "Guard"], transition_rows(g, changes))))
         sections.append(Section("Data", "\n".join(
             f"- [{t}]({make_page_id('table', t)}) ({access})" for t in tables) or "_no tables mapped_"))
         if spec.get("batch_jobs") or spec.get("external_interfaces"):
@@ -115,9 +132,11 @@ def build_screens(ctx: BuildContext):
                                                     f"(confidence {spec.get('confidence')}).")
                                 + (f" Scan of commit `{ctx.commit[:12]}`." if ctx.commit else "")))
         links = [Link(make_page_id("table", t), access) for t in tables]
+        links += [Link(make_page_id("flow", g.flow_key[e]), "routes_to") for e in sorted({e for e, _h, _c in started})]
         hashes = {k: v for k, v in (spec.get("source_hashes") or {}).items() if isinstance(v, str)}
         yield Page(make_page_id("screen", sid), spec.get("screen_label") or sid,
                    facts={"menu_path": spec.get("menu_path") or [], "tables": tables, "access": access,
+                          "flows": sorted({g.flow_key[e] for e, _h, _c in started}),
                           "crud_profile": spec.get("crud_profile"), "batch_jobs": spec.get("batch_jobs") or []},
                    sections=sections, links=links, source_hashes=hashes,
                    confidence=float(spec.get("confidence") or 1.0) if spec.get("model") not in (None, "", "structural") else 1.0)
@@ -216,19 +235,48 @@ def entity_key(fsm) -> str:
     return fsm.entity_id or fsm.entity
 
 
-@page_builder("business.entities", emits={"entity"}, inputs=("entity_state_machines", "state_transitions"),
+DRIVER_CAP = 5
+LIMITS = ("Each arrow is a literal state assignment in the code. **Not visible from code:** who performs a step, "
+          "approvals or work done outside this system, how long a state waits, and how often each path is taken "
+          "(ADR-0007). Add what you know as a note on this page.")
+
+
+def _drivers(g, fsm) -> str:
+    """What drives each lifecycle change: trigger, guard, the flows that reach the trigger, their screens."""
+    rows = []
+    for t in sorted(fsm.transitions, key=lambda t: (t.field or "", t.from_state or "", t.to_state or "",
+                                                    t.trigger_function or "")):
+        flows = g.flows_through(t.trigger_function) if t.trigger_function else []
+        screens = sorted({s for e in flows for s in g.entry_screens().get(e, [])})
+        shown = ", ".join(g.flow_ref(e) for e in flows[:DRIVER_CAP]) + (
+            f", …and {len(flows) - DRIVER_CAP} more" if len(flows) > DRIVER_CAP else "")
+        rows.append([f"{t.from_state or '(new)'} → {t.to_state or '?'}", f"`{t.field}`" if t.field else "—",
+                     g.ref(t.trigger_function) if t.trigger_function else "—",
+                     f"`{t.guard_expr}`" if t.guard_expr else "—", shown or "_no traced flow reaches it_",
+                     ", ".join(f"[{label}]({make_page_id('screen', sid)})" for sid, label in screens[:DRIVER_CAP])
+                     or "—"])
+    return _md_table(["Change", "Field", "Done by", "Guard", "Reached from flows", "Screens"], rows)
+
+
+@page_builder("business.entities", emits={"entity"},
+              inputs=("entity_state_machines", "state_transitions", "code_nodes", "call_edges", "screen_specs"),
               version=VERSION)
 def build_entities(ctx: BuildContext):
     from ...generators.dmn_generator import generate_entity_decisions_markdown
     from ...generators.ears_generator import generate_entity_ears_markdown
     from .code import _rel
+    from .flows import FlowGraph
 
     snap = Snapshot.of(ctx)
     tables = set(_all_tables(ctx, snap))
-    for fsm in _load_fsms(ctx):
+    fsms = _load_fsms(ctx)
+    g = FlowGraph.of(ctx) if any(f.transitions for f in fsms) else None
+    for fsm in fsms:
         files = sorted(r for r in (_rel(f, snap.repo) for f in fsm.source_files) if r)
         sections = [
             Section("Lifecycle", _state_diagram(fsm)),
+            *([Section("What drives each change", _drivers(g, fsm) + "\n\n" + LIMITS)]
+              if g is not None and fsm.transitions else []),
             Section("Fields", ", ".join(f"`{f}`" for f in sorted(fsm.fields)) or "_none recorded_"),
             Section("Decision table (DMN)", _strip_h1(generate_entity_decisions_markdown([fsm], []))),
             Section("Requirements (EARS)", _strip_h1(generate_entity_ears_markdown([fsm], []))),

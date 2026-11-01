@@ -22,13 +22,14 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Optional
 
 from ..model import Citation, Link, Page, Section, make_page_id
 from ..registry import BuildContext, page_builder
 from .code import Node, Snapshot, _footer, _md_table, _module_of, _symbol_page_ids
 
-VERSION = "1"
+VERSION = "2"
 DEFAULT_MAX_FLOW_PAGES = 300
 TABLE_KINDS = ("reads_table", "writes_table")
 JOB_KINDS = ("scheduled", "background")
@@ -113,6 +114,11 @@ class FlowGraph:
 
         self.table_key = _table_key
         self.table_pages = set(_all_tables(ctx, self.snap))
+        self.conn, self.scan_id = conn, sid
+        self._by_trigger: Optional[dict[str, list[Transition]]] = None
+        self._through: Optional[dict[str, list[str]]] = None
+        self._screens: Optional[list[tuple[str, dict]]] = None
+        self._entry_screens: Optional[dict[str, list[tuple[str, str]]]] = None
 
     @classmethod
     def of(cls, ctx: BuildContext) -> "FlowGraph":
@@ -176,6 +182,131 @@ class FlowGraph:
         return out
 
 
+    # ── business evidence: what drives entity state, and from which screen (M4.4.b, ADR-0007) ────
+    def transitions_by_trigger(self) -> dict[str, list["Transition"]]:
+        """Trigger-function QN → the literal state assignments it performs, keyed to their entity page."""
+        if self._by_trigger is None:
+            out: dict[str, list[Transition]] = defaultdict(list)
+            try:
+                rows = self.conn.execute(
+                    "SELECT t.trigger_function, COALESCE(NULLIF(f.entity_id, ''), f.entity), f.entity, t.field, "
+                    "t.from_state, t.to_state, t.guard_expr FROM state_transitions t JOIN entity_state_machines f "
+                    "ON f.scan_id = t.scan_id AND f.entity_id = t.entity_id WHERE t.scan_id = ? "
+                    "AND t.trigger_function IS NOT NULL ORDER BY 2, 4, 5, 6, 1", (self.scan_id,)).fetchall()
+            except Exception:  # noqa: BLE001 — a store without the entity tables
+                rows = []
+            for fn, key, name, fld, frm, to, guard in rows:
+                out[fn].append(Transition(key, name, fld or "", frm, to, fn, guard))
+            self._by_trigger = dict(out)
+        return self._by_trigger
+
+    def flows_through(self, qn: str) -> list[str]:
+        """Entry QNs of the flow pages whose call slice reaches *qn* (the entry itself included)."""
+        if self._through is None:
+            through: dict[str, set[str]] = defaultdict(set)
+            for ep in self.flow_entries:
+                entry = ep.node.qualified_name
+                for n in self.scenario(entry).nodes:
+                    through[n.id].add(entry)
+                through[entry].add(entry)
+            self._through = {k: sorted(v) for k, v in through.items()}
+        return self._through.get(qn, [])
+
+    def state_changes(self, qns) -> list["Transition"]:
+        """Transitions performed by any of *qns*, in a stable order."""
+        by_trigger = self.transitions_by_trigger()
+        found = {t for qn in qns for t in by_trigger.get(qn, [])}
+        return sorted(found, key=lambda t: (t.entity_key, t.field, t.from_state or "", t.to_state or "", t.trigger))
+
+    def flow_ref(self, entry: str) -> str:
+        """Link to a flow page, labelled by its route when it has one (`POST /api/orders`), else its name."""
+        n = self.code[entry]
+        hints = n.framework_hints or {}
+        label = f"{(hints.get('method') or 'ANY').upper()} {hints['route']}" if hints.get("route") else n.name
+        return f"[{label}]({make_page_id('flow', self.flow_key[entry])})"
+
+    def screens(self) -> list[tuple[str, dict]]:
+        """(screen_id, spec) for every screen spec of the scan."""
+        if self._screens is None:
+            try:
+                rows = self.conn.execute("SELECT screen_id, spec_json FROM screen_specs WHERE scan_id = ? "
+                                         "ORDER BY screen_id", (self.scan_id,)).fetchall()
+            except Exception:  # noqa: BLE001 — a store without screen specs
+                rows = []
+            self._screens = [(sid, _json(spec, {})) for sid, spec in rows]
+        return self._screens
+
+    def entry_screens(self) -> dict[str, list[tuple[str, str]]]:
+        """Flow entry QN → [(screen_id, label)] of the screens that start it."""
+        if self._entry_screens is None:
+            out: dict[str, set[tuple[str, str]]] = defaultdict(set)
+            for sid, spec in self.screens():
+                for entry, _how, _conf in self.screen_flows(spec):
+                    out[entry].add((sid, str(spec.get("screen_label") or sid)))
+            self._entry_screens = {k: sorted(v) for k, v in out.items()}
+        return self._entry_screens
+
+    def screen_flows(self, spec: dict) -> list[tuple[str, str, float]]:
+        """(entry QN, matched by, mapping confidence) for the flows a screen starts.
+
+        Same matching rule as ``query/impact.py`` uses for "screen uses node": a mapped controller/service
+        class (and method, when the mapping lists methods) equals the flow's entry, or a front-end API call's
+        normalized route equals the entry's route.
+        """
+        comps = [c for key in ("be_controllers", "be_services") for c in (spec.get(key) or []) if isinstance(c, dict)]
+        calls = [c for c in spec.get("fe_api_calls") or [] if isinstance(c, dict)]
+        out: list[tuple[str, str, float]] = []
+        for ep in self.flow_entries:
+            qn, name = ep.node.qualified_name, ep.node.name
+            owner = qn.rsplit(".", 1)[0] if "." in qn else qn
+            best: Optional[tuple[float, str]] = None
+            for comp in comps:
+                cls = comp.get("class_name") or ""
+                if cls and (cls in (qn, name) or (cls in (owner, owner.rsplit(".", 1)[-1])
+                                                  and (not comp.get("methods") or name in comp["methods"]))):
+                    cand = (float(comp.get("confidence") or 0.5), f"{comp.get('component_type') or 'class'} `{cls}`")
+                    best = max(best, cand) if best else cand
+            hints = ep.node.framework_hints or {}
+            if hints.get("route"):
+                method, path = (hints.get("method") or "").upper(), norm_route(hints["route"])
+                for call in calls:
+                    if norm_route(call.get("path") or "") == path and (
+                            not call.get("method") or not method or call["method"].upper() == method):
+                        cand = (float(call.get("confidence") or 0.5),
+                                f"API call `{(call.get('method') or 'ANY').upper()} {call.get('path')}`")
+                        best = max(best, cand) if best else cand
+            if best:
+                out.append((qn, best[1], best[0]))
+        return out
+
+
+@dataclass(frozen=True)
+class Transition:
+    entity_key: str          # entity page key
+    entity: str
+    field: str
+    from_state: Optional[str]
+    to_state: Optional[str]
+    trigger: str             # trigger-function QN
+    guard: Optional[str]
+
+    def arrow(self) -> str:
+        return f"{self.from_state or '(new)'} → {self.to_state or '?'}"
+
+
+_PATH_PARAM = re.compile(r"\{[^}/]*\}|:[A-Za-z_]\w*|\$\{[^}]*\}|<[^>/]*>")
+
+
+def norm_route(path: str) -> str:
+    """Route with its parameters wildcarded (same normalization as ``query/impact.py``)."""
+    return _PATH_PARAM.sub("*", (path or "").split("?", 1)[0]).rstrip("/").lower() or "/"
+
+
+def transition_rows(g: FlowGraph, changes: list[Transition]) -> list[list[str]]:
+    return [[f"[{t.entity}]({make_page_id('entity', t.entity_key)})", f"`{t.field}`" if t.field else "—",
+             t.arrow(), g.ref(t.trigger), f"`{t.guard}`" if t.guard else "—"] for t in changes]
+
+
 def proc_key(node) -> str:
     return str((node.framework_hints or {}).get("procedure") or node.qualified_name.split("::", 1)[-1])
 
@@ -200,7 +331,8 @@ def _touch_sections(g: FlowGraph, t: dict[str, set[str]]) -> tuple[list[Section]
 
 # ── flows ─────────────────────────────────────────────────────────────────
 
-@page_builder("flows.flows", emits={"flow"}, inputs=("code_nodes", "call_edges", "unresolved_calls"),
+@page_builder("flows.flows", emits={"flow"}, inputs=("code_nodes", "call_edges", "unresolved_calls",
+                                                     "state_transitions", "entity_state_machines", "screen_specs"),
               version=VERSION)
 def build_flows(ctx: BuildContext):
     g = FlowGraph.of(ctx)
@@ -220,6 +352,11 @@ def build_flows(ctx: BuildContext):
         stops = sorted(sc.stop_reasons.items())
         touched = g.touches(reached)
         touch_sections, touch_links = _touch_sections(g, touched)
+        changes = g.state_changes(reached)
+        screens = g.entry_screens().get(qn, [])
+        if screens:
+            trigger.append("- **Started from:** " + ", ".join(
+                f"[{label}]({make_page_id('screen', sid)})" for sid, label in screens))
         sections = [
             Section("Trigger", "\n".join(trigger)),
             Section("Main path", _md_table(["#", "Step", "Kind", "Where"], steps)),
@@ -230,12 +367,17 @@ def build_flows(ctx: BuildContext):
                 ["At", "Reason", "Meaning"],
                 ([g.ref(at), f"`{why}`", STOP_MEANING.get(why, "")] for at, why in stops))),
             *touch_sections,
+            *([Section("State changes", _md_table(["Entity", "Field", "Change", "Done by", "Guard"],
+                                                  transition_rows(g, changes))
+                       + "\n\nEach row is a literal state assignment reached by this trace. Whether it runs on a "
+                         "given request depends on branches the trace does not evaluate.")] if changes else []),
             Section("Provenance", "Traced from the stored call graph: only resolved edges are followed "
                     "(no name-only guesses), up to depth 5. " + _footer(ctx).body_md),
         ]
         links = g.symbol_link(qn, "implements")
         links += [lk for s in reached if s != qn for lk in g.symbol_link(s, "calls")]
         links += touch_links
+        links += [Link(make_page_id("entity", k), "writes") for k in sorted({t.entity_key for t in changes})]
         if ep.node.domain:
             links.append(Link(make_page_id("domain", ep.node.domain), "belongs_to"))
         yield Page(make_page_id("flow", g.flow_key[qn]), f"Flow: {ep.node.name}",
@@ -246,6 +388,9 @@ def build_flows(ctx: BuildContext):
                           "writes": sorted(g.table_name(q) for q in touched["writes"]),
                           "procedures": sorted(proc_key(g.code[q]) for q in touched["procs"]),
                           "externals": sorted(g.code[q].name for q in touched["externals"]),
+                          "state_changes": [[t.entity_key, t.field, t.from_state, t.to_state, t.trigger]
+                                            for t in changes],
+                          "screens": [sid for sid, _label in screens],
                           "domain": ep.node.domain},
                    sections=sections, links=links,
                    citations=[c for s in [qn, *sc.primary_path] for c in g.cite(s)])

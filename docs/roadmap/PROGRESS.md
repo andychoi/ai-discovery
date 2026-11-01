@@ -783,3 +783,35 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k prose` ok; full `pytest -q` → 1782 passed, 2 skipped (the drop is deleted legacy tests); `bench gate` ok; `roadmap_lint` ok.
 - **Follow-ups:** `generated_docs` table and `ScanContext`-era phase numbers 14/18 remain in the schema/phase registry for old stores; the `deep` role now has no default consumer (kept for `quality: final` overrides). No repowise code was copied or translated.
 
+## 2026-11-01 — M4.4.b — Drilldowns + evidence-backed process views (BPMN dropped)
+- **Branch/commit:** rm/M4.4b-drilldowns @ e25a3ab
+- **Rescoped (owner asked for an architect's call on BPMN):** the item said "BPMN/DMN rendering". The current BPMN
+  is built from `_detect_alternate_paths`, which treats any function that calls more than one other function as
+  an XOR gateway and guesses conditions from callee names. On top of that come LLM-reconstructed steps with
+  invented `USER_TASK` approvals, and lanes taken from step types. A BPMN viewer would make that look like a
+  specification. **ADR-0007:** the process backbone is the entity lifecycle (literal state assignments) plus what
+  drives each change. Flows stay per-trigger traces. No BPMN viewer; DMN stays a markdown table from parsed
+  guards. A process model comes back only from observed events (M8.6).
+- **Changes:**
+  - `pages/builders/flows.py` (`FlowGraph`: transitions by trigger, flows through a symbol, screen → flow
+    matching with the same rule as impact's "screen uses node"; flow pages gain "State changes", "Started
+    from" and `writes` → entity links; flow links are labelled by route).
+  - `pages/builders/business.py` (screen pages: "Flows it starts" + `routes_to` links, "Business state it can
+    change"; entity pages: "What drives each change" + a limits statement). Builder versions 1 → 2.
+  - web: `drilldown.ts` + tests and a "Drill down" rail in `PageView`; bpmn-js and dmn-js removed (package,
+    lock, loaders, type stub).
+  - `tests/test_builders_drilldown_m44b.py` (5).
+  - ADR-0007; `design/wiki-web.md`, `design/mcp-and-agents.md` (`bpmn_available` deprecated);
+    `architecture/decisions.md` (MANUAL injection superseded); CLAUDE.md, INDEX.md;
+    `guides/exploring-results/navigation.md` rewritten for v1 (layout, triage, drilldown, commands).
+- **New items:** M3.11 retires phase-15 BPMN generation (cross-lane, plus a docs sweep); M6.18 adds
+  screen → backend mapping for WebForms/JSP; M8.6 (Exploring) adds observed process discovery (OCEL, every
+  element labelled observed / confirmed / inferred).
+- **Found:** both server-rendered golden fixtures have 0 screens with a backend mapping (menu-only and WebForms)
+  and 0 state transitions. On those scans the drilldown has nothing to show, so the tests seed one mapping and
+  one transition. That gap is M6.18.
+- **Verify:** `cd web && npm test` → 30 passed; `pytest -q tests/test_builders_drilldown_m44b.py` → 5 passed;
+  full `pytest -q` → 1787 passed, 2 skipped (goldens unchanged); `build_web.py` → both bundles ok, no external
+  loads, no BPMN/DMN assets; `roadmap_lint` ok (104 items).
+- **Follow-ups:** M3.11, M6.18. No repowise code was copied or translated.
+

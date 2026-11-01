@@ -394,6 +394,11 @@ call per prose page, zero when facts are unchanged) and keeps every structural c
 
 ## MANUAL Node Injection Heuristics
 
+> **Superseded 2026-11-01 by ADR-0007** (`docs/roadmap/adr/0007-evidence-backed-process-views.md`). Static
+> analysis cannot observe human steps, so the wiki draws none. It states the limit on each entity page and lets
+> a reader add a note instead. Injected `USER_TASK` steps and the fan-out "gateway" heuristic are retired in
+> M3.11. Human steps may come back only as observed or human-confirmed evidence (M8.6).
+
 ### Decision
 Synthetic user task nodes are injected for:
 1. Function names containing "approve", "review", "validate_manually"
@@ -507,7 +512,7 @@ Extract state machines from code by detecting patterns:
 
 ### Why
 - **Business-critical**: State machines define the "playbook" for business processes
-- **Visualizable**: State machines (FSM) are easy to render as Mermaid or BPMN
+- **Visualizable**: State machines (FSM) are easy to render as Mermaid. They are the process backbone of the wiki: ADR-0007 (`docs/roadmap/adr/0007-evidence-backed-process-views.md`) reads business processes as entity lifecycles plus what drives each change, not as BPMN
 - **Verifiable**: We can extract state transitions from code and validate them against real logs
 
 ### Pattern Detection

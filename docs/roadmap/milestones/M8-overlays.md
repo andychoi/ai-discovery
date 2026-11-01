@@ -65,3 +65,21 @@
   - Stale flag when the cited lines changed after the record's date.
 - **Verify:** `pytest -q tests -k rationale`
 - **Out of scope:** mining agent session transcripts; LLM summarisation of rationale (prose layer may add it later).
+
+### M8.6 Observed process discovery
+- **Status:** Exploring
+- **Size:** L
+- **Lane:** G
+- **Depends on:** M8.3
+- **Owns:** `src/ai_discovery/overlays/process.py` (new)
+- **Acceptance:**
+  - ADR-0007 point 7: a process model is built only from **observed** events. Sources are status-history or
+    audit tables (a configured `table`, `entity id`, `state`, `timestamp` mapping) and M8.3 spans.
+    Object-centric event log (OCEL 2.0) → discovered lifecycle variants, frequencies and wait times per entity.
+  - Every element of an exported model (BPMN or OCPN) is labelled `observed`, `confirmed` (by a human note) or
+    `inferred`. Nothing static-only is exported as a process model.
+  - Entity pages show observed variants beside the static lifecycle, as a separate evidence section (M8 rule:
+    never merged into static confidence).
+- **Verify:** `pytest -q tests -k process_discovery`
+- **Out of scope:** live log streaming; reading production databases directly (exports only).
+

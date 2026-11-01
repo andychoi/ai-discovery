@@ -228,7 +228,7 @@ docs/
 ## Key Concepts
 
 ### Confidence Scoring
-The system uses **7-level heuristic scoring** (0.5–1.0) instead of binary match/no-match. This allows nuanced decisions: a call might be good for BPMN (confidence >= 0.9) but needs review in tech specs (confidence >= 0.85).
+The system uses **7-level heuristic scoring** (0.5–1.0) instead of binary match/no-match. This allows nuanced decisions: flow traces follow only resolved edges, while lower-confidence calls stay visible and are marked for review. Business processes are shown as entity lifecycles plus what drives each change, never as BPMN inferred from code (ADR-0007).
 
 **Reference**: `guides/call-graph/resolution-heuristics.md`
 

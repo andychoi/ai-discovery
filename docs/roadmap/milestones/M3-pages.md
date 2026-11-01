@@ -125,3 +125,21 @@
   - `html`: SPA + data inlined as JS (works from `file://`, no fetch, no network).
 - **Verify:** `pytest -q tests -k "export_json or export_html"`
 - **Out of scope:** —
+
+### M3.11 Retire inferred BPMN generation
+- **Status:** Planned
+- **Size:** M
+- **Lane:** A
+- **Depends on:** M4.4.b
+- **Owns:** `src/ai_discovery/stages/visuals.py`, `src/ai_discovery/generators/bpmn_generator.py` (BPMN XML + gateway/lane parts, coordinate with lane D), `src/ai_discovery/ai/flow_analyzer.py` (scenario prompt's `GATEWAY`/`USER_TASK` types, coordinate with lane B), `src/ai_discovery/graph/call_graph.py::_detect_alternate_paths` (coordinate with lane C), `src/ai_discovery/query/views.py` + MCP goldens (`get_flow`, coordinate with lane E)
+- **Acceptance:**
+  - ADR-0007 point 6: phase 15 stops writing `scenario_flows.bpmn_xml`. Fan-out is no longer recorded as an
+    exclusive gateway with name-guessed conditions. The scenario prompt no longer asks for `USER_TASK`/`GATEWAY`
+    steps. MCP `get_flow` drops `bpmn_available` (MCP golden updated and justified).
+  - Docs sweep for BPMN claims: README phase table, `guides/pipeline/phase-breakdown.md`,
+    `guides/call-graph/resolution-heuristics.md` and `test-strategy.md`, `guides/output-review/consistency-workflow.md`,
+    `guides/entity-identity/*`, `docs/INDEX.md`, `architecture/overview.md` and `components.md`.
+  - Golden diffs list exactly the removed BPMN fields and calls; nothing else changes.
+- **Verify:** `pytest -q`; `UPDATE_GOLDEN=1` diff reviewed in PROGRESS.md
+- **Out of scope:** removing the `scenario_flows` table or its Mermaid columns (old stores keep working).
+
