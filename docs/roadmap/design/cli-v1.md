@@ -72,6 +72,13 @@ Incremental by default (ADR-0002).
 | > $25 | Asks, default **No** |
 | Non-TTY without `--yes` | Exit 2 `cost_gate_no_tty`, with a message naming `--yes` and `--no-prose` |
 
+As built (M2.4, `cli/cost_gate.py`):
+- **Thresholds** compare the *expected* USD and are configurable: `cost_gate.ask_above_usd` (2) and `cost_gate.default_no_above_usd` (25). "Non-TTY" means stdin or stdout is not a terminal, or `--json`/`--progress json`; it only fails when the gate would ask (an estimate under the ask threshold runs). A declined prompt exits 2 `cost_gate_declined`.
+- **Shape for the quote:** the stored scan of the current commit (structure-only is enough, any status — an interrupted run still has its graph). Without one, `--dry-run` runs a structure-only scan in a temporary state dir (deleted afterwards; the project's state and lock are untouched), and a real prose scan runs its structure pass in the project first — kept if the quote is declined. `--yes` without a stored scan skips that pass and quotes afterwards from the run's own graph.
+- **No double gate:** if the current commit already has a completed prose scan and nothing forces a re-run (`--full`, `--only`, `--resume`), no question is asked — the scan reports "unchanged".
+- **Structure → prose on the same commit:** a completed structure-only scan no longer makes a `--prose` run report "already scanned" (`stages/resolve.py`); the prose run reuses the parse cache and stored summaries.
+- **Calibration:** every gated run writes one `cost_estimates` row (migration 0005): source, decision, expected/low/high, per-stage estimate, shape, and the actual spend from `llm_costs`.
+
 **End panel**, printed after every scan:
 - Counts: files, symbols, edges by origin, unresolved calls, screens, entities, tables and pages.
 - Spend: `$x.xx` of `$budget`.

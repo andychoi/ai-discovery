@@ -96,7 +96,7 @@ def test_cli_no_llm_flag_sets_config(tmp_path) -> None:
         return "completed"
 
     with patch("ai_discovery.pipeline.run_pipeline", side_effect=fake_run_pipeline):
-        for args in (["scan"], ["scan", "--no-prose"], ["scan", "--prose"]):
+        for args in (["scan"], ["scan", "--no-prose"], ["scan", "--prose", "--yes"]):
             result = CliRunner().invoke(app, ["-C", str(tmp_path), *args])
             assert result.exit_code == 0, result.output
     # default is structure only (keyless); --prose turns LLM stages on (M2.3)

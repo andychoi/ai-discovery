@@ -6,13 +6,12 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from dotenv import load_dotenv
 from rich.console import Console
 
 from ai_discovery.config import DiscoveryConfig
 
-# Load .env from project root (AWS creds, tokens, etc.)
-load_dotenv()
+# .env is loaded once by the package (`ai_discovery/__init__.py`). Loading it again here, at CLI import,
+# re-set variables a caller had removed (tests' monkeypatch.delenv) — an import-order-dependent failure.
 
 console = Console()
 app = typer.Typer(name="discover", help="Brownfield codebase discovery & doc generation.")

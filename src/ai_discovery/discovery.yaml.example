@@ -10,6 +10,12 @@ prose: false
 # LLM cost limit (USD) — stops pipeline if exceeded
 budget_limit_usd: 50.0
 
+# Cost gate for prose scans: runs below ask_above_usd, asks (default Yes) up to default_no_above_usd,
+# asks (default No) above it; `scan --dry-run` prints the estimate, `--yes` pre-approves
+cost_gate:
+  ask_above_usd: 2.0
+  default_no_above_usd: 25.0
+
 # Max concurrent workers for parallel processing
 max_concurrent: 10
 

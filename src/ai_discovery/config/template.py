@@ -10,7 +10,7 @@ from __future__ import annotations
 from ai_discovery.config import (
     BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig,
     OpenAIConfig, GeminiConfig, AnthropicConfig, AIGWConfig, OMLXConfig, OpenRouterConfig,
-    RagConfig, ProcessMiningConfig, AdvisorConfig, ScanConfig, StoreConfig
+    RagConfig, ProcessMiningConfig, AdvisorConfig, ScanConfig, StoreConfig, CostGateConfig
     )
 
 
@@ -30,6 +30,11 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
         ("", None),
         ("# LLM cost limit (USD) — stops pipeline if exceeded", None),
         ("budget_limit_usd", 50.0),
+        ("", None),
+        ("# Cost gate for prose scans: runs below ask_above_usd, asks (default Yes) up to default_no_above_usd,", None),
+        ("# asks (default No) above it; `scan --dry-run` prints the estimate, `--yes` pre-approves", None),
+        ("cost_gate", {"ask_above_usd": CostGateConfig().ask_above_usd,
+                       "default_no_above_usd": CostGateConfig().default_no_above_usd}),
         ("", None),
         ("# Max concurrent workers for parallel processing", None),
         ("max_concurrent", 10),

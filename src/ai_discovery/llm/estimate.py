@@ -109,8 +109,10 @@ def estimate(config: Any, shape: ScanShape) -> Estimate:
 def shape_from_db(db_path: Path, scan_id: int) -> ScanShape:
     """Shape of a finished (structure-only is enough) scan.
 
-    Tier-1 chunks ≈ summarizable nodes outside test files; scenarios ≈ entry
-    points (endpoints + batch jobs) — execution slices are not persisted.
+    Tier-1 chunks ≈ summarizable nodes outside test files; scenarios = the entry
+    points ``graph/entry_points.py`` scores from the stored nodes and edges (one
+    execution slice each; slices are not persisted, and parse-time base types are
+    not stored, so base-type contracts are not seen here).
     """
     from ..ai.rollup import DOC_TYPES
     from ..ai.summarizer import _SUMMARIZE_TYPES, _is_test_chunk
@@ -127,11 +129,43 @@ def shape_from_db(db_path: Path, scan_id: int) -> ScanShape:
         n = len(kept)
         avg_chars = (sum(kept) / n) if n else None
         domains = conn.execute("SELECT COUNT(*) FROM domains WHERE scan_id = ?", (scan_id,)).fetchone()[0]
-        scenarios = conn.execute("SELECT COUNT(*) FROM code_nodes WHERE scan_id = ? AND node_type IN "
-                                 "('endpoint', 'batch_job')", (scan_id,)).fetchone()[0]
+        scenarios = _scenario_count(conn, scan_id)
         screens = conn.execute("SELECT COUNT(*) FROM screen_specs WHERE scan_id = ?", (scan_id,)).fetchone()[0]
     finally:
         conn.close()
     avg_tokens = max(50, min(1500, int((avg_chars or 1600) / 4)))
     return ScanShape(tier1_chunks=n, avg_chunk_tokens=avg_tokens, domains=domains, scenarios=scenarios,
                      screens=screens, doc_types=len(DOC_TYPES))
+
+
+def _json(text: str | None, default):
+    import json
+
+    try:
+        value = json.loads(text) if text else default
+    except ValueError:
+        return default
+    return value if isinstance(value, type(default)) else default
+
+
+def _scenario_count(conn: sqlite3.Connection, scan_id: int) -> int:
+    """Entry points scored from the stored graph (M6.12) — the number of scenario slices a scan builds."""
+    from ..graph.entry_points import score_entry_points
+    from ..graph.models import CallEdge, CodeNode
+
+    nodes, by_id = [], {}
+    for row in conn.execute(
+            "SELECT id, file_path, language, node_type, name, qualified_name, line_start, line_end, "
+            "source_code, annotations, params, framework_hints FROM code_nodes WHERE scan_id = ?", (scan_id,)):
+        nodes.append(CodeNode(file_path=row[1] or "", language=row[2] or "", node_type=row[3], name=row[4],
+                              qualified_name=row[5], source_code=row[8] or "", line_start=row[6] or 0,
+                              line_end=row[7] or 0, annotations=_json(row[9], []), params=_json(row[10], []),
+                              framework_hints=_json(row[11], {})))
+        by_id[row[0]] = row[5]
+    edges = [CallEdge(by_id[a], by_id[b], kind or "direct_call", conf if conf is not None else 1.0,
+                      {"resolved_by": origin or ""})
+             for a, b, kind, conf, origin in conn.execute(
+                 "SELECT caller_id, callee_id, edge_type, confidence, resolved_by FROM call_edges "
+                 "WHERE scan_id = ? AND callee_id IS NOT NULL", (scan_id,))
+             if a in by_id and b in by_id]
+    return len(score_entry_points(nodes, edges))

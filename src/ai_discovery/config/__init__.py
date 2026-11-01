@@ -169,6 +169,13 @@ class ScanConfig:
 
 
 @dataclass
+class CostGateConfig:
+    """When a `scan --prose` asks before spending (M2.4, `cli/cost_gate.py`); compared with the expected USD."""
+    ask_above_usd: float = 2.0          # below: runs without asking
+    default_no_above_usd: float = 25.0  # up to here the question defaults to Yes, above it to No
+
+
+@dataclass
 class StoreConfig:
     """Snapshot retention (M1.5): completed scans kept besides the current one's."""
     keep_snapshots: int = 3
@@ -280,6 +287,7 @@ class DiscoveryConfig:
     rag: RagConfig = field(default_factory=RagConfig)
     store: StoreConfig = field(default_factory=StoreConfig)
     scan: ScanConfig = field(default_factory=ScanConfig)
+    cost_gate: CostGateConfig = field(default_factory=CostGateConfig)
     process_mining: ProcessMiningConfig = field(default_factory=ProcessMiningConfig)
     advisor: AdvisorConfig = field(default_factory=AdvisorConfig)
 

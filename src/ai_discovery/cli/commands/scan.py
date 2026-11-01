@@ -3,7 +3,9 @@
 * Project = the repo found from ``-C``/cwd; state goes to ``<repo>/.discovery/``
   (or ``--state-dir``). Config comes from the project (``discover init``).
 * Spend: ``--prose/--no-prose`` (default: the config's ``prose``; structure only
-  when unset). The cost gate (``--yes``) arrives with M2.4.
+  when unset). A prose run passes the cost gate first (``cli/cost_gate.py``, M2.4):
+  quoted from the stored scan of HEAD, or from a structure pass run first; ``--yes``
+  pre-approves; ``--dry-run`` prints the per-stage estimate and writes nothing.
 * Incremental: unchanged commits are reused and Tier-1 summaries are reused per
   file today; stage fingerprints take over with M1.8. ``--full`` forces a rescan.
 * ``--only``: stage names (``stages/runner.py``); the other reloadable stages reuse
@@ -121,6 +123,82 @@ def _unresolved_calls(conn: sqlite3.Connection, scan_id: int) -> int:
         return 0
 
 
+def _latest_scan(db_path) -> Optional[int]:
+    if not db_path.exists():
+        return None
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        row = conn.execute("SELECT MAX(id) FROM scan_runs").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def _dry_run(g: Globals, layout, cfg, branch: str, use_prose: bool, run) -> None:
+    """``--dry-run``: quote the prose cost without touching the project (M2.4)."""
+    from .. import cost_gate
+
+    quote = cost_gate.quote_from_index(layout, cfg, branch) \
+        or cost_gate.quote_in_temp(layout, cfg, branch, run, _latest_scan)
+    data: dict[str, Any] = {"dry_run": True, "prose": use_prose, "estimate": quote.as_dict() if quote else None}
+    if quote is not None:
+        data["gate"] = cost_gate.verdict(quote.estimate.expected_usd, cfg)
+
+    def human(console) -> None:
+        cost_gate.render(console, quote, cfg)
+        if not use_prose:
+            console.print("  [dim]prose is off for this project: `discover scan --prose` would spend this[/]")
+
+    emit(g, data, human)
+
+
+def _gate(g: Globals, layout, cfg, branch: str, yes: bool, resume: bool, run, *, reruns: bool):
+    """Quote, then decide (M2.4). Raises cost_gate_no_tty / cost_gate_declined; returns (quote, decision)."""
+    from rich.console import Console
+
+    from .. import cost_gate
+
+    quote = cost_gate.quote_from_index(layout, cfg, branch)
+    if quote is not None and not reruns and cost_gate.completed_with_prose(layout.db_path, quote.scan_id):
+        return None, None                    # HEAD already has its prose: the scan reports "unchanged", no spend
+    if quote is None and yes:
+        return None, "pre_approved"          # quoted after the run from its own graph (no extra pass)
+    if quote is None and not resume:
+        quote = cost_gate.quote_from_structure_scan(layout, cfg, branch, run, _latest_scan)
+    can_ask = cost_gate.interactive() and not g.json and g.progress != "json"
+    if quote is not None and not yes and can_ask \
+            and cost_gate.verdict(quote.estimate.expected_usd, cfg) != cost_gate.RUN:
+        cost_gate.render(Console(stderr=True), quote, cfg)
+    try:
+        decision = cost_gate.decide(quote, cfg, yes=yes, can_ask=can_ask)
+    except DiscoveryError as exc:
+        if exc.reason == "cost_gate_declined":
+            cost_gate.record(layout.db_path, quote, "declined", None)
+        raise
+    return quote, decision
+
+
+def _record(layout, cfg, branch: str, quote, decision: Optional[str]) -> None:
+    """Estimate vs actual for the run that just ended (a --yes run without a stored quote is quoted now)."""
+    from .. import cost_gate
+
+    scan_id = _latest_scan(layout.db_path)
+    if quote is None and scan_id is not None:
+        try:
+            from ...llm.estimate import estimate, shape_from_db
+
+            shape = shape_from_db(layout.db_path, scan_id)
+            quote = cost_gate.Quote(estimate(cost_gate._prose(cfg), shape), shape, "post_run", scan_id)
+        except Exception:   # noqa: BLE001 — calibration must never fail a scan
+            return
+    try:
+        cost_gate.record(layout.db_path, quote, decision or "pre_approved", scan_id)
+    except Exception:   # noqa: BLE001
+        pass
+
+
 def _whats_next(app: typer.Typer, prose: bool, failed_hooks: int) -> list[str]:
     names = {(c.name or c.callback.__name__) for c in app.registered_commands}
     names |= {g.name for g in app.registered_groups if getattr(g, "name", None)}
@@ -146,7 +224,9 @@ def register(app: typer.Typer) -> None:
         prose: Optional[bool] = typer.Option(None, "--prose/--no-prose", help="Enable LLM stages (default: config 'prose')."),
         only: Optional[str] = typer.Option(None, "--only", help="Run only these stages (comma-separated)."),
         resume: bool = typer.Option(False, "--resume", help="Continue the interrupted run for this commit."),
-        yes: bool = typer.Option(False, "--yes", "-y", help="Pre-approve the cost gate (M2.4)."),
+        yes: bool = typer.Option(False, "--yes", "-y", help="Pre-approve the cost gate."),
+        dry_run: bool = typer.Option(False, "--dry-run",
+                                     help="Print the prose cost estimate per stage; write nothing, take no lock."),
         budget: Optional[float] = typer.Option(None, "--budget", help="Budget limit in USD (overrides config)."),
         quality: Optional[str] = typer.Option(None, "--quality", help="draft | final (final = deeper model for docs)."),
         branch: str = typer.Option("main", "--branch", "-b", help="Branch label for git repos."),
@@ -172,16 +252,31 @@ def register(app: typer.Typer) -> None:
         if quality is not None:
             cfg.quality = quality
         only_stages = _only_stages(only) if only else None
+        if dry_run and (resume or only):
+            raise DiscoveryError("--dry-run cannot be combined with --resume or --only", "contradictory_flags")
+
+        def run(*, layout, config, rescan_=full, resume_=False, only_=None):
+            with _pipeline_output(g):
+                return run_pipeline(
+                    repo=str(layout.repo), branch=branch, project_slug=layout.slug,
+                    output_dir=layout.state_dir, docs_root=layout.state_dir, config=config,
+                    resume=resume_, rescan=rescan_, layout=layout, only=only_,
+                )
+
+        if dry_run:
+            return _dry_run(g, layout, cfg, branch, use_prose, run)
+
+        quote, decision = None, None
+        if use_prose:
+            quote, decision = _gate(g, layout, cfg, branch, yes, resume, run,
+                                    reruns=bool(full or only_stages or resume))
 
         progress = ProgressEmitter(g)
         if g.progress == "json":
             progress.stage("scan", "start", repo=str(layout.repo), prose=use_prose)
-        with _pipeline_output(g):
-            status = run_pipeline(
-                repo=str(layout.repo), branch=branch, project_slug=layout.slug,
-                output_dir=layout.state_dir, docs_root=layout.state_dir, config=cfg,
-                resume=resume, rescan=full, layout=layout, only=only_stages,
-            )
+        status = run(layout=layout, config=cfg, resume_=resume, only_=only_stages)
+        if use_prose and decision is not None:
+            _record(layout, cfg, branch, quote, decision)
         if status == "budget_exceeded":
             if g.progress == "json":
                 progress.error("budget exceeded")
@@ -208,6 +303,9 @@ def register(app: typer.Typer) -> None:
         summary["hooks"] = [h.__dict__ for h in hooks]
         summary["next"] = _whats_next(app, use_prose, sum(not h.ok for h in hooks))
         summary["prose"] = use_prose
+        if quote is not None:
+            summary["cost_gate"] = {"decision": decision, "expected_usd": round(quote.estimate.expected_usd, 4),
+                                    "source": quote.source}
         if g.progress == "json":  # the human end panel already lists these
             for d in summary["degradations"]:
                 progress.warn(d["message"], kind=d["kind"], count=d["count"])

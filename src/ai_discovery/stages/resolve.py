@@ -119,8 +119,15 @@ def run(ctx: RunContext) -> None:
             console.print(f"[bold cyan]Will skip phases before {start_phase}[/]")
     ctx.start_phase = start_phase
 
+    # M2.4: a structure-only scan of this commit does not satisfy a prose run — scan again (parse cache and
+    # stored Tier-1 summaries keep the structure part cheap) instead of reporting "already scanned".
+    adds_prose = bool(prev_run) and _adds_prose(prev_run, ctx.config)
+    if adds_prose and prev_run["commit_sha"] == resolved.commit_sha:
+        console.print(f"[cyan]Commit {resolved.commit_sha[:10]} has a structure-only scan "
+                      f"(run #{prev_run['id']}); adding prose.[/]")
+
     # Rescan guard: skip if same commit already scanned (no --rescan flag)
-    if not rescan and not resume and not resume_from and prev_run:
+    if not rescan and not resume and not resume_from and prev_run and not adds_prose:
         if prev_run["commit_sha"] == resolved.commit_sha and prev_run["status"] == "completed":
             console.print(
                 f"[green]Commit {resolved.commit_sha[:10]} already scanned "
@@ -148,7 +155,7 @@ def run(ctx: RunContext) -> None:
 
     if rescan and prev_run and prev_run["commit_sha"] == resolved.commit_sha \
             and prev_run["status"] in ("completed", "push_failed", "llm_complete") \
-            and cached_doc_count > 0:
+            and cached_doc_count > 0 and not adds_prose:
         console.print(
             f"[cyan]Commit {resolved.commit_sha[:10]} already analysed "
             f"(scan #{prev_run['id']}, status={prev_run['status']}, "
@@ -191,3 +198,15 @@ def run(ctx: RunContext) -> None:
             conn.close()
         console.print(f"  Scan run [bold]#{scan_id}[/] created")
     ctx.scan_id = scan_id
+
+
+def _adds_prose(prev_run, config) -> bool:
+    """True when this run wants LLM prose and *prev_run* was recorded structure-only (`no_llm`)."""
+    if getattr(config, "no_llm", False):
+        return False
+    try:
+        recorded = json.loads(prev_run["config_json"] or "{}")
+    except (ValueError, TypeError, IndexError, KeyError):
+        return False
+    return bool(recorded.get("no_llm"))
+

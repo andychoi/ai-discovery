@@ -109,7 +109,7 @@ def test_prose_and_budget_and_quality_reach_pipeline(repo: Path) -> None:
         return "completed"
 
     with patch("ai_discovery.pipeline.run_pipeline", side_effect=fake):
-        assert _scan(repo, "--prose", "--budget", "4", "--quality", "final", "--full").exit_code == 0
+        assert _scan(repo, "--prose", "--yes", "--budget", "4", "--quality", "final", "--full").exit_code == 0
     cfg = seen["cfg"]
     assert (cfg.no_llm, cfg.budget_limit_usd, cfg.quality, seen["rescan"]) == (False, 4.0, "final", True)
     assert seen["layout"].state_dir == repo.resolve() / ".discovery"
@@ -119,13 +119,13 @@ def test_config_prose_is_the_default(repo: Path) -> None:
     (repo / ".discovery").mkdir()
     (repo / ".discovery" / "config.yaml").write_text("prose: true\n")
     with patch("ai_discovery.pipeline.run_pipeline", return_value="completed") as run:
-        _scan(repo)
+        _scan(repo, "--yes")   # prose from config passes the cost gate too (M2.4)
     assert run.call_args.kwargs["config"].no_llm is False
 
 
 def test_budget_exceeded_exits_3(repo: Path) -> None:
     with patch("ai_discovery.pipeline.run_pipeline", return_value="budget_exceeded"):
-        res = _scan(repo, "--prose")
+        res = _scan(repo, "--prose", "--yes")
     assert res.exit_code == 3 and _result(res)["error"]["reason"] == "budget_exceeded"
 
 
