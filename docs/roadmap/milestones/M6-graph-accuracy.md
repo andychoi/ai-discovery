@@ -152,7 +152,7 @@
 - **Out of scope:** —
 
 ### M6.11 WebForms/JSP/Struts extras
-- **Status:** Planned
+- **Status:** In progress (rm/M6.11-webforms-jsp-extras, 2026-10-31)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.1
