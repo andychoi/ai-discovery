@@ -379,6 +379,13 @@ never edited.
 - Spend is recorded in `llm_costs` as `page_prose` (never replacing the pipeline's rows) and counts against
   what is left of the scan budget; failures become `degradations` (stage `pages`).
 
+- **Grounding (M3.8, `pages/grounding.py`):** a backticked reference must appear in what the model was shown
+  or exist in the index (symbol, file, route, table, page title); `file:line` citations need an indexed file;
+  links must point at existing page ids (URLs are unverifiable). LLM mermaid is sanitized (`click`,
+  `%%{init}`, HTML/script lines removed) or dropped when the diagram type is unknown. Unverified → one
+  corrective re-ask naming the references → still unverified is a failure (kept stale prose or 0.3 stub whose
+  text names the references; `degradations: prose_ungrounded`). Reused prose is re-grounded every build.
+
 ### Why
 Facts are verifiable and cheap; narration is not. Keeping the LLM to one section per page bounds cost (one
 call per prose page, zero when facts are unchanged) and keeps every structural claim citable.

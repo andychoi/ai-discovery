@@ -43,3 +43,10 @@ Structural page text (markdown, may be cut short):
 {body}
 
 Write the narrative now."""
+
+# M3.8: one corrective re-ask when the first answer referred to things the page and the index do not hold
+PAGE_PROSE_CORRECTIVE = """
+
+Your previous answer referred to things that are not in the facts above or in the scanned code: {refs}.
+Rewrite the narrative using only identifiers, paths and page links that appear above; drop anything you
+cannot support."""

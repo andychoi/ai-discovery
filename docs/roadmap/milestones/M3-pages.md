@@ -103,7 +103,7 @@
 - **Out of scope:** — (waits for M3.10 and M2.7: the legacy `discover ingest`, still exposed until M2.7, delivers this markdown tree to DocHub/Gitea, and its replacement `push` sends the M3.10 page export — deleting the tree first would strand that path)
 
 ### M3.8 Groundedness
-- **Status:** In progress (rm/M3.8-grounding, 2026-11-01)
+- **Status:** Done (09ac50d)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M3.7.a

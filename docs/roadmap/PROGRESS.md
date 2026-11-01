@@ -732,3 +732,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k prose` → 31 passed (8 new); full `pytest -q` → 1930 passed, 2 skipped; `bench gate`, `--sealed` ok; `roadmap_lint` ok.
 - **Follow-ups:** M3.7.b (legacy SDLC removal); M3.8 groundedness checks on the narrative (unverifiable backtick references lower confidence). Not run against a real provider yet — the agent-eval gateway key would allow a measured prose run. No repowise code was copied or translated.
 
+## 2026-11-01 — M3.7.b re-sequenced; M3.8 — Groundedness
+- **M3.7.b:** now depends on M3.10 and M2.7. The legacy `discover ingest` (still exposed until M2.7) delivers the ASIS/ASD/ASSC/PF markdown tree to DocHub/Gitea, and its replacement `push` sends the M3.10 page export; deleting the tree first would strand that path.
+- **Branch/commit:** rm/M3.8-grounding @ 09ac50d
+- **Changes:** `pages/grounding.py` (new: `Grounder` — references, citations, links, mermaid), `pages/prose.py` (one corrective re-ask, re-grounding of reused prose, `reasked`/`ungrounded` counts, `prose_ungrounded` degradation), `prompts/__init__.py` (corrective prompt), `tests/test_pages_grounding_m38.py` (6), `decisions.md` (Page Prose Layer: grounding).
+- **Decisions:** a reference is grounded if the model was shown it verbatim or the index has it — precision first: identifiers outside both are what fabrication looks like; URLs in prose are unverifiable (nothing in the scan backs them); a re-asked-then-grounded narrative keeps prose confidence 0.8 (the corrective call is visible as `reasked`); a narrative that stays ungrounded is never stored partially flagged — it takes the failure path, and the stub names the references so a reader sees why.
+- **Verify:** `pytest -q tests -k "grounding or prose"` → 37 passed; full `pytest -q` → 1936 passed, 2 skipped; `bench gate`, `--sealed` ok; `roadmap_lint` ok.
+- **Follow-ups:** measure the re-ask and ungrounded rates on a real provider run (needs a key). No repowise code was copied or translated.
+

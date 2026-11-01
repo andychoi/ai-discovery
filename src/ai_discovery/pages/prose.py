@@ -24,8 +24,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from ..prompts import (PAGE_PROSE_FOCUS, PAGE_PROSE_ID, PAGE_PROSE_SYSTEM, PAGE_PROSE_TEMPLATE,
-                       PAGE_PROSE_VERSION)
+from ..prompts import (PAGE_PROSE_CORRECTIVE, PAGE_PROSE_FOCUS, PAGE_PROSE_ID, PAGE_PROSE_SYSTEM,
+                       PAGE_PROSE_TEMPLATE, PAGE_PROSE_VERSION)
 from .model import CONFIDENCE_PROSE, CONFIDENCE_STUB, Page, Section, canonical_json
 
 PROSE_TYPES = frozenset(PAGE_PROSE_FOCUS)
@@ -47,13 +47,15 @@ class ProseResult:
     kept: int = 0            # previous prose kept after a failure (marked stale when its facts changed)
     stubs: int = 0
     invalid: int = 0         # truncated / empty answers (remembered, not re-asked)
+    reasked: int = 0         # M3.8: grounded only after the corrective re-ask
+    ungrounded: int = 0      # M3.8: still referred to unknown things after the re-ask
     failed: int = 0          # provider errors
     skipped_budget: int = 0
     errors: list[str] = field(default_factory=list)
 
     def detail(self) -> str:
         parts = [f"{self.written} written", f"{self.reused} reused"]
-        for name in ("kept", "stubs", "invalid", "failed", "skipped_budget"):
+        for name in ("reasked", "ungrounded", "kept", "stubs", "invalid", "failed", "skipped_budget"):
             if getattr(self, name):
                 parts.append(f"{getattr(self, name)} {name.replace('_', ' ')}")
         return "prose: " + ", ".join(parts)
@@ -101,13 +103,14 @@ def _with_narrative(page: Page, body: str, *, confidence: float, prose_ref: Opti
 
 def apply_prose(pages: list[Page], llm: Any, *, model_id: str, previous: dict[str, Page] | None = None,
                 memo: Any = None, budget_ok: Callable[[], bool] = lambda: True,
-                max_workers: int = 4) -> ProseResult:
+                max_workers: int = 4, ground: Optional[Callable[[str, str], Any]] = None) -> ProseResult:
     """Add (or reuse) a Narrative section on every prose page of *pages*, in place.
 
     *llm*: anything with ``invoke(tier, prompt, max_tokens, *, system=...)`` returning an object with
     ``text`` and ``truncated`` (``ai.llm_client.LLMClient``, or a test double). *memo*: a
     ``llm.cache.ResponseCache`` used to remember invalid keys (optional). *budget_ok* is checked before
-    every call.
+    every call. *ground* (``pages.grounding.Grounder.check``, M3.8) checks a narrative against what the model
+    was shown and the index; an ungrounded answer gets one corrective re-ask, then counts as a failure.
     """
     previous = previous or {}
     result = ProseResult()
@@ -118,7 +121,7 @@ def apply_prose(pages: list[Page], llm: Any, *, model_id: str, previous: dict[st
         key = prose_key(page, model_id)
         prev = previous.get(page.page_id)
         old = narrative_of(prev)
-        if old is not None and prev.prose_ref == key:
+        if old is not None and prev.prose_ref == key and (ground is None or ground(old, build_prompt(page)).ok):
             _with_narrative(page, old, confidence=CONFIDENCE_PROSE, prose_ref=key)
             result.reused += 1
             continue
@@ -130,28 +133,43 @@ def apply_prose(pages: list[Page], llm: Any, *, model_id: str, previous: dict[st
             return page, key, None, "invalid"
         if not budget_ok():
             return page, key, None, "budget"
-        try:
-            resp = llm.invoke(TIER, build_prompt(page), MAX_TOKENS, system=PAGE_PROSE_SYSTEM)
-        except Exception as exc:   # noqa: BLE001 — a provider failure must never fail the page build
-            return page, key, None, f"failed: {type(exc).__name__}: {exc}"[:300]
-        text = clean(getattr(resp, "text", ""))
-        if getattr(resp, "truncated", False) or text is None:
-            if memo is not None:
-                memo.put(INVALID_PREFIX + key, {"reason": "truncated" if getattr(resp, "truncated", False)
-                                                else "empty"}, role=ROLE, model_id=model_id, kind="prose_invalid",
-                         usage={})
-            return page, key, None, "invalid"
-        return page, key, text, "ok"
+        prompt = build_prompt(page)
+        outcome = "ok"
+        for attempt in range(2 if ground is not None else 1):
+            try:
+                resp = llm.invoke(TIER, prompt, MAX_TOKENS, system=PAGE_PROSE_SYSTEM)
+            except Exception as exc:   # noqa: BLE001 — a provider failure must never fail the page build
+                return page, key, None, f"failed: {type(exc).__name__}: {exc}"[:300]
+            text = clean(getattr(resp, "text", ""))
+            if getattr(resp, "truncated", False) or text is None:
+                if memo is not None and attempt == 0:
+                    memo.put(INVALID_PREFIX + key, {"reason": "truncated" if getattr(resp, "truncated", False)
+                                                    else "empty"}, role=ROLE, model_id=model_id,
+                             kind="prose_invalid", usage={})
+                return page, key, None, "invalid"
+            if ground is None:
+                return page, key, text, outcome
+            g = ground(text, build_prompt(page))
+            if g.ok and g.text:
+                return page, key, g.text, outcome
+            refs = ", ".join(f"`{r}`" for r in g.unverified[:8]) or "a diagram that could not be kept"
+            prompt = build_prompt(page) + PAGE_PROSE_CORRECTIVE.format(refs=refs)
+            outcome = "reasked"
+        return page, key, None, f"ungrounded: {refs}"
 
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
         answers = list(pool.map(ask, todo))
     for page, key, text, outcome in answers:      # applied in page order: deterministic
-        if outcome == "ok":
+        if outcome in ("ok", "reasked"):
             _with_narrative(page, text, confidence=CONFIDENCE_PROSE, prose_ref=key)
             result.written += 1
+            result.reasked += outcome == "reasked"
             continue
         if outcome == "invalid":
             result.invalid += 1
+        elif outcome.startswith("ungrounded"):
+            result.ungrounded += 1
+            result.errors.append(f"{page.page_id}: {outcome}")
         elif outcome == "budget":
             result.skipped_budget += 1
         else:
@@ -165,6 +183,8 @@ def apply_prose(pages: list[Page], llm: Any, *, model_id: str, previous: dict[st
         else:
             reason = {"invalid": "the model's answer was cut off or empty",
                       "budget": "the LLM budget was reached"}.get(outcome, "the LLM call failed")
+            if outcome.startswith("ungrounded"):
+                reason = "the narrative referred to things not found in the scan (" + outcome.split(": ", 1)[1] + ")"
             _with_narrative(page, f"{STUB_PREFIX}: {reason}. The structural sections below are complete.",
                             confidence=CONFIDENCE_STUB, prose_ref=None)
             result.stubs += 1
@@ -200,15 +220,22 @@ def runner(config: Any, layout: Any, conn: Any, scan_id: int, *, llm: Any = None
         return not limit or (spent or 0) + total() < limit
 
     def run(pages: list[Page], previous: dict[str, Page]) -> str:
+        from .grounding import Grounder
+
+        grounder = Grounder.from_db(conn, scan_id, [p.page_id for p in pages], [p.title for p in pages])
         res = apply_prose(pages, llm, model_id=config.get_model(ROLE), previous=previous, memo=memo,
-                          budget_ok=budget_ok, max_workers=int(getattr(config, "max_concurrent", 4) or 4))
+                          budget_ok=budget_ok, max_workers=int(getattr(config, "max_concurrent", 4) or 4),
+                          ground=grounder.check)
         costs = llm.get_costs() if hasattr(llm, "get_costs") else {}
         for i, (tier, data) in enumerate(sorted(costs.items())):
             conn.execute("INSERT OR REPLACE INTO llm_costs (scan_id, tier, model, calls, tokens_in, tokens_out, "
                          "est_usd) VALUES (?, ?, ?, ?, ?, ?, ?)",
                          (scan_id, "page_prose" if i == 0 else f"page_prose:{tier}", data.get("model", ""),
                           data["calls"], data["tokens_in"], data["tokens_out"], data["est_usd"]))
-        for kind, count, sample in (("prose_failed", res.failed, res.errors[:5]), ("prose_invalid", res.invalid, []),
+        ungrounded = [e for e in res.errors if ": ungrounded" in e][:5]
+        for kind, count, sample in (("prose_failed", res.failed, [e for e in res.errors if ": failed" in e][:5]),
+                                    ("prose_ungrounded", res.ungrounded, ungrounded),
+                                    ("prose_invalid", res.invalid, []),
                                     ("prose_budget_skipped", res.skipped_budget, [])):
             if count:
                 conn.execute("INSERT OR REPLACE INTO degradations (scan_id, stage, kind, count, sample_json) "
