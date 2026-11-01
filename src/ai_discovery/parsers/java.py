@@ -122,6 +122,8 @@ def _captures(query: Query, node) -> dict[str, list]:
 
 
 _JAVA_STRING_ARG = re.compile(r'^\(\s*(?:value\s*=\s*)?"([^"]+)"')
+_JAVA_BEAN_NAME = re.compile(r'"([^"]+)"')
+_JAVA_RETURN_NEW = re.compile(r"\breturn\s+new\s+([\w.]+)\s*[(<]")
 _JAVA_MOCK_ASSIGN = re.compile(r"\b(\w+)\s*=\s*(?:Mockito\.)?(?:mock|spy)\s*\(")
 
 
@@ -279,6 +281,13 @@ class JavaParser(LanguageParser):
                     m_hints["local_types"] = local_types   # params + locals (M6.3)
                 if node_type == "interface" and m_node.child_by_field_name("body") is None:
                     m_hints["abstract"] = True
+                if "Bean" in m_ann_names:   # Spring factory method → a bean (M6.7.b)
+                    bean_args = next((a.get("args", "") for a in m_annotations if a["name"] == "Bean"), "")
+                    named = _JAVA_BEAN_NAME.search(bean_args or "")
+                    made = _JAVA_RETURN_NEW.search(m_node.text.decode(errors="replace"))
+                    m_hints["bean"] = {"name": named.group(1) if named else method_name,
+                                       "impl": made.group(1).rsplit(".", 1)[-1] if made else "",
+                                       "primary": "Primary" in m_ann_names}
                 if endpoint_info:
                     m_node_type = "endpoint"
                     m_hints["method"] = endpoint_info["method"]

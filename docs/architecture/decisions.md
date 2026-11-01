@@ -108,7 +108,17 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
 - Effect on eShop (graded): `framework` 0.767 → 0.958 (the 7 NSubstitute rows gone), `global_unique` 0.926 →
   0.962; production ClientApp services bind to the registered real implementation instead of dispatching to the
   unit-test `Mock*` classes too (those 9 dispatch edges were graded "correct" under any-implementation semantics;
-  the stratum was re-sampled). Not yet modelled: single-type `AddHttpClient<T>()` (2 wrong HybridApp dispatches).
+  the stratum was re-sampled).
+- **M6.7.b adapters.** Spring beans are stereotype classes, `@Bean` factory products (name = method or
+  `@Bean("x")`, implementation = the `new X(..)` returned) and XML `<bean id|name class>` in the module's XML
+  files; when exactly one implementation of an interface is a known bean, dispatch narrows to it, and
+  `@Qualifier` matches every kind of bean name. Two beans of one type with neither qualifier nor `@Primary` keep
+  dispatching (Spring itself would refuse to start). C# registrations also cover single-type `Add*<T>()` /
+  `AddHttpClient<T>()`, factories `Add*<I>(sp => new T(..))`, Unity `RegisterType<I, T>()` and Autofac
+  `RegisterType<T>().As<I>()` / `.AsImplementedInterfaces()` (Unity/Autofac prevalence unverified). A
+  registration's short type name resolves through the registering file's namespace and usings, and the
+  caller's own project's registrations are consulted first — eShop's WebApp `ChatState` now reaches
+  WebAppComponents' `CatalogService`, not HybridApp's same-named class.
 
 ### Precision rules from the M6.14 re-grade (M6.15)
 - **Same short name, different interface.** An implementation is a dispatch target only if it does not

@@ -170,7 +170,8 @@ class _Resolver:
         self.js_top: dict[tuple[str, str], list[CodeNode]] = defaultdict(list)
         self._posix_files: dict[str, str] = {}
         self.sfc_components: dict[str, CodeNode] = {}   # M6.5.b: `.vue` file → its component node
-        self._di_registrations: dict[str, set[str]] | None = None   # M6.7.a, read lazily
+        self._di_registrations: list[dict] | None = None   # M6.7.a/b, read lazily
+        self._spring_beans: dict | None = None
         for n in nodes:
             if _family(n.language) == "javascript" and n.file_path:
                 posix = posixpath.normpath(n.file_path.replace("\\", "/"))
@@ -724,36 +725,123 @@ class _Resolver:
         return True
 
     def _di_select(self, caller, receiver, type_short, targets: list[CodeNode]) -> list[CodeNode] | None:
-        """M6.7.a: the implementation(s) the DI container injects for *type_short*, among *targets*
+        """M6.7.a/b: the implementation(s) the DI container injects for *type_short*, among *targets*
         (implementation methods). None = no DI fact applies (dispatch as before)."""
         owner = {t.qualified_name: self.qualified.get(t.qualified_name.rsplit(".", 1)[0]) for t in targets}
-        hints = {qn: (o.framework_hints or {}) if o is not None else {} for qn, o in owner.items()}
+        targets = [t for t in targets if owner[t.qualified_name] is not None]
+        if _family(caller.language) == "java":
+            return self._spring_select(caller, receiver, targets, owner)
+        if caller.language == "csharp":
+            return self._registered_select(caller, type_short, targets, owner)
+        return None
+
+    def _spring_select(self, caller, receiver, targets, owner) -> list[CodeNode] | None:
+        beans = self.spring_beans()
         cls = self._class_of(caller)
         field = (receiver or "").removeprefix("this.").split(".")[0]
         qualifier = ((cls.framework_hints or {}).get("qualifiers") or {}).get(field) if cls is not None else None
-        if qualifier:                                   # Spring @Qualifier("sms") → bean named sms
-            return [t for t in targets if hints[t.qualified_name].get("bean_name") == qualifier]
-        registered = self.di_registrations().get(type_short)
-        if registered:                                  # ASP.NET AddScoped<I, T>()
-            chosen = [t for t in targets if owner[t.qualified_name] is not None
-                      and owner[t.qualified_name].name in registered]
-            if len(chosen) > 1:   # same-named classes in several projects: the caller's own project's
-                mine = [t for t in chosen if self.project_dir(t.file_path) == self.project_dir(caller.file_path)]
-                chosen = mine if len(mine) == 1 else chosen
-            if chosen:
-                return chosen
-        primary = [t for t in targets if hints[t.qualified_name].get("primary")]
-        if len(primary) == 1:                           # Spring @Primary
+        if qualifier:                                   # @Qualifier("sms") → the bean named sms
+            impl = beans["names"].get(qualifier)
+            return [t for t in targets if (owner[t.qualified_name].framework_hints or {}).get("bean_name") == qualifier
+                    or owner[t.qualified_name].name == impl]
+        known = [t for t in targets if owner[t.qualified_name].name in beans["classes"]]
+        if len(known) == 1 and len(known) < len(targets):   # one implementation is a bean, the rest are not
+            return known
+        primary = [t for t in (known or targets) if owner[t.qualified_name].name in beans["primary"]]
+        if len(primary) == 1:                           # @Primary
             return primary
         return None
 
-    def di_registrations(self) -> dict[str, set[str]]:
-        """ASP.NET registrations `Add{Scoped,Transient,Singleton}<I, T>()` (and `TryAdd*`, `AddHttpClient`)
-        from every `.cs` file of every project — top-level `Program.cs` emits no node, so files are read."""
+    def spring_beans(self) -> dict:
+        """Known Spring beans: stereotype classes, `@Bean` factory products, XML `<bean>`s (M6.7.b).
+        ``classes``: implementation short names; ``names``: bean name → implementation; ``primary``."""
+        if self._spring_beans is None:
+            classes: set[str] = set()
+            names: dict[str, str] = {}
+            primary: set[str] = set()
+            for n in self.qualified.values():
+                h = n.framework_hints or {}
+                if n.language != "java":
+                    continue
+                if h.get("bean_name") and n.node_type in _CLASS_TYPES:
+                    classes.add(n.name)
+                    names.setdefault(h["bean_name"], n.name)
+                    if h.get("primary"):
+                        primary.add(n.name)
+                bean = h.get("bean")
+                if bean and bean.get("impl"):
+                    classes.add(bean["impl"])
+                    names.setdefault(bean["name"], bean["impl"])
+                    if bean.get("primary"):
+                        primary.add(bean["impl"])
+            for bean_id, impl, is_primary in self._xml_beans():
+                classes.add(impl)
+                if bean_id:
+                    names.setdefault(bean_id, impl)
+                if is_primary:
+                    primary.add(impl)
+            self._spring_beans = {"classes": classes, "names": names, "primary": primary}
+        return self._spring_beans
+
+    def _xml_beans(self) -> list[tuple[str, str, bool]]:
+        """`<bean id|name="x" class="a.b.Impl" [primary="true"]>` in the XML files of each Java module
+        (nearest directory with a pom.xml / build.gradle)."""
+        roots: set[Path] = set()
+        for f in self.files:
+            if not f.endswith(".java"):
+                continue
+            for d in Path(f).parents:
+                if any((d / b).exists() for b in ("pom.xml", "build.gradle", "build.gradle.kts")):
+                    roots.add(d)
+                    break
+        out: list[tuple[str, str, bool]] = []
+        for root in sorted(roots):
+            for x in root.rglob("*.xml"):
+                if any(part in ("target", "build", "node_modules", ".git") for part in x.parts) or x.name == "pom.xml":
+                    continue
+                try:
+                    if x.stat().st_size > 1_000_000:
+                        continue
+                    text = x.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                for tag in _XML_BEAN.findall(text):
+                    attrs = dict(_XML_ATTR.findall(tag))
+                    if attrs.get("class"):
+                        out.append((attrs.get("id") or attrs.get("name", "").split(",")[0].strip(),
+                                    attrs["class"].rsplit(".", 1)[-1].replace("$", "."), attrs.get("primary") == "true"))
+        return out
+
+    def _registered_select(self, caller, type_short, targets, owner) -> list[CodeNode] | None:
+        regs = self.di_registrations()
+        here = self.project_dir(caller.file_path)
+        for pool in ([r for r in regs if r["project"] == here], regs):   # the caller's composition root first
+            chosen = [t for t in targets if any(self._registers(r, owner[t.qualified_name], type_short) for r in pool)]
+            if len(chosen) > 1:   # same-named classes in several projects: the caller's own project's
+                mine = [t for t in chosen if self.project_dir(t.file_path) == here]
+                chosen = mine if len(mine) == 1 else chosen
+            if chosen:
+                return chosen
+        return None
+
+    def _registers(self, reg: dict, cls: CodeNode, type_short: str) -> bool:
+        """Does registration *reg* (interface or None for a single-type one, implementation short name, the
+        registering file's namespaces) register class *cls* for *type_short*?"""
+        if reg["iface"] not in (type_short, None) or reg["impl"] != cls.name:
+            return False
+        ns = cls.qualified_name.rsplit(".", 1)[0] if "." in cls.qualified_name else ""
+        return ns in reg["scopes"] or len(self._resolve_type(cls.name)) == 1
+
+    def di_registrations(self) -> list[dict]:
+        """Container registrations from every `.cs` file of every project (a top-level `Program.cs` emits no
+        node, so files are read): ASP.NET `Add{Scoped,Transient,Singleton,HttpClient}<I, T>()` / `TryAdd*`,
+        single-type `Add*<T>()`, factories `Add*<I>(sp => new T(..))`, Unity `RegisterType<I, T>()`, Autofac
+        `RegisterType<T>().As<I>()`. Each record keeps the namespaces visible in the registering file."""
         if self._di_registrations is None:
-            regs: dict[str, set[str]] = defaultdict(set)
+            regs: list[dict] = []
             projects = sorted({self.project_dir(f) for f in self.files if f.endswith(".cs")} - {""})
             for proj in projects:
+                project_usings = {u.get("module") for u in self.global_usings.get(proj, []) if u.get("module")}
                 for f in Path(proj).rglob("*.cs"):
                     if any(part in ("bin", "obj") for part in f.parts):
                         continue
@@ -761,9 +849,14 @@ class _Resolver:
                         text = f.read_text(encoding="utf-8", errors="replace")
                     except OSError:
                         continue
-                    for iface, impl in _DI_REGISTRATION.findall(text):
-                        regs[_short_type(iface)].add(_short_type(impl))
-            self._di_registrations = dict(regs)
+                    if "Add" not in text and "Register" not in text:
+                        continue
+                    scopes = set(_CS_NAMESPACE.findall(text)) | set(_CS_USING.findall(text)) | project_usings
+                    for iface, impl in _di_pairs(text):
+                        prefix = impl.split("<", 1)[0].rpartition(".")[0]
+                        regs.append({"project": proj, "iface": _short_type(iface) if iface else None,
+                                     "impl": _short_type(impl), "scopes": scopes | ({prefix} if prefix else set())})
+            self._di_registrations = regs
         return self._di_registrations
 
     def _bindable(self, caller: CodeNode, target: CodeNode) -> bool:
@@ -919,6 +1012,31 @@ def _different_import(want: str, have: str) -> bool:
 
 _DI_REGISTRATION = re.compile(
     r"\b(?:Try)?Add(?:Scoped|Transient|Singleton|HttpClient)\s*<\s*([\w.]+(?:<[^<>]*>)?)\s*,\s*([\w.]+(?:<[^<>]*>)?)\s*>")
+
+
+_TYPE_ARG = r"([\w.]+(?:<[^<>]*>)?)"
+_DI_FACTORY = re.compile(r"\b(?:Try)?Add(?:Scoped|Transient|Singleton)\s*<\s*" + _TYPE_ARG +
+                         r"\s*>\s*\(\s*\(?\s*\w*\s*\)?\s*=>\s*(?:\{[^{}]*?return\s+)?new\s+([\w.]+)")
+_DI_SINGLE = re.compile(r"\b(?:Try)?Add(?:Scoped|Transient|Singleton|HttpClient)\s*<\s*" + _TYPE_ARG + r"\s*>\s*\(")
+_UNITY = re.compile(r"\bRegister(?:Type|Singleton)\s*<\s*" + _TYPE_ARG + r"\s*,\s*" + _TYPE_ARG + r"\s*>")
+_AUTOFAC = re.compile(r"\bRegisterType\s*<\s*" + _TYPE_ARG + r"\s*>\s*\(\s*\)\s*\.\s*As\s*<\s*" + _TYPE_ARG + r"\s*>")
+_AUTOFAC_SELF = re.compile(r"\bRegisterType\s*<\s*" + _TYPE_ARG + r"\s*>\s*\(\s*\)\s*\.\s*AsImplementedInterfaces\b")
+_CS_NAMESPACE = re.compile(r"^\s*namespace\s+([\w.]+)", re.M)
+_CS_USING = re.compile(r"^\s*(?:global\s+)?using\s+(?!static\b)([\w.]+)\s*;", re.M)
+_XML_BEAN = re.compile(r"<bean\b([^>]*)>", re.S)
+_XML_ATTR = re.compile(r'([\w:-]+)\s*=\s*"([^"]*)"')
+
+
+def _di_pairs(text: str) -> list[tuple[str | None, str]]:
+    """(interface or None, implementation) for every container registration in a C# file."""
+    pairs: list[tuple[str | None, str]] = [(i, t) for i, t in _DI_REGISTRATION.findall(text)]
+    pairs += [(i, t) for i, t in _UNITY.findall(text)]
+    pairs += [(i, t) for t, i in _AUTOFAC.findall(text)]
+    pairs += [(None, t) for t in _AUTOFAC_SELF.findall(text)]
+    factories = {m.start(): (m.group(1), m.group(2)) for m in _DI_FACTORY.finditer(text)}
+    pairs += list(factories.values())
+    pairs += [(None, m.group(1)) for m in _DI_SINGLE.finditer(text) if m.start() not in factories]
+    return pairs
 
 
 def _short_type(text: str) -> str:

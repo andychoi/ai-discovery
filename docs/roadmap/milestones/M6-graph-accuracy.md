@@ -105,7 +105,7 @@
 - **Out of scope:** Spring XML beans, `@Bean` factory methods, Unity/Autofac (M6.7.b).
 
 ### M6.7.b DI adapters: Spring @Bean and XML, single-type and factory registrations, Unity/Autofac
-- **Status:** In progress (rm/M6.7b-di-adapters, 2026-10-31)
+- **Status:** Done (8976a24)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.7.a
