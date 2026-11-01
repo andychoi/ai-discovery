@@ -70,7 +70,7 @@
 - **Out of scope:** —
 
 ### M2.6 `drift`, `push`, `export`
-- **Status:** In progress (rm/M2.6-drift-push, 2026-11-01)
+- **Status:** Done (e86bedc)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M2.1, M3.10

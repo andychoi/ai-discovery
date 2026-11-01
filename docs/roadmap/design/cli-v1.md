@@ -159,6 +159,19 @@ As built (M2.4, `cli/cost_gate.py`):
 - **Flags:** `--target dochub|gitea`, `--only-failed`, `--dry-run`, `--batch-size N`.
 - **URL and credentials:** URLs come from config. Credentials come only from env (`DISCOVERY_DOCHUB_TOKEN`, `DISCOVERY_GITEA_TOKEN`).
 
+**As built (M2.6):**
+- **`drift`:**
+  - **What it checks:** `pages.source_hashes` (repo-relative path → sha256) against the working tree.
+  - **What it lists:** pages whose *own* files changed (`changed: path`) or disappeared (`deleted: path`). Pages stale only through a drifted child are counted (`stale_by_inheritance`), not listed.
+  - **`--json` and exit codes:** `--json` prints the report, then the command exits 6.
+  - **Screens:** screen pages carry hashes only when the screen maps to source files. A menu-only screen has none, so `--type screen` can be `nothing_to_check`.
+- **`push`:**
+  - **What it sends:** it refreshes `<state>/exports/markdown` (M3.10) and sends one document per page.
+    - **DocHub:** `POST {dochub_url}/api/projects/<slug>/docs/ingest/batch` in `--batch-size` chunks (default `push.batch_size` 50), with `doc_id = <slug>-<type>-<key>` and `X-Api-Key: $DISCOVERY_DOCHUB_TOKEN`. A page the server neither accepts nor rejects counts as failed.
+    - **Gitea:** the contents API at `projects/<slug>/<type>/<key>.md` under `push.gitea_owner`/`gitea_repo`, created or updated (the existing file's sha is used), with `token $DISCOVERY_GITEA_TOKEN`.
+  - **Delivery record:** delivery per page and target is kept in `page_push` (migration 0007, survives rescans). `--only-failed` retries failures, and `--dry-run` sends nothing.
+  - **Errors:** HTTP 401/403 → `push_auth_failed`; a missing URL → `config_invalid_value` naming the key; any failed page → exit 1.
+
 ## 4. Exit codes
 
 | Code | Name | Examples |

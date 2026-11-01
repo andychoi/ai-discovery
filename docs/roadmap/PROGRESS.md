@@ -757,3 +757,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `cd web && npm test` → 26 passed; full `pytest -q` → 1942 passed, 2 skipped; `bench gate` ok; `roadmap_lint` ok.
 - **Follow-ups:** M4.4.b; `discover serve` keeps serving a stale `index.html` after the bundle is rebuilt under it (dev-only; restart fixes it). No repowise code was copied or translated.
 
+## 2026-11-01 — M2.6 — `drift`, `push` (`export` landed in M3.10)
+- **Branch/commit:** rm/M2.6-drift-push @ e86bedc
+- **Changes:** `cli/commands/drift.py`, `cli/commands/push.py` (new), `export/markdown.py` (`render`/`pages` shared with push), `store/migrations/m0007_page_push.py`, `config` (`push.*`; both generated YAMLs), `tests/cli/test_drift_push.py` (7), `tests/cli/test_cli_smoke.py` (command set), golden snapshots (7 migrations — schema only), `design/cli-v1.md` (as built).
+- **Scope note:** `export/markdown.py` (lane D), config and store (lane A) are outside Owns.
+- **Decisions:** push delivers the page markdown export (not the legacy SDLC tree) — this is what lets M3.7.b delete that tree; DocHub token sent as `X-Api-Key` (the legacy service-to-service header); a page the server neither acknowledges nor rejects is a failure; delivery records survive rescans so `--only-failed` keeps working across scans.
+- **Found while testing:** screen pages built from a menu-only definition (no component) carry no source hashes, so `drift --type screen` can honestly be `nothing_to_check` (exit 5), never a false "clean".
+- **Verify:** `pytest -q tests/cli -k "drift or push or export"` → 17 passed; full `pytest -q` → 1950 passed, 2 skipped (+ golden refresh); `bench gate` ok; `roadmap_lint` ok.
+- **Next:** M2.7 (delete the legacy CLI, incl. `ingest`), then M3.7.b. No repowise code was copied or translated.
+

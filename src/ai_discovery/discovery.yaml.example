@@ -57,6 +57,14 @@ scan:
   max_file_kb_other: 500
   submodules: false
 
+# `discover push` targets (tokens only from env: DISCOVERY_DOCHUB_TOKEN, DISCOVERY_GITEA_TOKEN)
+push:
+  dochub_url: ""
+  gitea_url: ""
+  gitea_owner: ai-docs
+  gitea_repo: ai-docs-content
+  batch_size: 50
+
 # Flow Statistics Configuration (Phase 16) — OPTIONAL
 # Set enabled: true to enable per-scenario flow statistics reports
 process_mining:

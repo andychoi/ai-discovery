@@ -169,6 +169,17 @@ class ScanConfig:
 
 
 @dataclass
+class PushConfig:
+    """Where `discover push` delivers the markdown export (M2.6). Credentials come only from the environment:
+    DISCOVERY_DOCHUB_TOKEN (sent as X-Api-Key) and DISCOVERY_GITEA_TOKEN."""
+    dochub_url: str = ""
+    gitea_url: str = ""
+    gitea_owner: str = "ai-docs"
+    gitea_repo: str = "ai-docs-content"
+    batch_size: int = 50
+
+
+@dataclass
 class CostGateConfig:
     """When a `scan --prose` asks before spending (M2.4, `cli/cost_gate.py`); compared with the expected USD."""
     ask_above_usd: float = 2.0          # below: runs without asking
@@ -288,6 +299,7 @@ class DiscoveryConfig:
     store: StoreConfig = field(default_factory=StoreConfig)
     scan: ScanConfig = field(default_factory=ScanConfig)
     cost_gate: CostGateConfig = field(default_factory=CostGateConfig)
+    push: PushConfig = field(default_factory=PushConfig)
     process_mining: ProcessMiningConfig = field(default_factory=ProcessMiningConfig)
     advisor: AdvisorConfig = field(default_factory=AdvisorConfig)
 

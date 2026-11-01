@@ -10,7 +10,7 @@ from __future__ import annotations
 from ai_discovery.config import (
     BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig,
     OpenAIConfig, GeminiConfig, AnthropicConfig, AIGWConfig, OMLXConfig, OpenRouterConfig,
-    RagConfig, ProcessMiningConfig, AdvisorConfig, ScanConfig, StoreConfig, CostGateConfig
+    RagConfig, ProcessMiningConfig, AdvisorConfig, ScanConfig, StoreConfig, CostGateConfig, PushConfig
     )
 
 
@@ -151,6 +151,11 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
         ("# Add gitignore-syntax excludes with  exclude: [\"**/Scripts/vendor/**\"]", None),
         ("scan", {"max_file_kb_source": ScanConfig().max_file_kb_source,
                   "max_file_kb_other": ScanConfig().max_file_kb_other, "submodules": ScanConfig().submodules}),
+        ("", None),
+        ("# `discover push` targets (tokens only from env: DISCOVERY_DOCHUB_TOKEN, DISCOVERY_GITEA_TOKEN)", None),
+        ("push", {"dochub_url": PushConfig().dochub_url, "gitea_url": PushConfig().gitea_url,
+                  "gitea_owner": PushConfig().gitea_owner, "gitea_repo": PushConfig().gitea_repo,
+                  "batch_size": PushConfig().batch_size}),
     ])
 
     # Process Mining config
