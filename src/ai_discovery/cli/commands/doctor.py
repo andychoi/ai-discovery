@@ -232,6 +232,22 @@ def check_mcp_targets(g: Globals) -> list[Check]:
     return [Check(f"mcp {r['target']} ({r['scope']})", r["status"], r["detail"], fix=r.get("fix")) for r in found]
 
 
+def check_git_hook(g: Globals) -> Check:
+    """The post-commit freshness hook (roadmap item M2.8)."""
+    from ...core import githook
+
+    layout = g.layout()
+    st = githook.status(layout.repo or g.repo)
+    if st.status == "not_git":
+        return Check("git hook", "skip", st.detail)
+    if st.status == "missing":
+        return Check("git hook", "skip", "not installed (the index refreshes only when you scan)",
+                     fix="discover init --git-hook")
+    if st.status == "stale":
+        return Check("git hook", "warn", st.detail, fix="discover init --git-hook")
+    return Check("git hook", "ok", st.detail)
+
+
 def _repair(check: Check, yes: bool) -> str:
     from ...core.lock import remove_lock
 
@@ -267,6 +283,7 @@ def run_checks(g: Globals, llm: bool) -> list[Check]:
         lambda: check_lock(index, layout.lock_path),
         lambda: check_old_layout(g, index),
         lambda: check_mcp_targets(g),
+        lambda: check_git_hook(g),
     ]
     if llm:
         checks.append(lambda: check_llm(g))

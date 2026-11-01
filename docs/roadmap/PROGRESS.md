@@ -23,6 +23,7 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 | migration | 0003 | M1.12.a (edge kinds) | 2026-10-13 |
 | migration | 0004 | M5.10 (annotations) | 2026-10-31 |
 | migration | 0005 | M2.4 (cost estimates vs actual) | 2026-11-01 |
+| migration | 0006 | M2.8 (scan_runs.worktree) | 2026-11-01 |
 
 ---
 
@@ -712,4 +713,13 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Found while doing it:** incremental state itself was clean; what differed was the *checkout location*. JSP/WebForms page nodes used the absolute file path as their qualified name (WebForms `Register` call sites and `web.xml`/`web.config` endpoint names embedded it too), so the same commit scanned in two directories rendered different file pages, MCP answers carried local paths, and cached parse entries kept the old path after a repo moved.
 - **Verify:** `pytest -q tests/parity` → 5 passed; full `pytest -q` → 1905 passed, 2 skipped; `bench gate`, `--sealed`, `--external` ok; `roadmap_lint` ok.
 - **Follow-ups:** the corpus runner (`tests/corpus/runner.py`) parses without the parse stage, so its JSP/WebForms ids stay absolute (consistent with its own ground truth). No repowise code was copied or translated.
+
+## 2026-11-01 — M2.8 — Freshness triggers (git hook + watch)
+- **Branch/commit:** rm/M2.8-freshness @ cbc3738
+- **Changes:** `core/githook.py` (new: install/uninstall/status of a marker-delimited POSIX-sh block in the post-commit hook git resolves), `cli/commands/init.py` (`--git-hook/--no-git-hook`, listed in the inventory; works alone on a set-up project), `cli/commands/doctor.py` (`git hook` check), `cli/commands/scan.py` (`--watch`, `--debounce`, hidden `--from-hook`/`--watch-cycles`; body split into `_scan_once`), `stages/resolve.py` (`worktree_state` fingerprint; the same-commit guard and `--full` fast path halt only when it matches), `store/migrations/m0006_scan_worktree.py`, `stages/context.py`, `pages/build.py` (page stamps carry `dirty`), `tests/cli/test_githook.py` (10), `tests/cli/test_watch.py` (7), golden snapshots (6 migrations), `design/cli-v1.md` (as built).
+- **Scope note:** resolve/context/store (lane A) and `pages/build.py` (lane D) are outside Owns.
+- **Decisions:** the hook runs `scan --from-hook`: keyless unless config says `prose: true`, and then the cost gate runs non-interactively — the hook never pre-approves spend; a held lock is a logged skip, not an error; worktrees that were never set up (no state dir) are skipped; git's hook environment (`GIT_DIR`, `GIT_INDEX_FILE`, …) is unset before the scan. `--watch` polls the walker's file set instead of adding a file-watching dependency.
+- **Found while doing it:** `discover scan` on uncommitted edits reported "already scanned" — HEAD had not moved — although MCP tells agents to rescan when the index is `dirty`; and a `?? .discovery/` entry (its `.gitignore` and `config.yaml` are meant to be committed) would have made every tree look dirty. Fixed with the worktree fingerprint (state dir excluded), which also catches reverting an edit.
+- **Verify:** `pytest -q tests/cli -k "githook or watch"` → 17 passed; full `pytest -q` → 1921 passed, 2 skipped (+ golden refresh); `bench gate`, `--sealed` ok; `roadmap_lint` ok; manual: commit returns at once, the detached scan indexes the new commit and appends one JSON line to `hook.log`, `doctor` reports the hook.
+- **Follow-ups:** Windows hooks run under Git's bundled sh (untested here); `status` could show the last hook run from `hook.log`. No repowise code was copied or translated.
 

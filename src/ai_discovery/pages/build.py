@@ -103,12 +103,12 @@ def nearest_parent(page_id: str, live: set[str]) -> str:
 
 
 def build_pages(conn: sqlite3.Connection, scan_id: int, repo: Path, *, commit: str = "",
-                config_hash: str = "", extra: Optional[dict] = None) -> BuildResult:
+                config_hash: str = "", extra: Optional[dict] = None, dirty: bool = False) -> BuildResult:
     """Build and store every page for *scan_id*; tombstone pages that disappeared."""
     from ..store.fts import fts5_available, rebuild_fts
 
     ctx = BuildContext(conn=conn, scan_id=scan_id, repo=Path(repo), commit=commit,
-                       config_hash=config_hash, extra=dict(extra or {}))
+                       config_hash=config_hash, extra=dict(extra or {}), dirty=dirty)
     pages = run_builders(ctx)
     _stamp_source_hashes(pages, Path(repo))
     conn.execute("DELETE FROM page_links WHERE scan_id = ?", (scan_id,))
@@ -182,13 +182,18 @@ def stale_pages(conn: sqlite3.Connection, scan_id: int, repo: Path) -> dict[str,
 
 # ── post-scan hook ────────────────────────────────────────────────────────
 
-def _scan_meta(conn: sqlite3.Connection, scan_id: int) -> tuple[str, str]:
-    row = conn.execute("SELECT commit_sha, config_json FROM scan_runs WHERE id = ?", (scan_id,)).fetchone()
+def _scan_meta(conn: sqlite3.Connection, scan_id: int) -> tuple[str, str, bool]:
+    """(commit, config hash, dirty) — dirty: the scan read uncommitted changes (M2.8 `worktree`)."""
+    try:
+        row = conn.execute("SELECT commit_sha, config_json, worktree FROM scan_runs WHERE id = ?",
+                           (scan_id,)).fetchone()
+    except sqlite3.OperationalError:   # store older than migration 0006
+        row = conn.execute("SELECT commit_sha, config_json, '' FROM scan_runs WHERE id = ?", (scan_id,)).fetchone()
     if not row:
-        return "", ""
-    commit, config_json = row
+        return "", "", False
+    commit, config_json, worktree = row
     cfg_hash = hashlib.sha256((config_json or "").encode()).hexdigest()[:16] if config_json else ""
-    return commit or "", cfg_hash
+    return commit or "", cfg_hash, bool(worktree)
 
 
 def _post_scan(ctx) -> str:
@@ -198,8 +203,8 @@ def _post_scan(ctx) -> str:
         return "skipped (no scan)"
     conn = get_conn(ctx.layout.db_path)
     try:
-        commit, cfg_hash = _scan_meta(conn, ctx.scan_id)
-        result = build_pages(conn, ctx.scan_id, ctx.layout.repo, commit=commit, config_hash=cfg_hash)
+        commit, cfg_hash, dirty = _scan_meta(conn, ctx.scan_id)
+        result = build_pages(conn, ctx.scan_id, ctx.layout.repo, commit=commit, config_hash=cfg_hash, dirty=dirty)
         conn.commit()
     finally:
         conn.close()

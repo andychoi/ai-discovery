@@ -154,7 +154,8 @@ def _dry_run(g: Globals, layout, cfg, branch: str, use_prose: bool, run) -> None
     emit(g, data, human)
 
 
-def _gate(g: Globals, layout, cfg, branch: str, yes: bool, resume: bool, run, *, reruns: bool):
+def _gate(g: Globals, layout, cfg, branch: str, yes: bool, resume: bool, run, *, reruns: bool,
+          can_ask: Optional[bool] = None):
     """Quote, then decide (M2.4). Raises cost_gate_no_tty / cost_gate_declined; returns (quote, decision)."""
     from rich.console import Console
 
@@ -167,7 +168,8 @@ def _gate(g: Globals, layout, cfg, branch: str, yes: bool, resume: bool, run, *,
         return None, "pre_approved"          # quoted after the run from its own graph (no extra pass)
     if quote is None and not resume:
         quote = cost_gate.quote_from_structure_scan(layout, cfg, branch, run, _latest_scan)
-    can_ask = cost_gate.interactive() and not g.json and g.progress != "json"
+    if can_ask is None:
+        can_ask = cost_gate.interactive() and not g.json and g.progress != "json"
     if quote is not None and not yes and can_ask \
             and cost_gate.verdict(quote.estimate.expected_usd, cfg) != cost_gate.RUN:
         cost_gate.render(Console(stderr=True), quote, cfg)
@@ -230,6 +232,12 @@ def register(app: typer.Typer) -> None:
         budget: Optional[float] = typer.Option(None, "--budget", help="Budget limit in USD (overrides config)."),
         quality: Optional[str] = typer.Option(None, "--quality", help="draft | final (final = deeper model for docs)."),
         branch: str = typer.Option("main", "--branch", "-b", help="Branch label for git repos."),
+        watch: bool = typer.Option(False, "--watch",
+                                   help="Keep running: rescan incrementally whenever files change (Ctrl-C stops)."),
+        debounce: float = typer.Option(2.0, "--debounce", min=0.0,
+                                       help="--watch: seconds without further changes before a rescan."),
+        watch_cycles: Optional[int] = typer.Option(None, "--watch-cycles", hidden=True),   # tests: stop after N
+        from_hook: bool = typer.Option(False, "--from-hook", hidden=True),                  # the post-commit hook
     ) -> None:
         """Scan this repository into <repo>/.discovery/ (structure only unless --prose)."""
         from ...config.loader import load_config
@@ -254,6 +262,14 @@ def register(app: typer.Typer) -> None:
         only_stages = _only_stages(only) if only else None
         if dry_run and (resume or only):
             raise DiscoveryError("--dry-run cannot be combined with --resume or --only", "contradictory_flags")
+        unattended = watch or from_hook
+        if watch and (dry_run or resume or only or from_hook):
+            raise DiscoveryError("--watch cannot be combined with --dry-run, --resume, --only", "contradictory_flags")
+        if unattended and prose:
+            raise DiscoveryError("prose never runs from --watch or the git hook unless the config says so",
+                                 "contradictory_flags", hint="set `prose: true` in .discovery/config.yaml")
+        if from_hook:
+            yes = False            # the hook never pre-approves spend: config prose still meets the cost gate
 
         def run(*, layout, config, rescan_=full, resume_=False, only_=None):
             with _pipeline_output(g):
@@ -266,66 +282,183 @@ def register(app: typer.Typer) -> None:
         if dry_run:
             return _dry_run(g, layout, cfg, branch, use_prose, run)
 
+        from ...core.lock import LockHeld
+
         quote, decision = None, None
-        if use_prose:
-            quote, decision = _gate(g, layout, cfg, branch, yes, resume, run,
-                                    reruns=bool(full or only_stages or resume))
+        try:
+            if use_prose:
+                quote, decision = _gate(g, layout, cfg, branch, yes, resume, run,
+                                        reruns=bool(full or only_stages or resume),
+                                        can_ask=None if not from_hook else False)
+            summary = _scan_once(g, app, layout, cfg, run, use_prose, quote, decision, resume, only_stages,
+                                 branch=branch, trigger="hook" if from_hook else "scan")
+        except LockHeld:
+            if not from_hook:
+                raise
+            # another scan is running: this commit's changes are picked up by that one or the next commit
+            emit(g, {"status": "skipped", "reason": "lock_held", "trigger": "hook", "at": _now()},
+                 "scan skipped: another scan holds the run lock")
+            return
+        if not watch:
+            return
+        _watch(g, layout, cfg, debounce, watch_cycles,
+               lambda changed: _scan_once(g, app, layout, cfg, run, use_prose, None,
+                                          "pre_approved" if use_prose else None, False, None,
+                                          branch=branch, trigger="watch", changed=changed, rescan=False),
+               first=summary)
 
-        progress = ProgressEmitter(g)
+
+def _now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _scan_once(g: Globals, app, layout, cfg, run, use_prose: bool, quote, decision, resume: bool, only_stages,
+               *, branch: str, trigger: str, changed: Optional[list[str]] = None,
+               rescan: Optional[bool] = None) -> dict:
+    """One pipeline run + post-scan hooks + end panel; returns the summary (M2.3, reused by --watch, M2.8)."""
+    from ...core.hooks import ScanContext, run_post_scan
+    from ...store.scans import get_current_scan
+
+    progress = ProgressEmitter(g)
+    if g.progress == "json" and trigger != "watch":
+        progress.stage("scan", "start", repo=str(layout.repo), prose=use_prose)
+    kwargs = {} if rescan is None else {"rescan_": rescan}
+    status = run(layout=layout, config=cfg, resume_=resume, only_=only_stages, **kwargs)
+    if use_prose and decision is not None:
+        _record(layout, cfg, branch, quote, decision)
+    if status == "budget_exceeded":
         if g.progress == "json":
-            progress.stage("scan", "start", repo=str(layout.repo), prose=use_prose)
-        status = run(layout=layout, config=cfg, resume_=resume, only_=only_stages)
-        if use_prose and decision is not None:
-            _record(layout, cfg, branch, quote, decision)
-        if status == "budget_exceeded":
-            if g.progress == "json":
-                progress.error("budget exceeded")
-            raise DiscoveryError(f"budget limit ${cfg.budget_limit_usd:.2f} reached; LLM output is partial",
-                                 "budget_exceeded", hint="raise --budget and re-run with --resume")
-        if status == "resume_refused":
-            raise DiscoveryError("cannot resume: HEAD moved since the recorded run", "resume_refused",
-                                 hint="run `discover scan` without --resume")
+            progress.error("budget exceeded")
+        raise DiscoveryError(f"budget limit ${cfg.budget_limit_usd:.2f} reached; LLM output is partial",
+                             "budget_exceeded", hint="raise --budget and re-run with --resume")
+    if status == "resume_refused":
+        raise DiscoveryError("cannot resume: HEAD moved since the recorded run", "resume_refused",
+                             hint="run `discover scan` without --resume")
 
-        scan_id = None
-        if layout.db_path.exists():
-            conn = sqlite3.connect(layout.db_path)
-            try:
-                scan_id = get_current_scan(conn)
-            finally:
-                conn.close()
-        outcome = "unchanged" if status is None else status
-        hooks = run_post_scan(ScanContext(layout, cfg, scan_id, outcome)) if scan_id else []
-        summary = _summary(layout, scan_id, cfg, outcome)
-        for h in hooks:
-            if not h.ok:
-                summary["degradations"].append({"kind": "post_scan_hook", "count": 1,
-                                                "message": f"post-scan step {h.name} failed: {h.detail}"})
-        summary["hooks"] = [h.__dict__ for h in hooks]
-        summary["next"] = _whats_next(app, use_prose, sum(not h.ok for h in hooks))
-        summary["prose"] = use_prose
-        if quote is not None:
-            summary["cost_gate"] = {"decision": decision, "expected_usd": round(quote.estimate.expected_usd, 4),
-                                    "source": quote.source}
-        if g.progress == "json":  # the human end panel already lists these
-            for d in summary["degradations"]:
-                progress.warn(d["message"], kind=d["kind"], count=d["count"])
-            progress.done(outcome)
+    scan_id = None
+    if layout.db_path.exists():
+        conn = sqlite3.connect(layout.db_path)
+        try:
+            scan_id = get_current_scan(conn)
+        finally:
+            conn.close()
+    outcome = "unchanged" if status is None else status
+    hooks = run_post_scan(ScanContext(layout, cfg, scan_id, outcome)) if scan_id else []
+    summary = _summary(layout, scan_id, cfg, outcome)
+    for h in hooks:
+        if not h.ok:
+            summary["degradations"].append({"kind": "post_scan_hook", "count": 1,
+                                            "message": f"post-scan step {h.name} failed: {h.detail}"})
+    summary["hooks"] = [h.__dict__ for h in hooks]
+    summary["next"] = _whats_next(app, use_prose, sum(not h.ok for h in hooks))
+    summary["prose"] = use_prose
+    summary["trigger"] = trigger
+    summary["at"] = _now()
+    if changed is not None:
+        summary["changed"] = changed[:50]
+        summary["changed_count"] = len(changed)
+    if quote is not None:
+        summary["cost_gate"] = {"decision": decision, "expected_usd": round(quote.estimate.expected_usd, 4),
+                                "source": quote.source}
+    if g.progress == "json" and trigger == "watch":   # one event per rescan (M2.8)
+        progress.stage("watch", "rescan", outcome=outcome, changed=len(changed or []), scan_id=scan_id)
+    elif g.progress == "json":  # the human end panel already lists these
+        for d in summary["degradations"]:
+            progress.warn(d["message"], kind=d["kind"], count=d["count"])
+        progress.done(outcome)
 
-        def human(console) -> None:
+    def human(console) -> None:
+        if trigger == "watch":
             c = summary["counts"]
-            title = "already up to date" if outcome == "unchanged" else outcome
-            console.print(f"\n[bold green]scan {title}[/]  [dim]{summary['db']}[/]", highlight=False)
-            if c:
-                console.print(f"  {c['files']} files, {c['symbols']} symbols, {c['edges']} edges "
-                              f"({c['unresolved_calls']} unresolved calls), {c['domains']} domains, "
-                              f"{c['screens']} screens, {c['docs']} docs", highlight=False)
-                sp = summary["spend"]
-                mode = "prose" if use_prose else "structure only"
-                console.print(f"  spend ${sp['usd']:.2f} of ${sp['budget_usd']:.2f} ({mode})", highlight=False)
-            for d in summary["degradations"]:
-                console.print(f"  [yellow]![/] {d['message']}", highlight=False)
-            if summary["next"]:
-                console.print("What's next:")
-                for cmd in summary["next"]:
-                    console.print(f"  [bold]{cmd}[/]")
-        emit(g, summary, human)
+            console.print(f"[dim]{summary['at']}[/] rescan {outcome}: {len(changed or [])} changed file(s)"
+                          + (f" → {c.get('symbols', 0)} symbols, {c.get('edges', 0)} edges" if c else ""),
+                          highlight=False)
+            return
+        c = summary["counts"]
+        title = "already up to date" if outcome == "unchanged" else outcome
+        console.print(f"\n[bold green]scan {title}[/]  [dim]{summary['db']}[/]", highlight=False)
+        if c:
+            console.print(f"  {c['files']} files, {c['symbols']} symbols, {c['edges']} edges "
+                          f"({c['unresolved_calls']} unresolved calls), {c['domains']} domains, "
+                          f"{c['screens']} screens, {c['docs']} docs", highlight=False)
+            sp = summary["spend"]
+            mode = "prose" if use_prose else "structure only"
+            console.print(f"  spend ${sp['usd']:.2f} of ${sp['budget_usd']:.2f} ({mode})", highlight=False)
+        for d in summary["degradations"]:
+            console.print(f"  [yellow]![/] {d['message']}", highlight=False)
+        if summary["next"]:
+            console.print("What's next:")
+            for cmd in summary["next"]:
+                console.print(f"  [bold]{cmd}[/]")
+    emit(g, summary, human)
+    return summary
+
+
+# ── --watch (M2.8) ─────────────────────────────────────────────────────────
+
+def _files_state(layout, cfg) -> dict[str, tuple[int, int]]:
+    """{repo-relative path: (mtime_ns, size)} of the files a scan reads (the walker's view, state dir excluded)."""
+    from ...repo.walker import RepoWalker, WalkOptions
+
+    root = layout.repo
+    out: dict[str, tuple[int, int]] = {}
+    try:
+        files = RepoWalker(root, WalkOptions.from_config(cfg)).files()
+    except Exception:   # noqa: BLE001 — a transient walk failure just means "look again"
+        return out
+    state = layout.state_dir.resolve()
+    for f in files:
+        try:
+            if f.resolve().is_relative_to(state):
+                continue
+            st = f.stat()
+        except OSError:
+            continue
+        out[f.relative_to(root).as_posix() if f.is_relative_to(root) else str(f)] = (st.st_mtime_ns, st.st_size)
+    return out
+
+
+def _changed(before: dict, after: dict) -> list[str]:
+    return sorted(k for k in before.keys() | after.keys() if before.get(k) != after.get(k))
+
+
+def _watch(g: Globals, layout, cfg, debounce: float, cycles: Optional[int], rescan, *, first: dict) -> None:
+    """Poll the file set; after *debounce* quiet seconds following a change, rescan incrementally."""
+    import time
+
+    from rich.console import Console
+
+    from ...core.lock import LockHeld
+
+    poll = max(0.05, min(0.5, debounce / 4 if debounce else 0.25))
+    console = Console(stderr=True, no_color=g.no_color)
+    if not g.json and g.progress != "json":
+        console.print(f"[bold]watching[/] {layout.repo} (debounce {debounce:g}s) — Ctrl-C to stop", highlight=False)
+    seen = _files_state(layout, cfg)
+    done = 0
+    try:
+        while cycles is None or done < cycles:
+            time.sleep(poll)
+            current = _files_state(layout, cfg)
+            if current == seen:
+                continue
+            quiet_since = time.monotonic()
+            while time.monotonic() - quiet_since < debounce:     # wait for the burst of writes to settle
+                time.sleep(poll)
+                latest = _files_state(layout, cfg)
+                if latest != current:
+                    current, quiet_since = latest, time.monotonic()
+            try:
+                rescan(_changed(seen, current))
+            except LockHeld:
+                if not g.json and g.progress != "json":
+                    console.print("[yellow]![/] another scan holds the lock; retrying after the next change",
+                                  highlight=False)
+                continue          # `seen` unchanged: the same changes trigger again
+            seen = current
+            done += 1
+    except KeyboardInterrupt:
+        if not g.json and g.progress != "json":
+            console.print("watch stopped", highlight=False)

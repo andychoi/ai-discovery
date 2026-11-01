@@ -156,6 +156,9 @@ def register(app: typer.Typer) -> None:
         provider: str = typer.Option("aigw", "--provider", help=f"LLM provider ({' | '.join(PROVIDERS)})."),
         mcp: Optional[bool] = typer.Option(None, "--mcp/--no-mcp", help="Add an MCP server entry to .mcp.json."),
         force: bool = typer.Option(False, "--force", help="Overwrite an existing .discovery/config.yaml."),
+        git_hook: Optional[bool] = typer.Option(None, "--git-hook/--no-git-hook",
+                                                help="Install (or remove) the post-commit hook that re-indexes "
+                                                     "in the background after each commit."),
     ) -> None:
         """Detect the stack and write .discovery/config.yaml (first-run menu on a terminal)."""
         from ...core.paths import ProjectLayout
@@ -169,6 +172,8 @@ def register(app: typer.Typer) -> None:
             raise DiscoveryError(f"{root} is not a directory", "project_not_found")
         layout = ProjectLayout.for_repo(root, state_dir=g.state_dir)
         if layout.config_path.exists() and not force:
+            if git_hook is not None and prose is None and mcp is None:
+                return _hook_only(g, layout, git_hook)      # `init --git-hook` on a set-up project (M2.8)
             raise DiscoveryError(f"{layout.config_path} already exists", "contradictory_flags",
                                  hint="pass --force to overwrite it")
 
@@ -213,7 +218,14 @@ def register(app: typer.Typer) -> None:
             else:
                 notes.append("MCP server not available yet (roadmap M5.3) — .mcp.json not written")
 
-        result = {"repo": str(layout.repo or root), "config": str(layout.config_path),
+        removed: list[str] = []
+        if git_hook is not None:
+            hook_written, hook_removed, hook_note = _apply_hook(layout, git_hook, g.state_dir)
+            written += hook_written
+            removed += hook_removed
+            notes += hook_note
+
+        result = {"repo": str(layout.repo or root), "config": str(layout.config_path), "removed": removed,
                   "prose": settings["prose"], "provider": settings["provider"], "written": written,
                   "notes": notes, "stack": stack.__dict__}
 
@@ -222,12 +234,47 @@ def register(app: typer.Typer) -> None:
             console.print(f"[green]✓[/] initialised: {mode}, provider {settings['provider']}")
             for f in written:
                 console.print(f"  wrote {f}", highlight=False)
+            for f in removed:
+                console.print(f"  removed {f}", highlight=False)
             for n in notes:
                 console.print(f"  [yellow]note[/] {n}", highlight=False)
             console.print("Next: [bold]discover scan[/]")
         emit(g, result, human)
 
     _app_ref[0] = app
+
+
+def _apply_hook(layout, install: bool, state_dir) -> tuple[list[str], list[str], list[str]]:
+    """(written, removed, notes) for --git-hook / --no-git-hook."""
+    from ...core import githook
+
+    repo = layout.repo
+    if install:
+        custom = layout.state_dir if state_dir else None
+        path, action = githook.install(repo, state_dir=custom)
+        note = {"created": [], "updated": ["refreshed the existing ai-discovery hook block"],
+                "appended": ["chained after the existing post-commit hook"]}[action]
+        return [f"{path} (post-commit hook, {action})"], [], note
+    path, action = githook.uninstall(repo)
+    if action == "absent":
+        return [], [], ["no ai-discovery hook block to remove"]
+    return [], [f"{path} ({'hook block' if action == 'removed' else 'hook file'})"], []
+
+
+def _hook_only(g: Globals, layout, install: bool) -> None:
+    written, removed, notes = _apply_hook(layout, install, g.state_dir)
+    result = {"repo": str(layout.repo), "config": str(layout.config_path), "written": written,
+              "removed": removed, "notes": notes, "git_hook": install}
+
+    def human(console) -> None:
+        console.print(f"[green]✓[/] post-commit hook {'installed' if install else 'removed'}")
+        for f in written:
+            console.print(f"  wrote {f}", highlight=False)
+        for f in removed:
+            console.print(f"  removed {f}", highlight=False)
+        for n in notes:
+            console.print(f"  [yellow]note[/] {n}", highlight=False)
+    emit(g, result, human)
 
 
 _app_ref: list = [None]

@@ -126,8 +126,17 @@ def run(ctx: RunContext) -> None:
         console.print(f"[cyan]Commit {resolved.commit_sha[:10]} has a structure-only scan "
                       f"(run #{prev_run['id']}); adding prose.[/]")
 
+    # M2.8: uncommitted edits are not "already scanned" — HEAD did not move but the code did. The parse cache
+    # (keyed by content, ADR-0002) keeps such a rescan cheap; `scan --watch` relies on this.
+    worktree = worktree_state(resolved, ctx.layout.state_dir)
+    ctx.worktree = worktree
+    dirty = bool(prev_run) and prev_run["commit_sha"] == resolved.commit_sha \
+        and (_row_get(prev_run, "worktree") or "") != worktree
+    if dirty:
+        console.print(f"[cyan]Working tree of {resolved.commit_sha[:10]} differs from the last scan; rescanning.[/]")
+
     # Rescan guard: skip if same commit already scanned (no --rescan flag)
-    if not rescan and not resume and not resume_from and prev_run and not adds_prose:
+    if not rescan and not resume and not resume_from and prev_run and not adds_prose and not dirty:
         if prev_run["commit_sha"] == resolved.commit_sha and prev_run["status"] == "completed":
             console.print(
                 f"[green]Commit {resolved.commit_sha[:10]} already scanned "
@@ -155,7 +164,7 @@ def run(ctx: RunContext) -> None:
 
     if rescan and prev_run and prev_run["commit_sha"] == resolved.commit_sha \
             and prev_run["status"] in ("completed", "push_failed", "llm_complete") \
-            and cached_doc_count > 0 and not adds_prose:
+            and cached_doc_count > 0 and not adds_prose and not dirty:
         console.print(
             f"[cyan]Commit {resolved.commit_sha[:10]} already analysed "
             f"(scan #{prev_run['id']}, status={prev_run['status']}, "
@@ -178,8 +187,8 @@ def run(ctx: RunContext) -> None:
         try:
             cursor = conn.execute(
                 "INSERT INTO scan_runs (repo_url, repo_path, commit_sha, branch, "
-                "project_slug, started_at, status, config_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "project_slug, started_at, status, config_json, worktree) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     resolved.url,
                     str(resolved.repo_path),
@@ -190,6 +199,7 @@ def run(ctx: RunContext) -> None:
                     "running",
                     # M0.8: never persist API keys/tokens with the run record.
                     json.dumps(redact_mapping(asdict(config))),
+                    worktree,
                 ),
             )
             scan_id = cursor.lastrowid
@@ -210,3 +220,51 @@ def _adds_prose(prev_run, config) -> bool:
         return False
     return bool(recorded.get("no_llm"))
 
+
+def _row_get(row, key: str):
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return None
+
+
+def worktree_state(resolved, state_dir=None) -> str:
+    """'' for a clean local checkout; else a sha256 of its uncommitted state (status, diff vs HEAD, untracked
+    files' bytes). Remote clones and non-git folders (whose id is already a content fingerprint) give ''.
+
+    The state dir is left out: its `config.yaml` and `.gitignore` are meant to be committed but may not be yet,
+    and nothing else in it is tracked — a scan never dirties the tree it reads.
+    """
+    import hashlib
+    import subprocess
+    from pathlib import Path
+
+    repo = Path(resolved.repo_path)
+    if not getattr(resolved, "is_local", True) or not (repo / ".git").exists():
+        return ""
+    spec = ["--", "."]
+    if state_dir is not None:
+        try:
+            spec.append(f":(exclude){Path(state_dir).resolve().relative_to(repo.resolve()).as_posix()}")
+        except ValueError:
+            pass   # state dir outside the repo
+
+    def git(*args: str) -> bytes | None:
+        try:
+            out = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return out.stdout if out.returncode == 0 else None
+
+    status = git("status", "--porcelain", "-z", "--untracked-files=all", *spec)
+    if not status:
+        return ""
+    h = hashlib.sha256(status)
+    h.update(git("diff", "HEAD", "--binary", *spec) or b"")
+    for entry in status.split(b"\0"):
+        if entry.startswith(b"?? "):
+            try:
+                h.update((repo / entry[3:].decode("utf-8", "surrogateescape")).read_bytes())
+            except OSError:
+                pass
+    return h.hexdigest()

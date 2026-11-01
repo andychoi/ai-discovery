@@ -34,6 +34,7 @@ class RunContext:
     domains: list = field(default_factory=list)                    # domains
     edges: list = field(default_factory=list)                      # graph
     unresolved: list = field(default_factory=list)                 # graph (ADR-0004 unresolved calls)
+    worktree: str = ""                                             # resolve (M2.8): '' = clean checkout
     scenarios: list = field(default_factory=list)                  # slices
     all_transitions: list = field(default_factory=list)            # slices (8a)
     sql_nodes: list = field(default_factory=list)                  # sql

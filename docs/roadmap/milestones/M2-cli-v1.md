@@ -96,7 +96,7 @@
 - **Out of scope:** —
 
 ### M2.8 Freshness triggers (git hook + watch)
-- **Status:** In progress (rm/M2.8-freshness, 2026-11-01)
+- **Status:** Done (cbc3738)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M3.6, M1.4
