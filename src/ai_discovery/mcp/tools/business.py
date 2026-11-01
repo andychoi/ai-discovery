@@ -37,7 +37,7 @@ TOOLS = [
         name="get_flow",
         rank=42,
         title="Business flow",
-        description="Steps of one business flow (scenario) with citations, and whether a BPMN diagram exists.",
+        description="Steps of one business flow (scenario) with citations.",
         input_schema=schema({"id": _ID}, required=("id",)),
         handler=lambda project, args: query.flow(project, args["id"]),
         budget=Budget(max_tokens=5000, shed=("steps",)),

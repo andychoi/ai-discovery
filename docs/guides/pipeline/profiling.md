@@ -208,14 +208,10 @@ sqlite3 data/discovery.db "
 How complex are the scenarios?
 
 ```bash
-sqlite3 data/discovery.db "
-  SELECT 
-    scenario_id,
-    entry_point,
-    LENGTH(primary_path) / 2 as num_steps,  # Rough estimate
-    COUNT(*) as num_alternate_paths
+sqlite3 .discovery/discovery.db "
+  SELECT scenario_id, domain, json_array_length(steps_json) AS num_steps
   FROM scenario_flows
-  WHERE scan_id = 'scan_12345'
+  WHERE scan_id = (SELECT scan_id FROM current_scan)
   ORDER BY num_steps DESC
   LIMIT 10;
 "

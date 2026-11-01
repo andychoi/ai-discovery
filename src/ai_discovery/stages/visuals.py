@@ -28,21 +28,20 @@ def run(ctx: RunContext) -> None:
     scenario_flows = ctx.scenario_flows
     scenario_artifacts = ctx.scenario_artifacts
     mining_results = ctx.mining_results
-    # 15: Generate Visual Artifacts (BPMN + Mermaid sequence/flowchart) and persist
-    from ..generators.bpmn_generator import BPMNGenerator
+    # 15: Generate Visual Artifacts (Mermaid sequence/flowchart + IPO; no BPMN, ADR-0007) and persist
+    from ..generators.flow_diagrams import FlowDiagrams
     from ..ai.flow_analyzer import persist_scenario_flows
 
     with _with_checkpoint(db_path, scan_id, 15, "visual_artifacts"):
-        bpmn_gen = BPMNGenerator()
+        diagrams = FlowDiagrams()
         console.print("[bold cyan]Phase 15: Generating visual artifacts...[/]")
 
         scenario_artifacts: dict[str, dict] = {}
         for flow in scenario_flows:
             scenario_artifacts[flow.scenario_id] = {
-                "mermaid": bpmn_gen.generate_mermaid_sequence(flow),
-                "mermaid_flowchart": bpmn_gen.generate_mermaid_flowchart(flow),
-                "bpmn": bpmn_gen.generate_bpmn_xml(flow),
-                "ipo": bpmn_gen.generate_ipo_markdown(flow),
+                "mermaid": diagrams.generate_mermaid_sequence(flow),
+                "mermaid_flowchart": diagrams.generate_mermaid_flowchart(flow),
+                "ipo": diagrams.generate_ipo_markdown(flow),
             }
         persist_scenario_flows(scenario_flows, scenario_artifacts, scan_id, db_path)
         console.print(f"  Visual artifacts: [green]{len(scenario_artifacts)}[/] scenarios persisted")

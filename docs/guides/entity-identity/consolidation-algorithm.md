@@ -12,7 +12,7 @@
 
 Every `StateTransition` and `EntityStateMachine` carries two names:
 
-- **`entity`** — short display name (e.g. `Order`). What reviewers see in BPMN/DMN/EARS outputs.
+- **`entity`** — short display name (e.g. `Order`). What reviewers see on entity pages (lifecycle, DMN, EARS).
 - **`entity_id`** — unique qualified key. For class-backed FSMs, it is the class's `qualified_name` (e.g. `src.billing.order.Order`). For duck-typed receivers with no backing class, it is `{enclosing_function.qualified_name}::{var}` (e.g. `src.util.process::thing`).
 
 Parsers emit `entity_id` at the source; it flows through `call_graph.py` → `fsm_rollup` → SQLite/JSON export unchanged. The rollup **groups by `entity_id`**, not `entity`, so `billing.Order` and `ecommerce.Order` never silently collapse.
@@ -109,7 +109,7 @@ This handles the "raw SQL code touches the orders table, and a separate `Order` 
 
 ## Post-consolidation: display disambiguation
 
-After all merges settle, distinct FSMs may still share the same short `entity` label — e.g. `billing.Order` and `ecommerce.Order` each survive as their own FSM because their field sets are disjoint. Downstream BPMN/DMN/EARS views would show two unlabeled "Order" rows. To prevent that, consolidation rewrites only the `entity` display field (never `entity_id`) to include a module hint:
+After all merges settle, distinct FSMs may still share the same short `entity` label — e.g. `billing.Order` and `ecommerce.Order` each survive as their own FSM because their field sets are disjoint. Entity pages (lifecycle, DMN, EARS) would show two unlabeled "Order" rows. To prevent that, consolidation rewrites only the `entity` display field (never `entity_id`) to include a module hint:
 
 - `billing.Order` → display `Order (billing)`; `entity_id` stays `src.billing.Order`
 - `ecommerce.Order` → display `Order (ecommerce)`; `entity_id` stays `src.ecommerce.Order`

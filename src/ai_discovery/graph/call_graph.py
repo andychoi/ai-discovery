@@ -1197,7 +1197,9 @@ class ExecutionSliceBuilder:
         Returns Scenario with:
         - nodes: all discovered nodes in BFS order
         - primary_path: top-confidence nodes capped at 15, in execution order
-        - alternate_paths: conditional branches with conditions
+
+        Fan-out is not branching: a caller with several callees may call them one after another, either-or
+        or both, and the call graph cannot tell which. No gateway or branch condition is recorded (ADR-0007).
         """
         scenario_id = f"scenario_{entry.name}_{entry.line_start}"
         scenario = Scenario(
@@ -1235,7 +1237,6 @@ class ExecutionSliceBuilder:
                 scenario.stop_reasons[node_name] = self._leaf_stop(node_name, exec_node)
                 continue
 
-            # Collect callees for branching detection
             callees = self.edges_by_caller.get(node_name, [])
             if depth >= max_depth:
                 if callees:
@@ -1249,8 +1250,8 @@ class ExecutionSliceBuilder:
             elif not callees:
                 scenario.stop_reasons.setdefault(node_name, self._leaf_stop(node_name, exec_node))
             for edge in callees:
-                # Determine edge type: CALL (default), ASYNC, or CONDITIONAL
-                edge_type = self._infer_edge_type(node, edge, callees)
+                # Edge type: CALL (default) or ASYNC
+                edge_type = self._infer_edge_type(node, edge)
                 scenario.edges.append(ExecutionEdge(
                     from_node=node_name,
                     to_node=edge.callee,
@@ -1260,10 +1261,6 @@ class ExecutionSliceBuilder:
                 if edge.callee not in visited:
                     visited.add(edge.callee)
                     queue.append((edge.callee, depth + 1, exec_node))
-
-            # Detect conditional branches (multiple callees = gateway)
-            if len(callees) > 1:
-                self._detect_alternate_paths(exec_node, callees, scenario)
 
         scenario.primary_path = self._build_primary_path(entry.qualified_name, scenario)
 
@@ -1392,7 +1389,7 @@ class ExecutionSliceBuilder:
           - Rank remaining successors by (semantic signal, edge confidence,
             earlier source line). Semantic signal rewards targets that carry
             state transitions or data boundaries — those are the events
-            downstream BPMN/EARS generation actually cares about.
+            downstream entity pages and EARS actually care about.
 
         Stops on: no sync successor, cycle revisit, or max_length reached.
         The result is guaranteed contiguous (every adjacent pair is a real
@@ -1445,70 +1442,17 @@ class ExecutionSliceBuilder:
         # Negate line so earlier source lines rank higher.
         return (signal, edge.confidence, -line)
 
-    def _detect_alternate_paths(
-        self,
-        gateway_node: ExecutionNode,
-        callees: list[CallEdge],
-        scenario: Scenario,
-    ) -> None:
-        """Detect and record alternate execution paths from conditional branches.
-
-        When a node has multiple callees, treat it as a gateway and populate
-        alternate_paths with inferred conditions based on callee names/types.
-        """
-        if len(callees) <= 1:
-            return
-
-        # Heuristic: infer condition names from callee names
-        conditions = []
-        for edge in callees:
-            callee_name = edge.callee.split(".")[-1].lower()
-            # Detect common condition patterns
-            if any(x in callee_name for x in ("success", "ok", "valid", "pass")):
-                condition = "success"
-            elif any(x in callee_name for x in ("error", "fail", "reject", "invalid")):
-                condition = "failure"
-            elif any(x in callee_name for x in ("retry", "fallback")):
-                condition = "retry"
-            else:
-                condition = f"branch_{len(conditions) + 1}"
-            conditions.append((condition, edge.callee))
-
-        # Record alternate paths
-        for condition, path_start in conditions:
-            # Build BFS path from this branch start
-            branch_visited: set[str] = set()
-            branch_queue: list[str] = [path_start]
-            branch_path: list[str] = []
-
-            while branch_queue and len(branch_path) < 10:  # Limit depth
-                node_name = branch_queue.pop(0)
-                if node_name in branch_visited:
-                    continue
-                branch_visited.add(node_name)
-                branch_path.append(node_name)
-
-                for edge in self.edges_by_caller.get(node_name, []):
-                    branch_queue.append(edge.callee)
-
-            if branch_path:
-                scenario.alternate_paths.append({
-                    "condition": condition,
-                    "path": branch_path,
-                })
-
     def _infer_edge_type(
         self,
         caller: CodeNode | None,
         edge: CallEdge,
-        all_callees: list[CallEdge],
     ) -> str:
-        """Determine edge type: CALL (sync), ASYNC (fire-and-forget), or CONDITIONAL (branch).
+        """Determine edge type: CALL (sync) or ASYNC (fire-and-forget).
 
         Heuristics:
         - ASYNC: callee name contains async patterns, or caller has async_boundary hint
-        - CONDITIONAL: multiple callees from same caller (gateway); inferred by branch detection
-        - CALL: default synchronous call
+        - CALL: everything else. Several callees are not marked CONDITIONAL: the call graph cannot tell
+          sequence from choice (ADR-0007).
         """
         if not caller:
             return "CALL"
@@ -1524,10 +1468,6 @@ class ExecutionSliceBuilder:
         hints = caller.framework_hints or {}
         if hints.get("async_boundary"):
             return "ASYNC"
-
-        # If multiple callees (gateway), edges become conditional (first one is explicit, rest are branches)
-        if len(all_callees) > 1:
-            return "CONDITIONAL"
 
         return "CALL"
 

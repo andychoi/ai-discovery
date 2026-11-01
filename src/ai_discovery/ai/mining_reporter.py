@@ -137,7 +137,7 @@ def _section_edges(result: MiningResult) -> str:
         "distinct edge is mandatory and shares the same value (1/(events-1)); it only varies when "
         "edges repeat."
     )
-    lines.append("- Verify rare or conditional transitions against BPMN gateways.")
+    lines.append("- Verify rare or conditional transitions against their guards in source.")
 
     return "\n".join(lines)
 

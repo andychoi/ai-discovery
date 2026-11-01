@@ -7,7 +7,7 @@ per `enclosing_fn::var` for duck-typed receivers. So collisions like
 But that leaves a different problem: the *same* logical entity often appears
 under multiple names in one repo — `Order` + `OrderEntity`, domain `Order` +
 persistence `OrderJpaEntity`, or `Order` + the `order_reducer` Redux slice.
-Those produce distinct FSMs that downstream BPMN / DMN / EARS consumers
+Those produce distinct FSMs that downstream entity-page consumers (lifecycle, DMN, EARS)
 should see as one. This module does that merging.
 
 Algorithm (see docs/guides/entity-identity/consolidation-algorithm.md for
@@ -654,7 +654,7 @@ def _disambiguate_display_names(
     After consolidation, the canonical `entity` is the display label. If two
     truly distinct entities (e.g. `billing.Order` and `ecommerce.Order`) each
     survive as their own FSM, their display names would collide — downstream
-    BPMN / DMN / EARS views would show two unlabeled "Order" rows. Append a
+    entity pages (lifecycle, DMN, EARS) would show two unlabeled "Order" rows. Append a
     module qualifier so they render as `Order (billing)` vs `Order (ecommerce)`.
     """
     counts: dict[str, int] = defaultdict(int)

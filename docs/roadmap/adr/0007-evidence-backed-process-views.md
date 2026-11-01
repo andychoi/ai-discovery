@@ -77,5 +77,6 @@ table is still a table, and dmn-js adds a 1 MB viewer to show what a markdown ta
   ("who does a step, how long it waits, how often a path is taken: not visible from code").
 - The web bundle loses bpmn-js and dmn-js. That shrinks the bundle and the dependency surface.
 - Retiring phase-15 BPMN (M3.11) crosses lanes A, B, C and E. It is a separate item with its own golden and MCP
-  changes. Until it lands, `scenario_flows.bpmn_xml` is still written but nothing displays it.
+  changes. It landed after M4.4.b: `scenario_flows.bpmn_xml` is no longer written (the column stays for old
+  stores), and stored gateway and manual steps are rewritten when they are read (`ai/flow_steps.py`).
 - A future process model (M8.6) must carry an evidence label on every element. This ADR sets that as the bar.

@@ -93,7 +93,7 @@ def load_entity_state_machines(db_path: Path, scan_id: int) -> list[dict]:
 
     Returns a list of dicts with the same shape as `fsm_export.fsm_to_dict`
     (sans computed `round(...)` — stored values are authoritative). This is
-    the external query surface: callers can build BPMN/DMN views without
+    the external query surface: callers can build lifecycle/DMN views without
     re-parsing.
     """
     conn = get_conn(db_path)

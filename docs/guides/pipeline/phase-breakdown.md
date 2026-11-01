@@ -124,7 +124,7 @@ visibility and fan-out) — never from name substrings (M6.12; see `docs/archite
 
 Bounded BFS traversal (depth ≤ 5) from each entry point:
 - Primary path: top-15 nodes by confidence, in BFS order
-- Alternate paths: conditional branches detected from nodes with >1 callee
+- Where the trace stops, with a reason (no alternate paths: fan-out is not branching, ADR-0007)
 - Confidence scoring: multi-signal (depth, state transition, data boundary, etc.)
 
 Stores scenarios in `scenario_flows` table.
@@ -182,7 +182,7 @@ Stores in `node_summaries` table.
 
 Per-domain analysis:
 1. Extract business flows (user_flow, batch_flow, integration_flow, cross_cutting)
-2. Analyze scenario execution (steps, IPO, alternate paths)
+2. Analyze scenario execution (steps, IPO)
 
 Uses Claude Sonnet or Ollama gemma4:26b.  
 Stores in `business_flows` and `scenario_flows` tables.
@@ -192,7 +192,7 @@ Stores in `business_flows` and `scenario_flows` tables.
 **Output**: `scenario_flows` (per-scenario inferred business flow)  
 **Time**: 5–15 min
 
-Per-scenario LLM pass that turns each execution slice into a business-readable flow with IPO and alternate paths. Uses the Tier 2 model. Skippable; if absent the visual artifacts phase falls back to the empty-list rebuild path.
+Per-scenario LLM pass that turns each execution slice into a business-readable flow with IPO. Steps may be grouped (PHASE), repeated (LOOP) and carry a parsed guard as `condition`; no gateways or manual steps (ADR-0007). Uses the Tier 2 model. Skippable; if absent the visual artifacts phase falls back to the empty-list rebuild path.
 
 ### Phase 14: (removed)
 
@@ -203,10 +203,10 @@ prose layer (`pages/prose.py`, M3.7.a) after the scan, grounded against the inde
 
 ### Phase 15: Visual Artifacts
 **Input**: `scenario_flows`  
-**Output**: BPMN 2.0 XML, Mermaid sequence + flowchart diagrams, IPO markdown per scenario  
+**Output**: Mermaid sequence + flowchart diagrams, IPO markdown per scenario (`generators/flow_diagrams.py`). No BPMN since M3.11 (ADR-0007): a call slice is not a process model  
 **Time**: 1–10s
 
-Generates diagram artifacts from the inferred flows. Persists scenario+artifact rows so render and ingest can locate them. Always runs (no `enabled` flag).
+Generates diagram artifacts from the inferred flows and persists scenario + artifact rows (MCP `get_flow` reads them). Always runs (no `enabled` flag).
 
 ### Phase 16: Process Mining (Optional)
 **Input**: `scenario_flows`  

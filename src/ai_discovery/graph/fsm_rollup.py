@@ -5,14 +5,14 @@ The rollup groups those observations by `entity_id` (Phase 2d: a unique
 qualified key — class qualified_name, or `enclosing_fn::var` for classless
 receivers) and yields an `EntityStateMachine` per logical entity — the
 canonical artifact the spec's state-first backbone hangs off. Downstream
-BPMN / DMN / EARS generation consume these, not raw scenarios.
+Entity pages (lifecycle, DMN, EARS) consume these, not raw scenarios.
 
 `entity` (short name) is a *display* label; `entity_id` is the grouping key.
 Two classes named `Order` in different modules produce two distinct FSMs.
 
 Deduplication key within an FSM: `(field, from_state, to_state, trigger_function)`.
 Two transitions that reach the same state change from different functions are
-kept as separate evidence (they'll become distinct BPMN lanes and DMN rows).
+kept as separate evidence (they become distinct DMN rows).
 The same trigger seen twice (e.g. via multiple scenario walks) is collapsed,
 preferring the observation with the higher confidence and more entry points.
 """

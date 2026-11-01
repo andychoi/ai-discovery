@@ -5,6 +5,10 @@
 **Source of truth**: code on `main` @ 7a109a9. Every concrete claim below was verified against the cited module; line numbers are approximate and may drift.
 **Korean version**: [system-logic.ko.md](system-logic.ko.md)
 
+> **Point-in-time review (2026-06-06).** Since then the ASIS/ASD/ASSC/PF/ONBOARD tree was replaced by wiki pages
+> (M3.7.b), and BPMN generation, fan-out gateways and inferred manual steps were retired (M3.11,
+> `docs/roadmap/adr/0007-evidence-backed-process-views.md`). Read those parts as history.
+
 ---
 
 ## Table of Contents

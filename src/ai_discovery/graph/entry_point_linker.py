@@ -7,7 +7,7 @@ Each reachable entry is recorded on `StateTransition.entry_points` with the
 kind, qualified name, min-edge confidence along the path, and hop count.
 
 This answers the core state-first question: *"what UI/API/job causes this
-transition?"* — the anchor for downstream BPMN / DMN / EARS generation.
+transition?"* — the anchor for downstream entity pages (lifecycle drivers, DMN, EARS).
 """
 
 from __future__ import annotations

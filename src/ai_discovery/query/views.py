@@ -476,7 +476,7 @@ def flow(project: Project, flow_id: str) -> dict:
             return not_indexed().to_dict()
         row = None
         if r.has_table("scenario_flows"):
-            row = r.conn.execute("SELECT scenario_id, domain, steps_json, structured_steps_json, bpmn_xml, mermaid, "
+            row = r.conn.execute("SELECT scenario_id, domain, steps_json, structured_steps_json, mermaid, "
                                  "confidence FROM scenario_flows WHERE scan_id = ? AND scenario_id = ?",
                                  (r.scan_id, key)).fetchone()
         if row is None:
@@ -493,8 +493,11 @@ def flow(project: Project, flow_id: str) -> dict:
             return not_found(flow_id, suggestions or r.did_you_mean(key, types=["flow"]), r.meta(),
                              flows_in_scan=total).to_dict()
         ans = Answer()
-        structured = loads(row["structured_steps_json"], [])
-        raw = structured or loads(row["steps_json"], [])
+        from ..ai.flow_steps import normalize_flat_steps, normalize_structured_steps
+
+        # older stores may hold GATEWAY / USER_TASK steps; they are rewritten as the scan now does (ADR-0007)
+        structured = normalize_structured_steps(loads(row["structured_steps_json"], []))
+        raw = structured or normalize_flat_steps(loads(row["steps_json"], []))
         steps = []
         for s in raw:
             if isinstance(s, dict):
@@ -505,7 +508,7 @@ def flow(project: Project, flow_id: str) -> dict:
                 steps.append({"node": None, "description": str(s), "citation": None})
         steps = ans.cap("steps", steps, MAX_LIST * 2)
         ans.data = {"flow_id": row["scenario_id"], "domain": row["domain"], "steps": steps,
-                    "bpmn_available": bool(row["bpmn_xml"]), "mermaid_available": bool(row["mermaid"]),
+                    "mermaid_available": bool(row["mermaid"]),
                     "confidence": row["confidence"], "stop_reason": None}
         ans.meta = r.meta(files=[s["citation"]["path"] for s in steps if s.get("citation")],
                           untrusted=["steps[].description"])

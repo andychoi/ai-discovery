@@ -815,3 +815,36 @@ Append-only. Newest entries at the bottom. One entry per session/item.
   loads, no BPMN/DMN assets; `roadmap_lint` ok (104 items).
 - **Follow-ups:** M3.11, M6.18. No repowise code was copied or translated.
 
+## 2026-11-01 — M3.11 — Retire inferred BPMN generation
+- **Branch/commit:** rm/M3.11-retire-bpmn @ f759a16
+- **Changes:**
+  - `graph/call_graph.py`: `_detect_alternate_paths` is gone, fan-out edges are `CALL` (not `CONDITIONAL`),
+    and `Scenario.alternate_paths` is removed.
+  - `ai/flow_steps.py` (new): the step vocabulary. `normalize_structured_steps` inlines legacy GATEWAY arms
+    with their condition (an `else` arm becomes `otherwise`) and drops USER_TASK steps.
+  - `ai/flow_analyzer.py`: the prompt asks for no gateways or manual steps, and a `condition` comes only from
+    a shown WHEN-guard. The model's answer, the store loader and MCP `get_flow` are all normalized.
+  - `generators/bpmn_generator.py` → `flow_diagrams.py` (`FlowDiagrams`): no BPMN XML, lanes or diamonds; a
+    guard is drawn as an `opt` block or an edge label.
+  - Phase 15 stops writing `scenario_flows.bpmn_xml`; the column stays for old stores.
+  - `get_flow` drops `bpmn_available`.
+  - `scripts/regen_pf_diagrams.py` deleted (it imported `doc_generator`, removed in M3.7.b).
+  - Tests: `test_flow_diagrams.py` (renamed; the BPMN-XML tests removed), `test_structured_steps.py`
+    (rewritten around normalization), plus a prompt test, a test that a gateway the model still returns is
+    rewritten, a fan-out test, and the persist / get_flow assertions.
+- **Docs sweep:** README (phase table, tree); `architecture/overview.md` (purpose, phase diagram without phases
+  14/18, L1–L7 → page types, a broken legacy table removed) and `components.md` (cli/, prose instead of
+  rollup, ingest/ removed); `decisions.md` (alternate paths removed, USER_TASK dropped);
+  `guides/pipeline/{phase-breakdown,profiling}.md`; `guides/call-graph/{resolution-heuristics,test-strategy}.md`.
+  In resolution-heuristics, the documented `confidence.bpmn_diagram_min` / `*_weight` config keys never
+  existed; that section now points at the real constants. Also `guides/entity-identity/*`,
+  `output-review/consistency-workflow.md` (BPMN checks retired), `deployment/INTEGRATION_CHECKLIST.md`,
+  history notes on `review/system-logic(.ko).md`, ADR-0007 and `design/mcp-and-agents.md`. Dated
+  `docs/assessments/`, `docs/specs/` and `docs/archived/` are left as history.
+- **Measured:** no golden diff. Scan goldens record LLM call counts, which did not change; the `get_flow` MCP
+  golden is a not-found case. A stub-LLM scan of `java-spring-jsp` writes 5 scenario flows: 0 with `bpmn_xml`,
+  all 5 with Mermaid, and 0 with GATEWAY / USER_TASK steps or decision diamonds.
+- **Verify:** full `pytest -q` → 1785 passed, 2 skipped; `bench gate` ok; `roadmap_lint` ok.
+- **Follow-ups:** none for BPMN. A process model returns only through M8.6 (observed events). No repowise code
+  was copied or translated.
+

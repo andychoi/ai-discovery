@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS scenario_flows (
     interfaces_json TEXT,
     mermaid             TEXT,
     mermaid_flowchart   TEXT,
-    bpmn_xml            TEXT,
+    bpmn_xml            TEXT,  -- not written since M3.11 (ADR-0007); kept so old stores load
     ipo_md          TEXT,
     confidence      REAL DEFAULT 1.0,
     created_at      TEXT NOT NULL,

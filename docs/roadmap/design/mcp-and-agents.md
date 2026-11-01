@@ -41,7 +41,7 @@ M5.1 adds `content_trust: {untrusted: [field paths], note}` (fields holding repo
 | `get_change_impact` | `{diff?:str, range?:"A..B", working_tree?:bool}` | `{changed_symbols:[…], impact:<get_impact data merged>, tests_to_run:[…] (if coverage overlay), screens_affected:[…]}` |
 | `get_screen` | `{id_or_route:str}` | `{screen, menu_path, events:[{ui_event, handler, endpoint?}], chain:[{layer,node,citation}], tables, batch_jobs, interfaces}` |
 | `get_entity` | `{name:str}` | `{states, transitions:[{from,to,guard,writer}], decisions(DMN), requirements(EARS), readers, writers}` |
-| `get_flow` | `{id:str}` | `{steps:[{node,citation}], bpmn_available:bool, stop_reason}`. `bpmn_available` is deprecated and dropped in M3.11 (ADR-0007) |
+| `get_flow` | `{id:str}` | `{steps:[{node,citation}], mermaid_available:bool, stop_reason}`. `bpmn_available` was dropped in M3.11 (ADR-0007); stored GATEWAY/USER_TASK steps are rewritten on read |
 
 Opt-in: `get_table`, `get_symbol_source` (exact line bounds, re-checked against the live file), `get_path` (A→B), plus the agent-platform tools below.
 

@@ -32,7 +32,7 @@ def run(ctx: RunContext) -> None:
     # 8b (inline, Phase 2a–2d): roll transitions up into per-entity FSMs,
     # consolidate name-variants (Order/OrderEntity/order_reducer → one FSM),
     # persist to SQLite, export JSON. This is the canonical backbone artifact
-    # — every downstream BPMN/DMN/EARS view is supposed to consume the FSM,
+    # — every downstream entity view (lifecycle, DMN, EARS) is supposed to consume the FSM,
     # not re-scan scenarios.
     node_file_index = {n.qualified_name: n.file_path for n in all_nodes}
     with _timed("fsm rollup"), console.status("[bold cyan]Aggregating state transitions into entity FSMs..."):
@@ -73,7 +73,7 @@ def run(ctx: RunContext) -> None:
         if kind_counts:
             parts = ", ".join(f"[green]{n}[/] {k}" for k, n in sorted(kind_counts.items()))
             console.print(f"  Entity kinds: {parts}")
-        # Phase 3b: cross-entity transition sequence mining. Drives BPMN
+        # Phase 3b: cross-entity transition sequence mining. Drives cross-entity
         # cross-lane sequence flows and impact analysis.
         with _timed("cross-entity mining"), console.status("[bold cyan]Mining cross-entity transition sequences..."):
             # min_support=2 (MED): a single co-occurrence is coincidence, not a
@@ -86,7 +86,7 @@ def run(ctx: RunContext) -> None:
                 f"  Cross-entity links: [green]{len(cross_links)}[/] sequences → {cross_json_path.name}"
             )
         # Phase 3c: parse guard expressions for cross-entity state refs.
-        # Annotates transition metadata in place; downstream DMN/BPMN
+        # Annotates transition metadata in place; downstream DMN/EARS
         # generators can render these as multi-entity rule inputs.
         with _timed("guard parse"), console.status("[bold cyan]Parsing cross-entity guards..."):
             guarded = parse_cross_entity_guards(fsms)
@@ -106,7 +106,7 @@ def run(ctx: RunContext) -> None:
                 f"  Entity conditions: [green]{len(conditions)}[/] correlations → {conditions_path.name}"
             )
         # The entity backbone, DMN decision tables and EARS requirements are sections of the entity pages
-        # (`pages/builders/business.py`); the BPMN/DMN/EARS markdown files and their "legacy mirror" copies
+        # (`pages/builders/business.py`); the old BPMN/DMN/EARS markdown files and their "legacy mirror" copies
         # at the scan root were removed with the SDLC tree (M3.7.b).
 
 

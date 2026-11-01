@@ -57,7 +57,7 @@ def _is_test_chunk(file_path: str, repo_root: Path | str | None = None) -> bool:
 
     Tests are parsed (so call edges from tests into production code are kept),
     but skipped at Tier 1 summarization — their summaries add little value for
-    BPMN/DMN/EARS generation while often being 50%+ of chunk volume.
+    entity/DMN/EARS pages while often being 50%+ of chunk volume.
 
     Pass *repo_root*: directory names are judged on the path **inside** the
     repo, so a checkout that itself lives under ``…/tests/…`` is not one big

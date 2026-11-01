@@ -127,11 +127,11 @@
 - **Out of scope:** —
 
 ### M3.11 Retire inferred BPMN generation
-- **Status:** In progress (rm/M3.11-retire-bpmn, 2026-11-01)
+- **Status:** Done (f759a16)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M4.4.b
-- **Owns:** `src/ai_discovery/stages/visuals.py`, `src/ai_discovery/generators/bpmn_generator.py` (BPMN XML + gateway/lane parts, coordinate with lane D), `src/ai_discovery/ai/flow_analyzer.py` (scenario prompt's `GATEWAY`/`USER_TASK` types, coordinate with lane B), `src/ai_discovery/graph/call_graph.py::_detect_alternate_paths` (coordinate with lane C), `src/ai_discovery/query/views.py` + MCP goldens (`get_flow`, coordinate with lane E)
+- **Owns:** `src/ai_discovery/stages/visuals.py`, `src/ai_discovery/generators/bpmn_generator.py` → `flow_diagrams.py` (BPMN XML + gateway/lane parts, coordinate with lane D), `src/ai_discovery/ai/flow_steps.py` (new), `src/ai_discovery/ai/flow_analyzer.py` (scenario prompt's `GATEWAY`/`USER_TASK` types, coordinate with lane B), `src/ai_discovery/graph/call_graph.py::_detect_alternate_paths` (coordinate with lane C), `src/ai_discovery/query/views.py` + MCP goldens (`get_flow`, coordinate with lane E)
 - **Acceptance:**
   - ADR-0007 point 6: phase 15 stops writing `scenario_flows.bpmn_xml`. Fan-out is no longer recorded as an
     exclusive gateway with name-guessed conditions. The scenario prompt no longer asks for `USER_TASK`/`GATEWAY`

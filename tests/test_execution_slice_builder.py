@@ -361,3 +361,15 @@ def test_depth_cap_and_external_boundary():
     sc = ExecutionSliceBuilder(nodes[:1], ext).build_scenario(nodes[0])
     assert sc.stop_reasons == {"external::stripe": "external_boundary"}
     assert [n.type for n in sc.nodes] == ["ENTRY", "EXTERNAL_API"]
+
+
+def test_fan_out_is_not_recorded_as_a_gateway():
+    """ADR-0007 / M3.11: a caller with several callees may call them in sequence, either-or or both; the
+    slice records plain calls, no CONDITIONAL edge and no name-guessed branch conditions."""
+    a = _node("a", node_type="endpoint", calls=["validate_ok", "save_error", "notify"])
+    callees = [_node("validate_ok"), _node("save_error"), _node("notify")]
+    edges = build_call_graph([a, *callees])
+    scenario = ExecutionSliceBuilder([a, *callees], edges).build_scenario(a)
+
+    assert {e.edge_type for e in scenario.edges} == {"CALL"}
+    assert not hasattr(scenario, "alternate_paths")

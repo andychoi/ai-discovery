@@ -8,8 +8,8 @@ Every entity is annotated with:
       preserved for explainability.
 
 Why this matters — downstream generators consume the kind, not the raw FSM:
-  - BPMN: only `transactional` entities get swim-lane activities; `key` /
-    `master` appear as data objects, `summary` as report blocks.
+  - Entity backbone: `transactional` entities render as lifecycles; `key` /
+    `master` as data stores, `summary` as aggregates.
   - DMN: rules key off transactional state; `key` values become enum inputs.
   - Impact analysis: `master` changes ripple at runtime; `key` changes require
     a deploy, so they rank higher on risk.
@@ -51,9 +51,8 @@ _STATUS_FIELDS: frozenset[str] = frozenset({
 
 # Staging / ephemeral / interface signals.
 # Staging tables look structurally like transactional (status, timestamps,
-# INSERT+UPDATE) but are infrastructure, not business entities. BPMN should
-# render them as intermediate data stores between external and internal
-# pools; impact analysis ranks their schema changes lower since by design
+# INSERT+UPDATE) but are infrastructure, not business entities. The backbone
+# renders them as intermediate data stores; impact analysis ranks their schema changes lower since by design
 # there are no long-term consumers.
 _STAGING_NAME_PREFIXES: tuple[str, ...] = (
     "stg_", "staging_", "inbound_", "outbound_", "import_", "export_",

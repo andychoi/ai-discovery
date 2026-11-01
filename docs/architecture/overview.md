@@ -7,8 +7,13 @@ AI-Discovery is a brownfield reverse-engineering engine. Given a source code rep
 1. Parses code into a structured graph
 2. Classifies business domains
 3. Infers execution flows and scenarios
-4. Generates SDLC documents (As-Is assessments, schema docs, process flows, BPMN diagrams) using a tiered LLM pipeline
-5. Writes output as offline markdown under a predictable folder tree ready for batch ingestion into DocHub or Gitea
+4. Builds a wiki of pages (ADR-0005): screens, flows, entities with their lifecycles and decision tables,
+   tables, endpoints, batch jobs, domains. `--prose` adds a narrative to each page, grounded against the index.
+5. Serves it locally (`discover serve`, MCP), exports it (`discover export`) and delivers it (`discover push`
+   to DocHub or Gitea)
+
+Business processes are shown as **evidence**: entity lifecycles from literal state assignments, plus what drives
+each change (trigger, guard, flows, screens). No BPMN is inferred from code (ADR-0007).
 
 ---
 
@@ -52,22 +57,19 @@ Source Repository
  [13] Scenario Flow Inference ──── per-scenario LLM reconstruction ──── scenario_flows
        │
        ▼
- [14] Tier 3 Doc Rollup ──── Sonnet/Opus, per domain×doc_type ──── generated_docs
+ [15] Visual Artifacts ──── scenario Mermaid (sequence, flowchart) + IPO; no BPMN (ADR-0007)
        │
        ▼
- [15] Visual Artifacts ──── BPMN + DMN + EARS + Mermaid generation
+ [16] Flow statistics (optional) ──── per-scenario edge frequencies
        │
        ▼
- [16] Process Mining (optional) ──── pm4py inductive miner + conformance
-       │
-       ▼
- [17] Self-Review ──── claim extraction + RAG verify ──── review_claims, annotations
-       │
-       ▼
- [18] Render Markdown ──── Jinja2 templates ──── data/{slug}/{PREFIX}/*.md
+ [17] Self-Review (quality: final) ──── screen-spec claim verification
        │
        ▼
  [19] Finalise ──── totals, scan_runs.status=completed
+       │
+       ▼
+ Page build (post-scan hook) ──── pages/ builders (+ grounded prose with --prose) ──── pages table
        │
        ▼
        discover push (separate command) ──── DocHub API / Gitea
@@ -82,9 +84,9 @@ AI-Discovery reconstructs and documents business processes at multiple abstracti
 | Level | Name | Scope | Artifacts | Source |
 |-------|------|-------|-----------|--------|
 | L1 | Business Domain | Business capability (Order, Payment, Fulfillment) | Domain metadata, tech stack, entry points | Domain classifier |
-| L2 | Business Process | High-level workflow (Create Order → Pay → Ship) | As-Is, Process Flow BPMN, pseudo event logs | Tier 2 Flow Analysis |
+| L2 | Business Process | High-level workflow (Create Order → Pay → Ship) | Entity lifecycle + what drives each change (no BPMN, ADR-0007) | Entity FSM + flow traces + screen mapping |
 | L3 | Business Flow | Coherent user/system action sequence | Business flows (user_flow, batch_flow, integration_flow, cross_cutting) | Tier 2 Flow Analysis |
-| L4 | Scenario / Use Case | Single entry point + bounded execution | Scenario Flow, IPO tables, alternate paths | Execution Slice Builder + Tier 2 ScenarioFlowInference |
+| L4 | Scenario / Use Case | Single entry point + bounded execution | Scenario Flow, IPO tables, where the trace stops | Execution Slice Builder + Tier 2 ScenarioFlowInference |
 | L5 | Service / Component | Core business logic handler (Service, Repository, Manager) | As-Is-Detail, function summaries, public APIs | Tier 1 + Code structure |
 | L6 | Function / Method | Individual operation (process, validate, save) | Docstring, summaries (purpose, business_rules), io_summary | Tier 1 Summarization |
 | L7 | Code Statement | Individual lines of logic | Source code, comments, state transitions | AST parsing, framework_hints |
@@ -96,11 +98,11 @@ AI-Discovery reconstructs and documents business processes at multiple abstracti
 - L5 services list L6 function calls
 - L6 functions map to L7 code
 
-**Documents reflect this hierarchy**:
-- `as-is.md` → L1–L3 (business domains, processes, flows)
-- `as-is-detail.md` → L4–L5 (scenarios, service contracts)
-- `as-is-schema.md` → L6–L7 (entity models, field descriptions)
-- `process-flow.md` → L2–L4 (BPMN, IPO, pseudo event logs)
+**Pages reflect this hierarchy** (drill down in the wiki: screen → flow → entity → table):
+- `domain`, `onboarding` pages → L1–L3
+- `screen`, `flow`, `entity` (lifecycle, DMN, EARS) pages → L2–L4
+- `module`, `endpoint`, `batch_job`, `symbol` pages → L5–L6
+- `file`, `table`, `stored_proc` pages and citations → L6–L7
 
 ---
 
@@ -164,7 +166,7 @@ Budget guard: each tier checks `total_cost_usd < budget_limit_usd` before runnin
 | `domains` | Business domain metadata; entry_points, tech_stack (JSON) |
 | `node_summaries` | Tier 1 LLM output per node; purpose, business_rules, io_summary |
 | `business_flows` | Tier 2 domain flows; flow_type, name, involved node_ids |
-| `scenario_flows` | Execution scenario; steps, IPO, mermaid sequence/flowchart/bpmn artifacts |
+| `scenario_flows` | Execution scenario; steps, IPO, mermaid sequence/flowchart (`bpmn_xml` no longer written, M3.11) |
 | `generated_docs` | Tier 3 output; content_md, confidence, push_status, unverified_claims |
 | `review_claims` | Self-review; claim_text, status (verified/unverified/contradicted) |
 | `llm_costs` | Per-tier token counts and estimated USD cost |
@@ -177,13 +179,6 @@ Every document is a page (ADR-0005): `overview`, `domain`, `module`, `file`, `sy
 with `discover serve`, `discover export --format markdown|html|json`, MCP, or `discover push`. The legacy
 `data/{slug}/{PREFIX}/` tree (ASIS/ASD/ASSC/PF/SPEC/ONBOARD) was removed in M3.7.b.
 
-----------|--------|----------------|
-| as-is | `ASIS/` | `myproj-orders-as-is.md` |
-| as-is-detail | `ASD/` | `myproj-orders-as-is-detail.md` |
-| as-is-schema | `ASSC/` | `myproj-orders-as-is-schema.md` |
-| process-flow | `PF/` | `myproj-scenario-create-order-process-flow.md` |
-| spec | `SPEC/` | `myproj-orders-spec.md` |
-| onboard | `ONBOARD/` | `myproj-onboard-orders.md` (per-domain tour guide, `generators/onboarding_generator.py`) |
 
 ---
 

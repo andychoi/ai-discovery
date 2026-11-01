@@ -1,8 +1,6 @@
-"""Tests for BPMNGenerator."""
+"""Tests for FlowDiagrams (Mermaid + IPO + entity backbone; no BPMN since M3.11, ADR-0007)."""
 
 from __future__ import annotations
-
-import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -12,7 +10,7 @@ from ai_discovery.graph.models import (
     EntityStateMachine,
     StateTransition,
 )
-from ai_discovery.generators.bpmn_generator import BPMNGenerator
+from ai_discovery.generators.flow_diagrams import FlowDiagrams
 
 
 def _make_flow(steps: list[dict] | None = None) -> ScenarioFlow:
@@ -32,8 +30,8 @@ def _make_flow(steps: list[dict] | None = None) -> ScenarioFlow:
 
 
 @pytest.fixture
-def gen() -> BPMNGenerator:
-    return BPMNGenerator()
+def gen() -> FlowDiagrams:
+    return FlowDiagrams()
 
 
 # ---------------------------------------------------------------------------
@@ -41,87 +39,49 @@ def gen() -> BPMNGenerator:
 # ---------------------------------------------------------------------------
 
 
-def test_mermaid_contains_real_arrows(gen: BPMNGenerator):
+def test_mermaid_contains_real_arrows(gen: FlowDiagrams):
     flow = _make_flow()
     diagram = gen.generate_mermaid_sequence(flow)
     assert "->>" in diagram, "Expected real sequence arrows (->>) in Mermaid output"
 
 
-def test_mermaid_starts_with_sequence_diagram(gen: BPMNGenerator):
+def test_mermaid_starts_with_sequence_diagram(gen: FlowDiagrams):
     flow = _make_flow()
     diagram = gen.generate_mermaid_sequence(flow)
     assert diagram.startswith("sequenceDiagram")
 
 
-def test_mermaid_declares_participants(gen: BPMNGenerator):
+def test_mermaid_declares_participants(gen: FlowDiagrams):
     flow = _make_flow()
     diagram = gen.generate_mermaid_sequence(flow)
     assert "participant" in diagram
 
 
-def test_mermaid_gateway_uses_alt_block(gen: BPMNGenerator):
+def test_mermaid_guard_condition_is_an_opt_block_not_a_gateway(gen: FlowDiagrams):
     flow = _make_flow(steps=[
-        {"step": 1, "name": "Check Stock", "type": "GATEWAY", "description": "Available?"},
+        {"step": 1, "name": "Mark submitted", "type": "DB", "description": "", "condition": "items > 0"},
     ])
     diagram = gen.generate_mermaid_sequence(flow)
-    assert "alt" in diagram
+    assert "opt when items > 0" in diagram and "alt" not in diagram
 
 
-def test_mermaid_empty_steps_returns_fallback(gen: BPMNGenerator):
+def test_mermaid_retired_step_types_never_render(gen: FlowDiagrams):
+    """A stored flow from before M3.11: the manual task is dropped, the gateway becomes a plain step."""
+    flow = _make_flow(steps=[
+        {"step": 1, "name": "Check Stock", "type": "GATEWAY", "description": "Available?"},
+        {"step": 2, "name": "Manager Approval", "type": "USER_TASK", "description": ""},
+    ])
+    diagram = gen.generate_mermaid_sequence(flow)
+    assert "Check Stock" in diagram and "Manager Approval" not in diagram and "alt" not in diagram
+    chart = gen.generate_mermaid_flowchart(flow)
+    assert "{" not in chart.split("\n", 1)[1].replace("{{", "")   # no decision diamonds
+    assert "Manager Approval" not in chart
+
+
+def test_mermaid_empty_steps_returns_fallback(gen: FlowDiagrams):
     flow = _make_flow(steps=[])
     diagram = gen.generate_mermaid_sequence(flow)
     assert "sequenceDiagram" in diagram
-
-
-# ---------------------------------------------------------------------------
-# BPMN 2.0 XML
-# ---------------------------------------------------------------------------
-
-
-def test_bpmn_is_valid_xml(gen: BPMNGenerator):
-    flow = _make_flow()
-    xml_str = gen.generate_bpmn_xml(flow)
-    ET.fromstring(xml_str)  # raises if invalid
-
-
-def test_bpmn_has_start_and_end_events(gen: BPMNGenerator):
-    flow = _make_flow()
-    xml_str = gen.generate_bpmn_xml(flow)
-    assert "startEvent" in xml_str
-    assert "endEvent" in xml_str
-
-
-def test_bpmn_gateway_step_produces_exclusive_gateway(gen: BPMNGenerator):
-    flow = _make_flow(steps=[
-        {"step": 1, "name": "Check", "type": "GATEWAY", "description": "Decision"},
-    ])
-    xml_str = gen.generate_bpmn_xml(flow)
-    assert "exclusiveGateway" in xml_str
-
-
-def test_bpmn_user_task_step_produces_user_task(gen: BPMNGenerator):
-    flow = _make_flow(steps=[
-        {"step": 1, "name": "Approve", "type": "USER_TASK", "description": "Manual approval"},
-    ])
-    xml_str = gen.generate_bpmn_xml(flow)
-    assert "userTask" in xml_str
-
-
-def test_bpmn_special_chars_are_escaped(gen: BPMNGenerator):
-    flow = _make_flow(steps=[
-        {"step": 1, "name": 'Check "quota" & limits <max>', "type": "PROCESS", "description": ""},
-    ])
-    xml_str = gen.generate_bpmn_xml(flow)
-    ET.fromstring(xml_str)  # would raise if unescaped < or & in attribute
-    assert "&amp;" in xml_str or "&lt;" in xml_str or "&quot;" in xml_str
-
-
-def test_bpmn_default_step_is_service_task(gen: BPMNGenerator):
-    flow = _make_flow(steps=[
-        {"step": 1, "name": "Process", "type": "PROCESS", "description": ""},
-    ])
-    xml_str = gen.generate_bpmn_xml(flow)
-    assert "serviceTask" in xml_str
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +89,7 @@ def test_bpmn_default_step_is_service_task(gen: BPMNGenerator):
 # ---------------------------------------------------------------------------
 
 
-def test_mermaid_flowchart_declares_direction_and_endpoints(gen: BPMNGenerator):
+def test_mermaid_flowchart_declares_direction_and_endpoints(gen: FlowDiagrams):
     flow = _make_flow()
     fc = gen.generate_mermaid_flowchart(flow)
     assert fc.startswith("flowchart TD")
@@ -137,21 +97,17 @@ def test_mermaid_flowchart_declares_direction_and_endpoints(gen: BPMNGenerator):
     assert 'end_node(("End"))' in fc
 
 
-def test_mermaid_flowchart_gateway_renders_diamond_with_labeled_edges(gen: BPMNGenerator):
+def test_mermaid_flowchart_condition_labels_the_edge_into_its_step(gen: FlowDiagrams):
     flow = _make_flow(steps=[
-        {"step": 1, "name": "Is Valid?", "type": "GATEWAY", "description": ""},
+        {"step": 1, "name": "Validate", "type": "PROCESS", "description": ""},
+        {"step": 2, "name": "Mark submitted", "type": "DB", "description": "", "condition": "items > 0"},
     ])
     fc = gen.generate_mermaid_flowchart(flow)
-    # Diamond uses {"label"} syntax in Mermaid.
-    assert 'gw_0{"Is Valid?"}' in fc
-    assert "gw_0 -->|yes| gw_0_yes" in fc
-    assert "gw_0 -->|no| gw_0_no" in fc
-    # Both branches must reconverge on the terminal node.
-    assert "gw_0_yes --> end_node" in fc
-    assert "gw_0_no --> end_node" in fc
+    assert "step_1 -->|when items > 0| step_2" in fc
+    assert "step_2 --> end_node" in fc
 
 
-def test_mermaid_flowchart_contains_step_names(gen: BPMNGenerator):
+def test_mermaid_flowchart_contains_step_names(gen: FlowDiagrams):
     flow = _make_flow()
     fc = gen.generate_mermaid_flowchart(flow)
     assert "Validate Order" in fc
@@ -163,7 +119,7 @@ def test_mermaid_flowchart_contains_step_names(gen: BPMNGenerator):
 # ---------------------------------------------------------------------------
 
 
-def test_ipo_markdown_contains_all_sections(gen: BPMNGenerator):
+def test_ipo_markdown_contains_all_sections(gen: FlowDiagrams):
     flow = _make_flow()
     md = gen.generate_ipo_markdown(flow)
     assert "Input" in md
@@ -171,13 +127,13 @@ def test_ipo_markdown_contains_all_sections(gen: BPMNGenerator):
     assert "Output" in md
 
 
-def test_ipo_markdown_includes_data_flow(gen: BPMNGenerator):
+def test_ipo_markdown_includes_data_flow(gen: FlowDiagrams):
     flow = _make_flow()
     md = gen.generate_ipo_markdown(flow)
     assert "order -> database" in md
 
 
-def test_ipo_markdown_empty_fields_show_dash(gen: BPMNGenerator):
+def test_ipo_markdown_empty_fields_show_dash(gen: FlowDiagrams):
     flow = ScenarioFlow(scenario_id="empty", input=[], process=[], output=[])
     md = gen.generate_ipo_markdown(flow)
     assert "—" in md
@@ -214,13 +170,13 @@ def _transition(entity: str, from_state: str | None, to_state: str) -> StateTran
     )
 
 
-def test_backbone_empty_returns_fallback(gen: BPMNGenerator):
+def test_backbone_empty_returns_fallback(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([])
     assert out.startswith("flowchart LR")
     assert "No entities discovered" in out
 
 
-def test_backbone_transactional_renders_subgraph_with_states(gen: BPMNGenerator):
+def test_backbone_transactional_renders_subgraph_with_states(gen: FlowDiagrams):
     fsm = _fsm(
         "Order",
         "transactional",
@@ -238,7 +194,7 @@ def test_backbone_transactional_renders_subgraph_with_states(gen: BPMNGenerator)
     assert "class mod_Order_s_draft transactional" in out
 
 
-def test_backbone_transactional_no_transitions_falls_back_to_single_node(gen: BPMNGenerator):
+def test_backbone_transactional_no_transitions_falls_back_to_single_node(gen: FlowDiagrams):
     """Classifier can mark an entity transactional via columns alone (status +
     timestamps). With no parsed transitions, render as a single circle."""
     fsm = _fsm("FeatureFlag", "transactional")
@@ -248,53 +204,53 @@ def test_backbone_transactional_no_transitions_falls_back_to_single_node(gen: BP
     assert "class mod_FeatureFlag_node transactional" in out
 
 
-def test_backbone_master_renders_cylinder(gen: BPMNGenerator):
+def test_backbone_master_renders_cylinder(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([_fsm("Customer", "master")])
     assert "mod_Customer_node[(\"Customer<br/><i>master</i>\")]" in out
     assert "class mod_Customer_node master" in out
 
 
-def test_backbone_key_renders_hexagon(gen: BPMNGenerator):
+def test_backbone_key_renders_hexagon(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([_fsm("order_type", "key")])
     assert 'mod_order_type_node{{"order_type<br/><i>key</i>"}}' in out
     assert "class mod_order_type_node key" in out
 
 
-def test_backbone_summary_renders_cylinder(gen: BPMNGenerator):
+def test_backbone_summary_renders_cylinder(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([_fsm("sales_rollup", "summary")])
     assert 'mod_sales_rollup_node[("sales_rollup<br/><i>summary</i>")]' in out
     assert "class mod_sales_rollup_node summary" in out
 
 
-def test_backbone_staging_renders_parallelogram(gen: BPMNGenerator):
+def test_backbone_staging_renders_parallelogram(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([_fsm("stg_orders", "staging")])
     assert 'mod_stg_orders_node[/"stg_orders<br/><i>staging</i>"\\]' in out
     assert "class mod_stg_orders_node staging" in out
 
 
-def test_backbone_event_renders_asymmetric(gen: BPMNGenerator):
+def test_backbone_event_renders_asymmetric(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([_fsm("audit_log", "event")])
     assert 'mod_audit_log_node>"audit_log<br/><i>event</i>"]' in out
     assert "class mod_audit_log_node event" in out
 
 
-def test_backbone_junction_renders_circle(gen: BPMNGenerator):
+def test_backbone_junction_renders_circle(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([_fsm("order_item", "junction")])
     assert 'mod_order_item_node(("order_item<br/><i>junction</i>"))' in out
     assert "class mod_order_item_node junction" in out
 
 
-def test_backbone_config_renders_parallelogram_alt(gen: BPMNGenerator):
+def test_backbone_config_renders_parallelogram_alt(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([_fsm("app_settings", "config")])
     assert 'mod_app_settings_node[\\"app_settings<br/><i>config</i>"/]' in out
 
 
-def test_backbone_unknown_renders_rectangle(gen: BPMNGenerator):
+def test_backbone_unknown_renders_rectangle(gen: FlowDiagrams):
     out = gen.generate_entity_backbone_mermaid([_fsm("thing", "unknown")])
     assert 'mod_thing_node["thing<br/><i>unknown</i>"]' in out
 
 
-def test_backbone_cross_entity_link_renders_dashed_edge(gen: BPMNGenerator):
+def test_backbone_cross_entity_link_renders_dashed_edge(gen: FlowDiagrams):
     order = _fsm("Order", "transactional", transitions=[_transition("Order", "draft", "submitted")])
     invoice = _fsm("Invoice", "transactional", transitions=[_transition("Invoice", None, "pending")])
     link = CrossEntityTransitionLink(
@@ -313,7 +269,7 @@ def test_backbone_cross_entity_link_renders_dashed_edge(gen: BPMNGenerator):
     assert "mod_Order_s_submitted -. triggers (3) .-> mod_Invoice_s_pending" in out
 
 
-def test_backbone_cross_link_to_non_transactional_falls_back_to_entity_node(gen: BPMNGenerator):
+def test_backbone_cross_link_to_non_transactional_falls_back_to_entity_node(gen: FlowDiagrams):
     """If the target entity has no FSM subgraph, the edge terminates on its data-store node."""
     order = _fsm("Order", "transactional", transitions=[_transition("Order", "draft", "submitted")])
     customer = _fsm("Customer", "master")
@@ -333,7 +289,7 @@ def test_backbone_cross_link_to_non_transactional_falls_back_to_entity_node(gen:
     assert "mod_Order_s_submitted -. triggers (2) .-> mod_Customer_node" in out
 
 
-def test_backbone_output_is_deterministic(gen: BPMNGenerator):
+def test_backbone_output_is_deterministic(gen: FlowDiagrams):
     """Re-ordering inputs must not change output — critical for diff-stability."""
     a = _fsm("A", "master")
     b = _fsm("B", "key")
@@ -343,7 +299,7 @@ def test_backbone_output_is_deterministic(gen: BPMNGenerator):
     assert first == second
 
 
-def test_backbone_skips_malformed_cross_link(gen: BPMNGenerator):
+def test_backbone_skips_malformed_cross_link(gen: FlowDiagrams):
     """A cross link whose endpoints aren't in the FSM set should be dropped, not crash."""
     order = _fsm("Order", "transactional", transitions=[_transition("Order", "draft", "submitted")])
     stray = CrossEntityTransitionLink(
@@ -362,7 +318,7 @@ def test_backbone_skips_malformed_cross_link(gen: BPMNGenerator):
     assert "triggers" not in out
 
 
-def test_backbone_sanitizes_unsafe_identifiers(gen: BPMNGenerator):
+def test_backbone_sanitizes_unsafe_identifiers(gen: FlowDiagrams):
     """entity_id may contain dots, slashes, or other punctuation; must emit safe Mermaid ids."""
     fsm = _fsm("Order", "master", entity_id="src.billing.Order")
     out = gen.generate_entity_backbone_mermaid([fsm])
@@ -370,11 +326,10 @@ def test_backbone_sanitizes_unsafe_identifiers(gen: BPMNGenerator):
     assert "src.billing.Order_node" not in out
 
 
-def test_user_task_steps_marked_inferred():
-    """HIGH-9: LLM-invented USER_TASK steps render visibly distinct from
-    code-grounded steps so they aren't read as documented fact."""
-    from ai_discovery.generators.bpmn_generator import _step_display_name
-    assert _step_display_name({"name": "Manager Approval", "type": "USER_TASK"}) == "Manager Approval ⚠ inferred"
-    # Code-grounded step types are unchanged.
-    assert _step_display_name({"name": "Save Order", "type": "DB"}) == "Save Order"
-    assert _step_display_name({"name": "Validate", "type": "PROCESS"}) == "Validate"
+def test_no_bpmn_generation_left():
+    """ADR-0007: the generator draws no BPMN, gateways or lanes."""
+    import ai_discovery.generators.flow_diagrams as fd
+
+    assert not hasattr(FlowDiagrams, "generate_bpmn_xml")
+    assert not any(hasattr(fd, n) for n in ("_BPMN_ELEMENT", "_STEP_LANE", "_step_display_name"))
+

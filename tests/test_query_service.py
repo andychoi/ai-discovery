@@ -193,7 +193,7 @@ def test_entity_and_flow(project) -> None:
     assert "transitions[].guard_expr" in ans["meta"]["content_trust"]["untrusted"]
     _ok(api.entity(project, "Orderz"), "not_found")
     fl = _ok(api.flow(project, "flow:list-products"))
-    assert [s["node"] for s in fl["steps"]] == [CTRL, SVC] and fl["bpmn_available"] is True
+    assert [s["node"] for s in fl["steps"]] == [CTRL, SVC] and "bpmn_available" not in fl
     assert fl["steps"][0]["citation"]["path"].endswith("ProductController.java")
     nf = _ok(api.flow(project, "products"), "not_found")
     assert nf["did_you_mean"] == ["flow:list-products"] and nf["flows_in_scan"] == 1

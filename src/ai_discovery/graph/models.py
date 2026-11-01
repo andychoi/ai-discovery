@@ -146,7 +146,7 @@ class ExecutionNode:
 class ExecutionEdge:
     from_node: str
     to_node: str
-    edge_type: str  # CALL, ASYNC, DATA_FLOW, CONDITIONAL, TRANSITION_LINK
+    edge_type: str  # CALL, ASYNC, DATA_FLOW, TRANSITION_LINK
     condition: str | None = None
     data_payload: dict = field(default_factory=dict)
     confidence: float = 1.0
@@ -161,7 +161,6 @@ class Scenario:
     nodes: list[ExecutionNode] = field(default_factory=list)
     edges: list[ExecutionEdge] = field(default_factory=list)
     primary_path: list[str] = field(default_factory=list)  # list of node IDs
-    alternate_paths: list[dict] = field(default_factory=list)  # list of {condition: str, path: list[str]}
     external_interfaces: list[str] = field(default_factory=list)
     domain: str | None = None
     confidence: float = 1.0
@@ -249,10 +248,10 @@ class CrossEntityTransitionLink:
 
     Example: across 4 out of 5 scenarios that include both, `Order` reaches
     `submitted` before `Invoice` reaches `pending`. That's strong evidence
-    of a causal / sequential relationship that downstream generators should
-    render as a BPMN sequence flow crossing swim lanes.
+    of a causal / sequential relationship. The entity backbone renders it as a
+    dashed cross-entity edge (co-occurrence in traces, not observed order: ADR-0007).
 
-    Fields capture both endpoints symmetrically so BPMN / DMN generators can
+    Fields capture both endpoints symmetrically so backbone / DMN generators can
     label the edge (`from_state` → `to_state`) without re-parsing the FSM.
     `support` and `directional_confidence` let consumers filter — for strict
     docs, require support ≥ 3 and directional ≥ 0.9; for exploratory views,

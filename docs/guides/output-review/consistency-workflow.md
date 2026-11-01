@@ -1,6 +1,6 @@
 # Output Consistency: Step-by-Step Workflow
 
-> **Pre-v1 (legacy SDLC tables).** The v1 workflow — pages, call edges, unresolved calls, screen specs — is `plugin/skills/discover-consistency/SKILL.md` (roadmap M5.4). This guide is kept for background.
+> **Pre-v1 (legacy SDLC tables).** The v1 workflow — pages, call edges, unresolved calls, screen specs — is `plugin/skills/discover-consistency/SKILL.md` (roadmap M5.4). This guide is kept for background. The ASIS/ASD/ASSC/PF tree it reads was removed in M3.7.b, and BPMN in M3.11 (ADR-0007), so checks 3.4 and 3.5 no longer apply.
 
 Verify that the artifacts produced by `discover scan` are internally consistent — every endpoint claimed in ASIS appears in a process flow, every entity in ASSC appears in EARS requirements, every PF scenario references a use case, and so on. Also flag domain-pattern absences (e-commerce missing `logout` / `refund` flows, etc.).
 
@@ -101,7 +101,7 @@ unlinked_pfs = [pf for pf in pf_docs if not pf["links_to"]]
 
 For each: `[HIGH] Use case UC-12 (placeOrder) has no PF scenario linked.`
 
-### Check 3.4 — Schema-actor coherence (medium)
+### Check 3.4 — Schema-actor coherence (retired: no BPMN lanes since M3.11)
 
 Every actor mentioned in `BPMN/` lanes should correspond to a real entity or external system. Lanes named after entities are a smell — lanes are *actors*, not entities (per `BPMN/` convention).
 
@@ -113,7 +113,7 @@ suspicious_lanes = bpmn_lanes & assc_entities  # actors that share names with en
 
 For each: `[MEDIUM] BPMN lane 'Order' looks like an entity name; should be an actor (Customer, AdminUser, PaymentGateway, …).`
 
-### Check 3.5 — DMN gateway coverage (medium)
+### Check 3.5 — DMN gateway coverage (retired: no gateways since M3.11; DMN rows come from parsed guards)
 
 Every `PF/` decision gateway (described in prose) should have a corresponding `DMN/` decision table for the entity it gates on.
 
@@ -203,7 +203,7 @@ Write the report to `<discovery_output>/consistency-report.md`. Sections by seve
 
 - **BPMN lane 'Order' looks like an entity name; should be an actor.**
   Rule: BPMN lanes are actors (Customer, Admin, …) — entities don't get their own lanes.
-  Action: re-run Phase 15 BPMN generator; if persistent, investigate `bpmn_generator.py` lane assignment.
+  Action: (retired in M3.11: no BPMN lanes are generated.)
 
 ## Low (code gaps, not discovery failures)
 
@@ -244,5 +244,4 @@ The intended audience is whoever owns the discovery output's quality:
 
 - Frontmatter shape: `src/ai_discovery/generators/templates/*.md.j2`
 - Link graph builder: `src/ai_discovery/generators/doc_generator.py` — `_WITHIN_DOMAIN_LINKS` (assessment Track 5 expands this)
-- BPMN actor logic: `src/ai_discovery/generators/bpmn_generator.py`
 - DMN decision logic: `src/ai_discovery/generators/dmn_generator.py`

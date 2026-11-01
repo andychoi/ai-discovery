@@ -110,7 +110,7 @@ Code → Parse (Tree-sitter) → Build call graph → Classify domains
 | 11    | `tier1_summarize`           | Haiku: per-chunk summaries                                 |
 | 12    | `tier2_flow_analysis`       | Sonnet: per-domain business flows                          |
 | 13    | `scenario_flow_inference`   | Scenario + cross-entity transitions                        |
-| 15    | `visual_artifacts`          | BPMN + DMN + EARS + entity-backbone Mermaid generation     |
+| 15    | `visual_artifacts`          | Scenario Mermaid (sequence, flowchart) + IPO; no BPMN (ADR-0007) |
 | 16    | `process_mining` *(opt.)*   | Per-scenario flow statistics (edge frequencies)            |
 | 17    | `self_review`               | `quality: final`: verify screen specs against source        |
 | 19    | `finalise`                  | Totals and scan status; then the post-scan hook builds the wiki pages (+ page prose with `--prose`) |
@@ -774,7 +774,7 @@ ai-discovery/
 │   ├── ai/                         # LLM ops (chunker, summarizer, advisor, process_miner)
 │   ├── extractors/                 # Raw-SQL entity extraction (Phase 2e)
 │   ├── graph/                      # Call graph, domain/entity classifier, FSM, impact, federation
-│   ├── generators/                 # BPMN / DMN / EARS / doc generators + push (formerly output/)
+│   ├── generators/                 # Mermaid flow diagrams, DMN / EARS, screen-spec templates
 │   │   └── templates/              # Jinja2 templates for as-is, spec, interface, data-model
 │   ├── ingest/                     # Code ingestion + markdown classifier/runner
 │   ├── parsers/                    # Tree-sitter parsing (Python, C#, Java, JS/TS, JSP, WebForms) + import-map tier (Go/Rust/Ruby/PHP)

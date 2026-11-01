@@ -2,7 +2,7 @@
 
 A guard like `order.status == 'approved'` attached to an Invoice transition
 means Invoice's lifecycle gates on Order's state. That's a cross-entity
-condition that DMN generators should key rules on and BPMN generators should
+condition that DMN generators should key rules on and entity pages should
 render as a conditional edge. This module extracts those references from the
 raw guard text (language-agnostic source strings emitted by `find_enclosing_guard`
 in `parsers/base.py`) and annotates the transition's metadata.

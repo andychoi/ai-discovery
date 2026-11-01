@@ -7,7 +7,7 @@ This guide explains how to systematically test and validate call resolution heur
 ## Why Test Call Resolution?
 
 Call resolution heuristics are **load-bearing**. If confidence scoring is wrong, everything downstream is wrong:
-- BPMN diagrams show incorrect flows
+- Flow traces and impact show wrong paths
 - LLM summaries miss important functions
 - Execution scenarios are incomplete
 

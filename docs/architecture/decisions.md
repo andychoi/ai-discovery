@@ -283,8 +283,11 @@ Bounded breadth-first search with depth ≤ 5 for building execution scenarios.
 ### Heuristic
 ```
 primary_path = top 15 nodes by confidence in BFS order
-alternate_paths = conditional branches (nodes with >1 callee)
 ```
+
+> **2026-11-01 (M3.11, ADR-0007):** `alternate_paths` (every node with more than one callee treated as a
+> conditional branch, conditions guessed from callee names) was removed. A call graph cannot tell sequence
+> from choice. Only parsed guards on state transitions carry conditions.
 
 Depth ≤ 5 means: (Entry) → (Hop 1) → (Hop 2) → ... → (Hop 5) = max 6 levels.
 
@@ -299,7 +302,7 @@ Depth ≤ 5 means: (Entry) → (Hop 1) → (Hop 2) → ... → (Hop 5) = max 6 l
 
 
 ### Following rules (M1.12.b, ADR-0004 §2)
-- Slices, alternate paths and the backward entry-point walk (`graph/entry_point_linker.py`)
+- Slices and the backward entry-point walk (`graph/entry_point_linker.py`)
   follow only edges that pass `origins.followable`: evidence `static|framework|scip`, edge kind
   `calls|dispatches_to|framework_binds|calls_external`, origin confidence ≥ 0.75. Name-only
   `global_unique` (0.50) edges are never walked; they stay in the graph for search and pages.
@@ -535,7 +538,8 @@ Explicitly coded state transitions (literal assignments such as
 > assignment and is confidence 1.0. The LLM does, separately, invent `USER_TASK`
 > steps (approval/review) during flow analysis; those are not state transitions
 > and are now rendered with a `⚠ inferred` marker in BPMN/Mermaid so they are
-> never read as code-grounded facts.
+> never read as code-grounded facts. **Since M3.11 (ADR-0007)** the prompt no longer asks for them and any
+> such step is dropped (`ai/flow_steps.py`).
 
 ---
 

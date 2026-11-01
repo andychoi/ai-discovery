@@ -286,7 +286,7 @@ score = min(1.0, max(0, score))  # Clamp to [0, 1]
 
 ### High Confidence (≥ 0.9)
 Use in:
-- BPMN diagrams (safe to display to business users)
+- Flow traces and wiki flow pages (followed by default: `FLOW_MIN_CONFIDENCE` = 0.75)
 - Process flow documentation
 - Scenario primary paths
 
@@ -303,7 +303,7 @@ Example: Level 4–5 calls (module local, suffix unique)
 ### Low Confidence (< 0.7)
 Flag for:
 - Manual validation
-- Alternate path suggestions
+- Candidate-target review (is the guessed callee the real one?)
 - Human review with domain knowledge
 
 Example: Level 6–7 calls (prefix overlap, unresolved)
@@ -383,28 +383,23 @@ handler = create_handler("email")
 result = handler.send(message)  # ← Which handler?
 ```
 
-**Fix**: Trace the factory; infer possible types (EmailHandler, SMSHandler, DefaultHandler). Generate alternate paths for each.
+**Fix**: Trace the factory; infer possible types (EmailHandler, SMSHandler, DefaultHandler). Record each as a `dispatches_to` candidate edge with its own confidence.
 
 ---
 
 ## Tuning Confidence Thresholds
 
-In `discovery.yaml`:
+There is no config key for these thresholds. They are code constants, so a change is reviewed with its
+measurements:
 
-```yaml
-# Confidence thresholds for different uses
-confidence:
-  bpmn_diagram_min: 0.85     # Only include calls with confidence ≥ 0.85 in BPMN
-  process_flow_min: 0.75     # Process flow can include medium-confidence calls
-  human_review_min: 0.60     # Flag calls with confidence < 0.60 for review
-  
-  # Heuristic weights (used in scoring)
-  depth_weight: 1.0
-  state_transition_weight: 4.0
-  data_boundary_weight: 3.0
-  external_api_weight: 2.0
-  read_after_write_weight: 3.0
-```
+- `graph/origins.py`: each origin's confidence (ADR-0004), and the following rules for flow traces, execution
+  slices and entry-point linking (`FLOW_EVIDENCE`, `FLOW_MIN_CONFIDENCE = 0.75`; `global_unique` at 0.50 is
+  never walked by default).
+- `query/impact.py`: impact ranking and the "possible" band. Lower-confidence calls are listed and faded, never
+  dropped.
+
+Business process views do not take a confidence threshold. They are built from facts only: literal state
+assignments, parsed guards and resolved traces (ADR-0007).
 
 ---
 

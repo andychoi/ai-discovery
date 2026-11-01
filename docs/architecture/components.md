@@ -5,7 +5,7 @@
 ```
 src/ai_discovery/
 ├── pipeline.py          ← Orchestrator (phases 5–16)
-├── cli.py               ← CLI: discover scan | ingest | chat | query
+├── cli/                 ← CLI v1: init, scan, status, doctor, serve, mcp, export, drift, push, ask, impact
 ├── config.py            ← YAML config + provider model routing
 ├── db.py                ← SQLite schema, connection helpers
 │
@@ -33,12 +33,12 @@ src/ai_discovery/
 │   ├── chunker.py       ← Method-level splits; RAG chunk generation
 │   ├── summarizer.py    ← Tier 1: per-chunk summaries
 │   ├── flow_analyzer.py ← Tier 2: domain flows + ScenarioFlowInference
-│   ├── rollup.py        ← Tier 3: full SDLC doc generation
+│   ├── flow_steps.py    ← scenario step vocabulary; rewrites retired GATEWAY/USER_TASK steps (ADR-0007)
 │   ├── self_review.py   ← Claim extraction + RAG-grounded verification
 │   ├── llm_client.py    ← Unified Bedrock / Ollama / MLX client + cost tracking
 │   ├── semantic_batching.py ← Louvain community clustering of Tier-1 chunks (one structured call per community)
 │   ├── flow_clustering.py ← Intent clustering for scenario grouping
-│   └── process_miner.py ← PM4Py integration for process discovery
+│   └── process_miner.py ← per-scenario edge-frequency flow statistics (pm4py removed, decisions.md)
 │
 ├── rag/
 │   ├── embedder.py      ← Embed chunks into sqlite-vec; resume-aware
@@ -46,17 +46,12 @@ src/ai_discovery/
 │   └── retriever.py     ← KNN semantic search (used by `discover ask` / MCP search)
 │
 ├── generators/
-│   ├── bpmn_generator.py← Mermaid (sequence + flowchart), BPMN 2.0 XML, IPO table, FSM, pseudo event log
+│   ├── flow_diagrams.py ← Mermaid (sequence + flowchart), IPO table, FSM / entity backbone, pseudo event log (no BPMN)
 │   ├── onboarding_generator.py ← per-domain tour steps (rendered as onboarding pages, `pages/builders/flows.py`)
 │   └── templates/       ← screen-spec templates (screen_doc_writer)
 │
 ├── pages/               ← the wiki: builders/ (one module per page family), prose.py, grounding.py, build.py
 ├── export/              ← `discover export`: json.py (knowledge graph v2), html.py (file:// wiki), markdown.py
-│
-└── ingest/
-    ├── frontmatter.py   ← Parse/generate doc frontmatter
-    ├── classifier.py    ← Classify existing docs by keyword
-    └── reference_extractor.py ← Extract doc cross-references
 ```
 
 ## Responsibility Map
@@ -100,17 +95,16 @@ src/ai_discovery/
   - Per-domain flow analysis
   - Business process discovery, scenario flow inference
   
-- **Tier 3: `ai/rollup.py`** (Opus/deep)
-  - Full SDLC document generation
-  - Self-review + claim verification via RAG
+- **Page prose: `pages/prose.py` + `pages/grounding.py`** (standard role, `--prose`)
+  - One grounded narrative per overview/domain/screen/flow/entity/onboarding page (M3.7.a, M3.8)
+  - The Tier-3 SDLC rollup was removed in M3.7.b
 
 ### Output & Storage
-- **`generators/bpmn_generator.py`** — Artifact generation
-  - BPMN 2.0 XML with swimlanes
-  - Mermaid sequence/state diagrams
-  - Mermaid flowchart activity diagrams (renders inline on GitHub; no external server, no extra binary)
-  - IPO markdown tables
-  - Pseudo event logs for process mining
+- **`generators/flow_diagrams.py`** — Artifact generation
+  - Mermaid sequence diagrams and flowchart activity diagrams of scenario flows (a guard is an `opt` block or
+    edge label; no gateways)
+  - IPO markdown tables, entity FSM / backbone Mermaid, pseudo event log for flow statistics
+  - **No BPMN** (ADR-0007): a call slice cannot tell sequence from choice, or see people, waits or timers
 
 - **`pages/`** — the wiki (ADR-0005): builders turn the scan into pages; with `--prose` one grounded narrative
   per overview/domain/screen/flow/entity/onboarding page (`prose.py`, `grounding.py`). The legacy
@@ -158,7 +152,7 @@ class Scenario:
     nodes: List[CodeNode]
     edges: List[CallEdge]
     primary_path: List[str]  # BFS order, top-15 confidence
-    alternate_paths: List[dict]  # { condition, path }
+    stop_reasons: dict  # where the trace stops and why (no alternate paths: fan-out is not branching, ADR-0007)
 
 @dataclass
 class ExecutionNode:
@@ -173,7 +167,6 @@ class ScenarioFlow:
     scenario_id: str
     steps: List[ExecutionNode]
     ipo_table: dict  # inputs, process, outputs
-    bpmn_xml: str
     mermaid_diagram: str
     state_machine: str
 ```
@@ -216,8 +209,8 @@ class ScenarioFlow:
 - **Parser → Call Graph**: Parsers emit call references; call_graph resolves them
 - **Call Graph → Execution Slices**: ExecutionSliceBuilder traverses edges BFS
 - **Execution Slices → LLM Pipeline**: Scenarios fed to Tier 1, 2, 3 for summarization & doc generation
-- **LLM Output → BPMN Artifacts**: Generated flows rendered as BPMN, IPO, state machines
-- **Artifacts → Markdown**: Jinja2 templates combine LLM output + artifacts into final docs
+- **Scenario flows → Diagrams**: rendered as Mermaid and IPO (MCP `get_flow`)
+- **Scan → Pages**: builders turn the stored graph, screens and entity FSMs into wiki pages; `--prose` adds grounded narratives
 
 ---
 

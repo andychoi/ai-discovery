@@ -99,7 +99,7 @@ Companion to `consolidation-algorithm.md`. Catalogs the programming-style, archi
 |---|---|
 | Example | `billing.Order` (purchase orders) and `ecommerce.Order` (customer carts) coexist in one repo |
 | Frequency | Medium — common in monorepos and bounded-context DDD |
-| Severity | Critical — silently merging them corrupts BPMN/DMN/EARS outputs for two distinct business processes |
+| Severity | Critical — silently merging them corrupts the lifecycle, DMN and EARS of two distinct business processes |
 | Disposition | **Phase 2d** — parsers emit `entity_id = class.qualified_name` so the rollup groups by `src.billing.Order` vs `src.ecommerce.Order` separately. The consolidator's inheritance/mixin checks further ensure they stay apart, and field sets are usually disjoint. Post-consolidation, display disambiguation rewrites `entity` to `Order (billing)` / `Order (ecommerce)`; `entity_id` is never mutated so downstream joins remain stable. |
 
 ---

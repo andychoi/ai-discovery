@@ -5,6 +5,9 @@
 **근거**: `main` @ 7a109a9 시점의 코드. 아래 모든 구체적 주장은 인용된 모듈에서 직접 검증했으며, 라인 번호는 근사치로 변동될 수 있음.
 **영어 정본**: [system-logic.md](system-logic.md)
 
+
+> **시점 기준 리뷰 (2026-06-06).** 이후 ASIS/ASD/ASSC/PF/ONBOARD 문서 트리는 위키 페이지로 대체되었고(M3.7.b), BPMN 생성·팬아웃 게이트웨이·추론된 수동 단계는 폐기되었다(M3.11, `docs/roadmap/adr/0007-evidence-backed-process-views.md`). 해당 부분은 이력으로 읽을 것.
+
 ---
 
 ## 목차

@@ -467,7 +467,7 @@ def test_persist_and_load_scenario_flows(tmp_path: Path):
         "scenario_create_1": {
             "mermaid": "sequenceDiagram\n    User->>System: Validate",
             "mermaid_flowchart": 'flowchart TD\n    start(("Start"))\n    step_0["Validate"]\n    end_node(("End"))\n    start --> step_0\n    step_0 --> end_node',
-            "bpmn": "<bpmn/>",
+            "bpmn": "<bpmn/>",   # an artifact a caller still passes is ignored (M3.11)
             "ipo": "### IPO",
         }
     }
@@ -485,7 +485,28 @@ def test_persist_and_load_scenario_flows(tmp_path: Path):
 
     la = loaded_artifacts["scenario_create_1"]
     assert "sequenceDiagram" in la["mermaid"]
-    assert la["bpmn"] == "<bpmn/>"
+    assert "bpmn" not in la
+    conn = get_conn(db_path)
+    assert conn.execute("SELECT bpmn_xml FROM scenario_flows").fetchone()[0] is None   # ADR-0007
+    conn.close()
+
+
+def test_steps_prompt_asks_for_no_gateways_or_manual_steps():
+    """ADR-0007: the model may group, loop and attach a shown guard, never branch arms or human steps."""
+    prompt = ScenarioFlowInference(MagicMock())._build_steps_prompt(_make_scenario(), {})
+    assert "GATEWAY" not in prompt and "USER_TASK" not in prompt and '"branches"' not in prompt
+    assert "ONLY a WHEN-guard shown above" in prompt and "people are not in the code" in prompt
+
+
+def test_infer_flow_rewrites_a_gateway_the_model_still_returns():
+    gateway = [{"name": "Pricing", "type": "GATEWAY", "branches": [
+        {"condition": "total > 1000", "steps": [{"name": "Premium", "type": "PROCESS"}]},
+        {"condition": "else", "steps": [{"name": "Standard", "type": "PROCESS"}]}]},
+        {"name": "Approve", "type": "USER_TASK"}]
+    flow = ScenarioFlowInference(_mock_inference_client(steps=gateway)).infer_flow(_make_scenario(), {})
+    assert [(s["name"], s["type"], s.get("condition")) for s in flow.steps] == [
+        ("Premium", "PROCESS", "total > 1000"), ("Standard", "PROCESS", "otherwise")]
+    assert "GATEWAY" not in json.dumps(flow.structured_steps) and "Approve" not in json.dumps(flow.structured_steps)
 
 
 # ---------------------------------------------------------------------------

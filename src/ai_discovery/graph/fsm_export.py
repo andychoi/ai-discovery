@@ -1,7 +1,7 @@
 """Phase 2c: JSON export for EntityStateMachine.
 
 Serializes the canonical backbone artifact so it survives a pipeline run, can
-be diff-reviewed in PRs, and fed to downstream tooling (BPMN/DMN/EARS
+be diff-reviewed in PRs, and fed to downstream tooling (DMN/EARS
 generators, external dashboards). The format is frozen on three contracts:
 
   1. **Stable**: sets → sorted lists, top-level FSMs sorted by entity, dict
