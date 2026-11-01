@@ -43,7 +43,7 @@
 - **Out of scope:** DI (M6.7.a/.b).
 
 ### M6.4 VB.NET code-behind
-- **Status:** In progress (rm/M6.4-vbnet, 2026-11-01)
+- **Status:** Blocked (owner 2026-11-01: VB.NET support not needed)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.1

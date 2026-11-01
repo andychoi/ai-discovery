@@ -650,3 +650,8 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Measured:** hard case `csharp-raw-migration-fk` (dev) relationships 0.667 → 1.0 (baseline refreshed — justified). External gate ok, no warnings (`sql_parsed` is a new origin with no graded sample yet — 6 edges, all verified by hand above).
 - **Verify:** `pytest -q tests -k sql`; full `pytest -q` → 1862 passed, 2 skipped (one unreproduced flake before the facts cache was re-keyed by content instead of object id); `bench gate`, `--sealed`, `--external` ok; `roadmap_lint` ok.
 - **Follow-ups:** `SqlDataSource` commands (M6.11 hints) and MyBatis XML (M6.9) can feed `parse_sql`; stored procedures (M6.10); the agent-eval Docker image must be rebuilt for the new dependencies. No repowise code was copied or translated.
+
+## 2026-11-01 — M6.4 — VB.NET code-behind: not needed (owner)
+- **Decision:** the owner dropped VB.NET support; M6.4 is `Blocked` (unclaimed, no code written).
+- **Spike result, kept for a future revisit:** no usable Python tree-sitter VB.NET grammar — `tree-sitter-vbnet` 0.1.0 ships a Windows-only wheel; `tree-sitter-language-pack` 1.22.1 has a `vb` grammar that parses classes/methods/`Dim`/`Return`, but yields `ERROR` nodes on `Handles Me.Load` and on `Inherits` inside a class, and downloads grammars at runtime (a network call during parsing — incompatible with keyless offline scans). The fallback would be a line-oriented extractor (VB's `… End Sub` / `End Class` blocks make that reliable).
+- **Hard case:** `vbnet-codebehind-handles` (sealed) stays and keeps failing — a documented known gap, not a regression.
