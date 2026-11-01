@@ -76,8 +76,8 @@
     },
     "relationships": {
       "precision": 1.0,
-      "recall": 0.5,
-      "f1": 0.667
+      "recall": 1.0,
+      "f1": 1.0
     },
     "call_edges": {
       "precision": 1.0,

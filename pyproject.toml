@@ -52,6 +52,8 @@ dependencies = [
     "mcp>=2.3,<3",
     # M6.1 walker: .gitignore semantics outside git work trees.
     "pathspec>=0.12",
+    # M6.8: SQL statements (tsql/postgres/mysql/oracle) → table reads/writes, columns, foreign keys.
+    "sqlglot>=25",
 ]
 
 [project.optional-dependencies]

@@ -29,6 +29,7 @@ repowise's changelog shows two recurring classes of fixes. One is false edges fr
    | `dispatch` | 0.75 | interface/base method → each override (refused entirely above 24 impls) |
    | `receiver_global` | 0.75 | receiver type known, type found repo-wide by unique name |
    | `global_unique` | 0.50 | bare name unique repo-wide, same language, not a builtin, callable |
+   | `sql_parsed` | 0.90 | table read/write edge from a SQL statement sqlglot parsed in the caller's code (M6.8); the statement decides `reads_table` vs `writes_table` |
    | `sql_regex` | 0.60 | table read/write edge from regex fallback when sqlglot cannot parse the statement (M6.8) |
    | `external_client` | 0.90 | call through a known client library (HTTP/queue/cache/payment SDK) to a synthesized external-system node; edge kind `calls_external`, evidence `framework` (added in M1.12.a) |
 

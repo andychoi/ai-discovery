@@ -58,6 +58,15 @@ def make_edge(caller: str, callee: str, origin_name: str, **meta) -> CallEdge:
                               "evidence_kind": o.evidence_kind, **meta})
 
 
+def table_edge(caller: str, table_qn: str, origin_name: str, *, write: bool) -> CallEdge:
+    """M6.8: a SQL table access edge; the statement decides read vs write, the origin the confidence."""
+    edge = make_edge(caller, table_qn, origin_name)
+    kind = "writes_table" if write else "reads_table"
+    edge.edge_type = kind
+    edge.metadata["edge_kind"] = kind
+    return edge
+
+
 def _family(language: str) -> str:
     return "javascript" if language in ("javascript", "typescript") else language
 

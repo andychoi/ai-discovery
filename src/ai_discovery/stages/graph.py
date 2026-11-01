@@ -50,6 +50,16 @@ def run(ctx: RunContext) -> None:
     for n in read_infra_files(resolved.repo_path):
         ext_by_qn.setdefault(n.qualified_name, n)
     ext_nodes = list(ext_by_qn.values())
+    # M6.8: code → table reads/writes from the SQL each function runs (sqlglot; regex fallback counted)
+    from ..extractors import extract_table_access
+    table_nodes, table_edges, sql_stats = extract_table_access(all_nodes)
+    for kind, count in sql_stats.items():
+        ctx.degrade("sql", kind, count)
+    if table_edges:
+        ext_nodes = ext_nodes + table_nodes
+        ext_edges = ext_edges + table_edges
+        console.print(f"  Table access: [green]{len(table_edges)}[/] read/write edges to "
+                      f"[green]{len(table_nodes)}[/] tables")
     if ext_nodes:
         conn = get_conn(db_path)
         try:

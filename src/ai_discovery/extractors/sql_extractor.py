@@ -16,7 +16,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from ..graph.models import CodeNode, EntityRelationship
+from ..graph.models import CallEdge, CodeNode, EntityRelationship
 
 # ---------------------------------------------------------------------------
 # SQL statement patterns
@@ -143,7 +143,119 @@ def extract_sql_entities(nodes: list[CodeNode]) -> list[CodeNode]:
             if len(entry.evidence) < 5:
                 entry.evidence.append(snippet.strip())
 
+    # M6.8: sqlglot facts add the columns the regex cannot see (bracketed T-SQL, quoted identifiers, …)
+    for node in nodes:
+        for facts in _node_facts(node):
+            for table, cols in facts.columns.items():
+                if _is_ignored(table):
+                    continue
+                entry = acc.setdefault(table, _TableAccumulator(table=table))
+                entry.fields.update(c for c in cols if c)
+                entry.ops.add(facts.kind.upper())
+                if facts.view == table:
+                    entry.kind = "view"
+                if not entry.first_file:
+                    entry.first_file, entry.first_line = node.file_path, node.line_start
     return [_to_code_node(e) for e in acc.values() if e.fields]
+
+
+_FACTS_CACHE: dict[tuple[str, str], list] = {}   # (language, source) → facts; same input, same facts
+
+
+def _sql_texts(node: CodeNode) -> list[str]:
+    """SQL a node contains: a `.sql` file is SQL throughout; code contributes SQL-looking string literals."""
+    from .sql import sql_literals
+
+    if node.language == "sql":
+        return [node.source_code]
+    return sql_literals(node.source_code)
+
+
+def _node_facts(node: CodeNode) -> list:
+    """sqlglot statement facts for *node* (cached by node identity and source)."""
+    from .sql import dialects_for, parse_sql
+
+    if not node.source_code:
+        return []
+    key = (node.language, node.source_code)
+    hit = _FACTS_CACHE.get(key)
+    if hit is not None:
+        return hit
+    facts = []
+    for text in _sql_texts(node):
+        facts += parse_sql(text, dialects_for(node.language, text))
+    if len(_FACTS_CACHE) > 20_000:
+        _FACTS_CACHE.clear()
+    _FACTS_CACHE[key] = facts
+    return facts
+
+
+_IDENT = r"([`\"\[\]\w.]+)"
+_RX_WRITE = re.compile(r"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+" + _IDENT, re.I)
+_RX_READ = re.compile(r"\b(?:FROM|JOIN|USING)\s+" + _IDENT, re.I)
+_RX_NOT_TABLE = frozenset({"select", "where", "set", "values", "dual", "lateral", "unnest"})
+
+
+def _regex_tables(text: str) -> list[tuple[str, bool]]:
+    """Regex fallback for a statement sqlglot cannot parse: (table, is_write) from the keyword that names it."""
+    writes = [m.group(1) for m in _RX_WRITE.finditer(text)]
+    out = [(t, True) for t in writes]
+    out += [(m.group(1), False) for m in _RX_READ.finditer(text)
+            if m.group(1) not in writes and m.group(1).lower() not in _RX_NOT_TABLE]
+    return out
+
+
+_NOT_CALLERS = frozenset({"sql_table", "sql_view", "sql_source", "class", "interface", "enum", "struct",
+                          "record", "db_model", "module"})
+
+
+def extract_table_access(nodes: list[CodeNode]) -> tuple[list[CodeNode], list[CallEdge], dict]:
+    """M6.8: per-statement `reads_table` / `writes_table` edges from each code node that runs SQL, plus a
+    `sql_table` node per table they reach. Statements sqlglot parses give origin `sql_parsed`; a statement it
+    cannot parse falls back to the regex (`sql_regex`, counted). Interpolated table names are skipped (counted).
+
+    Returns (table nodes, edges, {"sql_regex_fallback": n, "sql_dynamic_table": n})."""
+    from ..graph.call_graph import table_edge
+    from .sql import DYN
+
+    stats = {"sql_regex_fallback": 0, "sql_dynamic_table": 0}
+    edges: list[CallEdge] = []
+    seen: set[tuple[str, str, str]] = set()
+    tables: dict[str, CodeNode] = {}
+
+    def _add(caller: CodeNode, table: str, write: bool, origin: str) -> None:
+        if not table or DYN in table or _is_ignored(table):
+            return
+        name = _strip_schema(_clean_qualified(table))
+        if not name:
+            return
+        qn = f"sql::{name}"
+        if qn not in tables:
+            tables[qn] = CodeNode(file_path=caller.file_path, language="sql", node_type="sql_table", name=name,
+                                  qualified_name=qn, source_code="", line_start=caller.line_start,
+                                  line_end=caller.line_start, framework_hints={"source": "table_access"})
+        key = (caller.qualified_name, qn, "w" if write else "r")
+        if key in seen:
+            return
+        seen.add(key)
+        edges.append(table_edge(caller.qualified_name, qn, origin, write=write))
+
+    for node in nodes:
+        if node.language == "sql" or not node.source_code or node.node_type in _NOT_CALLERS:
+            continue   # a class's source repeats its methods' bodies: only callables run SQL
+        for f in _node_facts(node):
+            if f.dynamic:
+                stats["sql_dynamic_table"] += 1
+            if f.ok:
+                for t in f.writes:
+                    _add(node, t, True, "sql_parsed")
+                for t in f.reads:
+                    _add(node, t, False, "sql_parsed")
+                continue
+            stats["sql_regex_fallback"] += 1
+            for table, write in _regex_tables(f.text):
+                _add(node, table, write, "sql_regex")
+    return list(tables.values()), edges, stats
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +304,12 @@ def extract_sql_relationships(nodes: list[CodeNode]) -> list[EntityRelationship]
     for node in nodes:
         if not node.source_code or "REFERENCES" not in node.source_code.upper():
             continue
+        for facts in _node_facts(node):   # M6.8: sqlglot — CREATE constraints, inline refs, ALTER TABLE … ADD FK
+            for from_t, to_t, cols, ref_cols in facts.fks:
+                if _is_ignored(from_t):
+                    continue
+                for i, fc in enumerate(cols or [""]):
+                    _emit(from_t, to_t, fc, ref_cols[i] if i < len(ref_cols) else "", node)
         for m in _CREATE_TABLE_RE.finditer(node.source_code):
             from_table = _strip_schema(_clean_qualified(m.group(1)))
             if not from_table or _is_ignored(m.group(1)):
@@ -230,13 +348,17 @@ def read_sql_file_nodes(repo_path) -> list[CodeNode]:
     schema + FK source. We walk plainly here, skipping only vendor/build noise.
     """
     from pathlib import Path
-    from ..repo.lang_detector import _SKIP_DIRS
+    from ..repo.walker import ALWAYS_SKIP, RepoWalker
 
     repo_path = Path(repo_path)
-    skip = _SKIP_DIRS - {"migrations"}  # migrations carry the canonical schema
+    walker = RepoWalker(repo_path)
     out: list[CodeNode] = []
     for path in sorted(repo_path.rglob("*.sql")):
-        if any(part in skip for part in path.parts):
+        # M6.8: repo-relative (a checkout under `/build/` must not lose every file); migrations/ is kept
+        rel_dirs = path.relative_to(repo_path).parts[:-1]
+        if any(d in ALWAYS_SKIP - {"migrations"} for d in rel_dirs) or any(
+                walker._dir_reason(repo_path.joinpath(*rel_dirs[: i + 1])) == "build_output"
+                for i in range(len(rel_dirs))):
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")

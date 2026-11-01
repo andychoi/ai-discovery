@@ -56,6 +56,18 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
   0.8 to `receiver_global` 0.75; the corpus bars were lowered to 0.75 with a
   note per fixture.
 
+### SQL via sqlglot (M6.8)
+- **Every function that runs SQL gets table edges**: `reads_table` / `writes_table` per statement, to a `sql_table`
+  node. The write target of `UPDATE o … FROM dbo.Orders o` is resolved through its alias; CTE names are not
+  tables; `MERGE` writes its target and reads its source. Origin `sql_parsed` (0.90) when sqlglot parsed the
+  statement, `sql_regex` (0.60) from a keyword fallback otherwise (degradation `sql_regex_fallback`). Writes outrank
+  reads in impact.
+- **Only real SQL**: a literal needs a statement shape plus upper-case keywords or SQL punctuation; JPQL/HQL is
+  skipped; an interpolated table name (`$"… {table}"`, `" + table + "`) is skipped and counted
+  (`sql_dynamic_table`).
+- **Foreign keys** also come from `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` and from bracket/back-tick quoted
+  table constraints, which the regex missed.
+
 ### Markup and descriptor bindings (M6.11)
 - **WebForms directives** Page, Control, Master, WebService (`.asmx`), WebHandler (`.ashx`) and Application
   (`Global.asax`) each name a code class (`Inherits` or `Class`). Handlers and services become `endpoint` nodes

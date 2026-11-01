@@ -38,6 +38,9 @@ _ORIGIN_LIST = [
     Origin("dispatch", 0.75, edge_kind="dispatches_to"),
     Origin("receiver_global", 0.75),
     Origin("global_unique", 0.50),
+    # M6.8: table access from a SQL statement in the caller. One origin per evidence (parsed vs regex); the
+    # statement decides reads_table vs writes_table (``table_edge``), the origin only the confidence.
+    Origin("sql_parsed", 0.90, edge_kind="reads_table"),
     Origin("sql_regex", 0.60, edge_kind="reads_table"),
     # Outbound call through a known client library (axios/kafka/redis/stripe…)
     # to a synthesized external-system node (extractors/external_system_extractor.py).

@@ -9,6 +9,7 @@ plug into the same Phase 2d consolidator as regular class definitions.
 from .sql_extractor import (
     extract_sql_entities,
     extract_sql_relationships,
+    extract_table_access,
     read_sql_file_nodes,
 )
 from .relationship_extractor import extract_relationships
@@ -22,6 +23,7 @@ from .webconfig import read_webconfig_files
 __all__ = [
     "extract_sql_entities",
     "extract_sql_relationships",
+    "extract_table_access",
     "read_sql_file_nodes",
     "extract_relationships",
     "extract_external_systems",
