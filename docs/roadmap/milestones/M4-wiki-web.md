@@ -42,7 +42,7 @@
 - **Out of scope:** graph explorer.
 
 ### M4.4.a Graph explorer + impact view
-- **Status:** In progress (rm/M4.4a-graph-explorer, 2026-11-01)
+- **Status:** Done (5a57c16)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M4.3

@@ -748,3 +748,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k "export_json or export_html"` → 3 passed (+2 markdown/errors); vitest 21 passed; full `pytest -q` → 1941 passed, 2 skipped; `bench gate`, `--sealed` ok; `roadmap_lint` ok; headless Chrome from `file://`: overview, `#/docs/batch_job:…` and `#/search?q=export orders` (17 hits) render.
 - **Follow-ups:** legacy `export-graph` stays until M2.7 removes legacy commands; graph neighbourhoods are not inlined (the graph view is M4.4). No repowise code was copied or translated.
 
+## 2026-11-01 — M4.4.a — Graph explorer + impact view
+- **Split:** M4.4 → M4.4.a (graph explorer, path finder, impact view — this entry) + M4.4.b (screen → flow → entity → table drilldowns, BPMN/DMN rendering).
+- **Branch/commit:** rm/M4.4a-graph-explorer @ 5a57c16
+- **Changes:** web: `graphModel.ts` (+ tests: elements, true-total text, legend, IMPACT_REPORT.md), `components/GraphView.tsx`, `components/ImpactView.tsx`, routes `/graph` + `/impact` (hash-mode aware), "Explore" box in `PageView`, static-export answers `unknown` for live queries, styles; server: `GET /api/v1/impact` (`query.impact`); `tests/test_server_api.py` (impact endpoint), `design/wiki-web.md` (as built).
+- **Measured / checked:** headless Chrome against `discover serve` on eShop — `RequestProvider.GetAsync` depth 2: 49 nodes / 66 edges with the legend and path finder; `OrderRepository.GetAsync` impact: 13 items (12 likely via framework 0.90, 1 possible via `global_unique` 0.50, faded). Two fixes from the screenshots: the impact table overflowed (long qualified names now wrap; horizontal scroll), dense graphs piled labels (now zoom-gated above 30 nodes).
+- **Verify:** `cd web && npm test` → 26 passed; full `pytest -q` → 1942 passed, 2 skipped; `bench gate` ok; `roadmap_lint` ok.
+- **Follow-ups:** M4.4.b; `discover serve` keeps serving a stale `index.html` after the bundle is rebuilt under it (dev-only; restart fixes it). No repowise code was copied or translated.
+

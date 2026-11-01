@@ -30,6 +30,8 @@ describe("static export data", () => {
     expect(staticAnswer(DATA, "/pages/table%3Aorders").status).toBe("ok");
     expect(staticAnswer(DATA, "/pages/table%3Anope").status).toBe("not_found");
     expect(staticAnswer(DATA, "/source?path=a.java&start=1").status).toBe("unknown");
+    expect(staticAnswer(DATA, "/graph/neighborhood?node=a&depth=1").status).toBe("unknown");
+    expect(staticAnswer(DATA, "/impact?target=a").status).toBe("unknown");
   });
 
   it("searches client-side: all tokens must match, title hits first", () => {

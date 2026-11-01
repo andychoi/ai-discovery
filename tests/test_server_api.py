@@ -144,6 +144,21 @@ def test_graph_path(client) -> None:
     assert _get(client, "/api/v1/graph/path?from=nope&to=x", "not_found")
 
 
+def test_impact_matches_the_query_service(client, layout) -> None:
+    """GET /impact (M4.4.a) is the M5.2 engine behind MCP get_impact, in the Answer envelope."""
+    from ai_discovery import query
+    from ai_discovery.query.session import Project
+
+    target = "com.example.service.OrderService.createOrder"
+    body = _get(client, f"/api/v1/impact?target={target}&depth=2")
+    direct = query.impact(Project(layout), target, depth=2)
+    assert body["data"]["items"] == direct["data"]["items"] and body["data"]["items"]
+    assert body["data"]["items"][0]["node"] == "com.example.controller.OrderController.create"
+    assert {"totals", "truncated", "omitted", "meta"} <= set(body)
+    _get(client, "/api/v1/impact?target=no.such.Thing", "not_found")
+    assert client.get("/api/v1/impact?target=x&depth=9").status_code == 422
+
+
 def test_screens_and_business_views(client) -> None:
     menu = _get(client, "/api/v1/screens")
     assert menu["totals"]["screens"] == 11

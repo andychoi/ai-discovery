@@ -4,6 +4,8 @@ import { getJson, type Meta } from "./api";
 import { currentLocation, docHref, parseRoute, type Route } from "./router";
 import { Link } from "./components/Link";
 import { NavTree } from "./components/NavTree";
+import { GraphView } from "./components/GraphView";
+import { ImpactView } from "./components/ImpactView";
 import { PageView } from "./components/PageView";
 import { SearchPalette } from "./components/SearchPalette";
 import { SearchResults } from "./components/SearchResults";
@@ -46,6 +48,8 @@ export function App() {
         {route.name === "overview" && <PageView pageId="overview:system" />}
         {route.name === "doc" && <PageView pageId={route.pageId} />}
         {route.name === "search" && <SearchResults q={route.q} />}
+        {route.name === "graph" && <GraphView focus={route.focus} depth={route.depth} />}
+        {route.name === "impact" && <ImpactView target={route.target} />}
         {route.name === "unknown" && <Empty>No such view: <code>{route.path}</code></Empty>}
       </main>
     </div>

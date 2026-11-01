@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FileCode2, X } from "lucide-react";
 import { useAnswer } from "../useAnswer";
 import { markdownToHtml } from "../markdown";
-import { docHref, navigate } from "../router";
+import { docHref, graphHref, impactHref, navigate } from "../router";
 import { loadMermaid } from "../vendors";
 import { getJson } from "../api";
 import { Link } from "./Link";
@@ -34,6 +34,24 @@ function confidenceBadge(c: number) {
   if (c >= 0.99) return <span className="badge ok" title="Derived from parsed code">structure</span>;
   if (c >= 0.5) return <span className="badge prose" title="Narrative written by a model">model-written · {c.toFixed(2)}</span>;
   return <span className="badge warn" title="Generation failed; structural stub">stub · {c.toFixed(2)}</span>;
+}
+
+const IMPACT_TYPES = new Set(["symbol", "file", "table", "screen", "entity", "endpoint"]);
+
+/** Graph and impact entry points for this page (M4.4.a). */
+function Explore({ page }: { page: PageData }) {
+  const symbol = page.type === "symbol" ? page.page_id.slice("symbol:".length).split("@")[0] : null;
+  if (!symbol && !IMPACT_TYPES.has(page.type)) return null;
+  return (
+    <>
+      <h3>Explore</h3>
+      <ul>
+        {symbol && <li><Link href={graphHref(symbol)}>Call graph around it</Link></li>}
+        {IMPACT_TYPES.has(page.type) && (
+          <li><Link href={impactHref(symbol ?? page.page_id)}>What may break if it changes</Link></li>)}
+      </ul>
+    </>
+  );
 }
 
 function SourcePanel({ cite, onClose }: { cite: Citation; onClose: () => void }) {
@@ -148,6 +166,7 @@ export function PageView({ pageId }: { pageId: string }) {
         <div className="markdown" ref={body} onClick={onBodyClick} dangerouslySetInnerHTML={{ __html: html }} />
       </article>
       <aside className="rail">
+        <Explore page={p} />
         <h3>Citations</h3>
         {p.citations.length ? (
           <ul>{p.citations.map((c) => (

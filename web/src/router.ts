@@ -11,6 +11,8 @@ export type Route =
   | { name: "overview" }
   | { name: "doc"; pageId: string }
   | { name: "search"; q: string }
+  | { name: "graph"; focus: string; depth: number }
+  | { name: "impact"; target: string }
   | { name: "unknown"; path: string };
 
 export const PAGE_TYPES = [
@@ -33,6 +35,16 @@ export function searchHref(q: string): string {
   return hashMode() ? `#${path}` : path;
 }
 
+export function graphHref(focus: string, depth = 1): string {
+  const path = `/graph?focus=${encodeURIComponent(focus)}${depth !== 1 ? `&depth=${depth}` : ""}`;
+  return hashMode() ? `#${path}` : path;
+}
+
+export function impactHref(target: string): string {
+  const path = `/impact?target=${encodeURIComponent(target)}`;
+  return hashMode() ? `#${path}` : path;
+}
+
 /** [pathname, search] of the current route — from the hash in a static export. */
 export function currentLocation(): [string, string] {
   if (!hashMode()) return [window.location.pathname, window.location.search];
@@ -50,6 +62,12 @@ export function parseRoute(rawPath: string, search = ""): Route {
     return isPageId(pageId) ? { name: "doc", pageId } : { name: "unknown", path: pathname };
   }
   if (pathname === "/search") return { name: "search", q: new URLSearchParams(search).get("q") ?? "" };
+  if (pathname === "/graph") {
+    const params = new URLSearchParams(search);
+    const depth = Number(params.get("depth") ?? 1);
+    return { name: "graph", focus: params.get("focus") ?? "", depth: depth === 2 ? 2 : 1 };
+  }
+  if (pathname === "/impact") return { name: "impact", target: new URLSearchParams(search).get("target") ?? "" };
   return { name: "unknown", path: pathname };
 }
 

@@ -75,6 +75,19 @@ All responses use the `Answer` envelope from `design/architecture-v1.md` §6:
 - **API types:** TS types are generated from the FastAPI OpenAPI schema into `web/src/api/types.ts` (`scripts/gen_api_types.py`, new). A CI check fails if they are stale.
 - **Smoke test** (M4.5): fresh venv, `pip install dist/*.whl`, scan the fixture repo, start `serve`, then GET `/` and `/api/v1/status` must both return 200. It runs on Linux and, if CI allows, Windows. No Node is on PATH.
 
+### As built: graph explorer and impact (M4.4.a)
+- **`/graph?focus=<qualified name>&depth=1|2`:**
+  - **Data:** the neighbourhood from `GET /api/v1/graph/neighborhood` (limit 200), drawn with Cytoscape (`cose` layout, loaded on demand). The header gives the server's true totals ("showing 200 of 3,412 nodes", plus edges).
+  - **Edges:** coloured by evidence kind, with a legend of the kinds present. Edges with confidence < 0.75 are dashed and faded; ADR-0004 flows never follow them.
+  - **Nodes:** the focus node is highlighted, and endpoints, tables and external systems have their own shapes. Above 30 nodes, labels appear only when zoomed in.
+  - **Interaction:** click selects a node, double-click re-centres on it, and the path finder calls `GET /api/v1/graph/path`.
+- **`/impact?target=…`:**
+  - **Data:** the new `GET /api/v1/impact` is the M5.2 engine behind MCP `get_impact`, with the same Answer.
+  - **View:** a ranked table (score, depth, certainty, the edges it came through, with "possible" items faded), entry points reached, and unknowns.
+  - **"Copy as IMPACT_REPORT.md":** writes the same list as markdown.
+- **Entry points:** an "Explore" box on symbol, file, table, screen, entity and endpoint pages.
+- **Static export:** both views answer `unknown` ("needs `discover serve`").
+
 ## 6. Static export (M3.10)
 - **Command:** `discover export --format html` copies the SPA bundle plus `data.js`, which inlines all pages, the tree and the search index as JS (`window.__DISCOVERY_DATA__`). It does not use `fetch()`, because `file://` blocks it.
 - **Search:** client-side, over a prebuilt lunr-style index (choose a small, vendorable library at implementation time; Unverified which).

@@ -157,3 +157,21 @@ kbd { border: 1px solid var(--border); border-radius: 4px; padding: 0 0.3rem; fo
 .annotation-actions button { font: inherit; font-size: 0.8rem; padding: 0.2rem 0.6rem; border-radius: 6px;
   border: 1px solid var(--border); background: transparent; color: inherit; cursor: pointer; }
 .badge { background: var(--border); }
+
+/* graph explorer + impact (M4.4.a) */
+.graph-view { display: grid; grid-template-columns: 1fr 16rem; grid-template-rows: auto minmax(28rem, 70vh); gap: 0 1rem; }
+.graph-view > header { grid-column: 1 / -1; }
+.graph-canvas { border: 1px solid var(--border, #d8dde6); border-radius: 6px; min-height: 28rem; }
+.graph-side { font-size: 0.9rem; overflow: auto; }
+.graph-meta { color: var(--muted, #667085); font-size: 0.9rem; }
+.legend { list-style: none; padding: 0; }
+.legend li { display: flex; align-items: center; gap: 0.4rem; margin: 0.2rem 0; }
+.swatch { display: inline-block; width: 1.6rem; height: 0.25rem; border-radius: 2px; }
+.swatch.dashed { background: repeating-linear-gradient(90deg, #7a8494 0 4px, transparent 4px 8px); opacity: 0.6; }
+.pathfinder form, .impact-form { display: flex; gap: 0.4rem; margin: 0.4rem 0; }
+.pathfinder input, .impact-form input { flex: 1; min-width: 0; }
+table.impact { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+table.impact th, table.impact td { border-bottom: 1px solid var(--border, #d8dde6); padding: 0.3rem 0.4rem; text-align: left; }
+table.impact tr.faint td { opacity: 0.6; }
+.table-scroll { overflow-x: auto; }
+table.impact td:nth-child(2) { overflow-wrap: anywhere; min-width: 18rem; }

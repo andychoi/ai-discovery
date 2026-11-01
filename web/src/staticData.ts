@@ -60,5 +60,9 @@ export function staticAnswer<T>(data: StaticData, path: string): Answer<T> {
     return envelope("unknown", { reason: "source code is not included in the static export" } as T,
                     data.answers["/status"]);
   }
+  if (pathname.startsWith("/graph/") || pathname === "/impact") {   // live queries: `discover serve` only
+    return envelope("unknown", { reason: "the graph explorer and impact need `discover serve`" } as T,
+                    data.answers["/status"]);
+  }
   return envelope("not_found", null as T, data.answers["/status"]);
 }

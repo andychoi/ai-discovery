@@ -513,6 +513,16 @@ def build_router() -> APIRouter:
             return _answer({"paths": paths, "nodes": {n: _node_json(nodes[n], layout.repo) for n in used}},
                            totals={"paths": len(paths)}, truncated=len(paths) >= 20, meta=meta)
 
+    @r.get("/impact")
+    def impact(request: Request, target: str = Query(..., min_length=1, max_length=500),
+               depth: int = Query(3, ge=1, le=6), include: Optional[str] = None):
+        """Blast radius of *target* (M4.4.a) — the same engine and answer as MCP ``get_impact`` (M5.2)."""
+        from .. import query
+        from ..query.session import Project
+
+        kinds = [k.strip() for k in include.split(",") if k.strip()] if include else None
+        return query.impact(Project(_ctx(request)), target, depth=depth, include=kinds)
+
     # ── business views ────────────────────────────────────────────────────
 
     @r.get("/screens")
