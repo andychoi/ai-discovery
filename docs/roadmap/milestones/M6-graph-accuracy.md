@@ -40,7 +40,7 @@
   - interface/enum/record nodes; `_receiver_type` split from `_unwrap_type` (receiver keeps outer type `List`, JPA association keeps inner); local-variable and parameter receiver typing; same-package scope.
   - spring-petclinic call-edge recall improves vs baseline.
 - **Verify:** `pytest -q tests -k java`
-- **Out of scope:** DI (M6.7).
+- **Out of scope:** DI (M6.7.a/.b).
 
 ### M6.4 VB.NET code-behind
 - **Status:** Planned
@@ -90,15 +90,28 @@
 - **Verify:** `pytest -q tests -k "route or angular"`
 - **Out of scope:** —
 
-### M6.7 DI adapters
-- **Status:** Planned
+### M6.7.a DI registrations: ASP.NET, Spring qualifiers, test mocks
+- **Status:** In progress (rm/M6.7a-di-registrations, 2026-10-31)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M1.12
-- **Owns:** `src/ai_discovery/extractors/di_*.py` (new), `src/ai_discovery/graph/` (dispatch post-pass)
+- **Owns:** `src/ai_discovery/extractors/di_*.py` (new), `src/ai_discovery/graph/` (dispatch post-pass), `src/ai_discovery/parsers/java.py` (bean names, `@Qualifier`, `@Primary` hints)
 - **Acceptance:**
-  - Spring annotations (constructor/field injection, `@Bean`, `@Qualifier`, `@Primary`) + Spring XML beans; ASP.NET `AddScoped/Transient/Singleton<I,T>`; Unity/Autofac registrations (Unverified prevalence).
-  - `dispatches_to` interface→impl edges, refused above 24 implementations, private/ctor excluded; ambiguous type → no edge.
+  - ASP.NET `AddScoped/AddTransient/AddSingleton/TryAdd*<I,T>` registrations (any file of the project, incl. top-level `Program.cs`) restrict interface dispatch to the registered implementation(s).
+  - Spring: `@Qualifier("name")` on a constructor parameter or field picks the bean of that name (`@Component("name")` or the default decapitalised class name); `@Primary` wins when nothing qualifies.
+  - A receiver that is a test double (`Substitute.For<T>()`, `new Mock<T>()`, `Mock.Of<T>()`, Mockito `mock(T.class)` / `@Mock`) never reaches a repo implementation.
+  - DI-selected edges use `framework`; dispatch still refused above 24 implementations; ambiguous registration → no edge. Hard cases `csharp-di-two-impls` (dev) and `java-spring-qualifier` (sealed) pass.
+- **Verify:** `pytest -q tests -k di`; `python -m bench gate --external`
+- **Out of scope:** Spring XML beans, `@Bean` factory methods, Unity/Autofac (M6.7.b).
+
+### M6.7.b DI adapters: Spring XML, @Bean, Unity/Autofac
+- **Status:** Planned
+- **Size:** M
+- **Lane:** C
+- **Depends on:** M6.7.a
+- **Owns:** `src/ai_discovery/extractors/di_*.py`
+- **Acceptance:**
+  - Spring XML beans (`<bean id class>`, `ref`), `@Bean` factory methods (return type → bean), Unity/Autofac registrations (Unverified prevalence — measure on a pinned repo first).
 - **Verify:** `pytest -q tests -k di`
 - **Out of scope:** —
 
@@ -151,7 +164,7 @@
 - **Status:** Planned
 - **Size:** M
 - **Lane:** C
-- **Depends on:** M6.7, M6.11
+- **Depends on:** M6.7.a, M6.7.b, M6.11
 - **Owns:** `src/ai_discovery/graph/entry_points.py` (new), `src/ai_discovery/graph/call_graph.py`
 - **Acceptance:**
   - Evidence-based score (framework registration, route/screen binding, fan-out, in-degree 0, visibility) replaces substring name hints; test/demo paths excluded; precision measured on bench repos.
