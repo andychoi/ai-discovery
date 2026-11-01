@@ -723,3 +723,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/cli -k "githook or watch"` → 17 passed; full `pytest -q` → 1921 passed, 2 skipped (+ golden refresh); `bench gate`, `--sealed` ok; `roadmap_lint` ok; manual: commit returns at once, the detached scan indexes the new commit and appends one JSON line to `hook.log`, `doctor` reports the hook.
 - **Follow-ups:** Windows hooks run under Git's bundled sh (untested here); `status` could show the last hook run from `hook.log`. No repowise code was copied or translated.
 
+## 2026-11-01 — M3.7.a — Page prose layer
+- **Branch/commit:** rm/M3.7a-prose-layer @ 91ddfb1
+- **Split:** M3.7 → M3.7.a (prose layer, this entry) + M3.7.b (delete the legacy ASIS/ASD/ASSC rollup and SDLC generator tree; depends on .a). M3.8 now depends on M3.7.a.
+- **Changes:** `pages/prose.py` (new: `apply_prose`, `prose_key`, `runner`), `prompts/__init__.py` (new: system prompt, per-type focus, template, id/version), `pages/build.py` (`build_pages(prose=…)` gets the previous build's prose pages; the hook runs it when the scan is `--prose`), `llm/estimate.py` (`page_prose` stage), `cli/commands/scan.py` (estimate-vs-actual recorded after the post-scan hooks so page prose is in the actual), `tests/test_pages_prose_m37a.py` (8), `decisions.md` (Page Prose Layer).
+- **Scope note:** `pages/build.py` (lane D) and `cli/commands/scan.py` (lane A) are outside Owns — one optional parameter and one moved call.
+- **Decisions:** one Narrative section per prose page, first in the page, from facts + structural text (≤ 6000 chars each), `standard` role, ≤ 600 output tokens; key per ADR-0002 adds title and type; reuse first from the previous build (no call), else the response cache; invalid keys stored as `prose-invalid:<key>` entries in the same cache file; the layer has its own `LLMClient`, spend written as `page_prose` (the `llm_costs` row per tier is `INSERT OR REPLACE`, so sharing `tier2` would have overwritten the pipeline's row); budget = what the scan has left.
+- **Verify:** `pytest -q tests -k prose` → 31 passed (8 new); full `pytest -q` → 1930 passed, 2 skipped; `bench gate`, `--sealed` ok; `roadmap_lint` ok.
+- **Follow-ups:** M3.7.b (legacy SDLC removal); M3.8 groundedness checks on the narrative (unverifiable backtick references lower confidence). Not run against a real provider yet — the agent-eval gateway key would allow a measured prose run. No repowise code was copied or translated.
+

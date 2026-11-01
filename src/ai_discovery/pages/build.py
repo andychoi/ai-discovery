@@ -21,9 +21,9 @@ import logging
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Optional
+from typing import Callable, Optional
 
-from .model import make_page_id, save_pages, split_page_id
+from .model import Page, make_page_id, save_pages, split_page_id
 from .notes import record_alias
 from .registry import BuildContext, run_builders
 
@@ -40,11 +40,13 @@ class BuildResult:
     by_type: dict[str, int] = field(default_factory=dict)
     tombstoned: list[str] = field(default_factory=list)
     fts_rows: Optional[int] = None
+    prose: Optional[str] = None
 
     def __str__(self) -> str:
         fts = "" if self.fts_rows is None else f", {self.fts_rows} indexed"
         gone = f", {len(self.tombstoned)} removed" if self.tombstoned else ""
-        return f"{self.pages} pages{fts}{gone}"
+        prose = f"; {self.prose}" if self.prose else ""
+        return f"{self.pages} pages{fts}{gone}{prose}"
 
 
 def _sha256(path: Path) -> Optional[str]:
@@ -102,15 +104,38 @@ def nearest_parent(page_id: str, live: set[str]) -> str:
     return OVERVIEW_ID
 
 
+def _previous_prose_pages(conn: sqlite3.Connection, scan_id: int) -> dict[str, Page]:
+    """Prose-bearing pages of the last build — this scan's (a rebuild) or else the previous scan's (M3.7.a)."""
+    for sid in (scan_id, _previous_scan_with_pages(conn, scan_id)):
+        if sid is None:
+            continue
+        prev_factory = conn.row_factory
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute("SELECT * FROM pages WHERE scan_id = ? AND prose_ref IS NOT NULL", (sid,)).fetchall()
+            any_rows = conn.execute("SELECT 1 FROM pages WHERE scan_id = ? LIMIT 1", (sid,)).fetchone()
+        finally:
+            conn.row_factory = prev_factory
+        if any_rows:
+            return {r["page_id"]: Page.from_row(r) for r in rows}
+    return {}
+
+
 def build_pages(conn: sqlite3.Connection, scan_id: int, repo: Path, *, commit: str = "",
-                config_hash: str = "", extra: Optional[dict] = None, dirty: bool = False) -> BuildResult:
-    """Build and store every page for *scan_id*; tombstone pages that disappeared."""
+                config_hash: str = "", extra: Optional[dict] = None, dirty: bool = False,
+                prose: Optional[Callable[[list[Page], dict[str, Page]], str]] = None) -> BuildResult:
+    """Build and store every page for *scan_id*; tombstone pages that disappeared.
+
+    *prose* (``--prose`` scans, M3.7.a): called with the built pages and the previous build's prose pages
+    before anything is stored; it adds narrative sections in place and returns a one-line summary.
+    """
     from ..store.fts import fts5_available, rebuild_fts
 
     ctx = BuildContext(conn=conn, scan_id=scan_id, repo=Path(repo), commit=commit,
                        config_hash=config_hash, extra=dict(extra or {}), dirty=dirty)
     pages = run_builders(ctx)
     _stamp_source_hashes(pages, Path(repo))
+    prose_detail = prose(pages, _previous_prose_pages(conn, scan_id)) if prose is not None else None
     conn.execute("DELETE FROM page_links WHERE scan_id = ?", (scan_id,))
     conn.execute("DELETE FROM pages WHERE scan_id = ?", (scan_id,))
     save_pages(conn, scan_id, pages)
@@ -130,7 +155,7 @@ def build_pages(conn: sqlite3.Connection, scan_id: int, repo: Path, *, commit: s
     by_type: dict[str, int] = {}
     for p in pages:
         by_type[p.type] = by_type.get(p.type, 0) + 1
-    return BuildResult(scan_id, len(pages), dict(sorted(by_type.items())), tombstoned, fts_rows)
+    return BuildResult(scan_id, len(pages), dict(sorted(by_type.items())), tombstoned, fts_rows, prose_detail)
 
 
 # ── staleness ─────────────────────────────────────────────────────────────
@@ -204,7 +229,13 @@ def _post_scan(ctx) -> str:
     conn = get_conn(ctx.layout.db_path)
     try:
         commit, cfg_hash, dirty = _scan_meta(conn, ctx.scan_id)
-        result = build_pages(conn, ctx.scan_id, ctx.layout.repo, commit=commit, config_hash=cfg_hash, dirty=dirty)
+        prose = None
+        if ctx.config is not None and not getattr(ctx.config, "no_llm", True):
+            from .prose import runner
+
+            prose = runner(ctx.config, ctx.layout, conn, ctx.scan_id)
+        result = build_pages(conn, ctx.scan_id, ctx.layout.repo, commit=commit, config_hash=cfg_hash, dirty=dirty,
+                             prose=prose)
         conn.commit()
     finally:
         conn.close()

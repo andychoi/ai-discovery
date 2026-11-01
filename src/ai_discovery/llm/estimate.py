@@ -36,6 +36,7 @@ _SCENARIO_CALL = (1500, 500)
 _ROLLUP_CALL = (8000, 3000)        # per domain × doc type
 _REVIEW_PER_DOC = (6000 + 10 * 1500, 1500 + 10 * 50)   # claim extraction + ~10 verifications
 _ONBOARD_CALL = (4000, 1500)
+_PAGE_PROSE_CALL = (2500, 300)     # M3.7.a: one narrative per overview/domain/screen/flow/entity/onboarding page
 RANGE_LOW, RANGE_HIGH = 0.5, 2.0
 
 
@@ -98,6 +99,9 @@ def estimate(config: Any, shape: ScanShape) -> Estimate:
     stages.append(_stage(config, "rollup", "deep", docs, *_ROLLUP_CALL))
     stages.append(_stage(config, "review", "fast", docs, *_REVIEW_PER_DOC))
     stages.append(_stage(config, "onboarding", "standard", shape.domains, *_ONBOARD_CALL))
+    prose_pages = (1 if shape.tier1_chunks or shape.domains else 0) + 2 * shape.domains + shape.scenarios \
+        + shape.screens
+    stages.append(_stage(config, "page_prose", "standard", prose_pages, *_PAGE_PROSE_CALL))
     expected = sum(s.usd for s in stages)
     notes = ["heuristic per-call token sizes, not calibrated; range is 0.5×–2× the expected value",
              "response-cache hits and prompt caching are not subtracted (they only lower the cost)"]

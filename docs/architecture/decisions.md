@@ -363,6 +363,28 @@ code and no edges). The scenario's trigger type comes from the evidence kind (ht
 
 ---
 
+## Page Prose Layer (M3.7.a)
+
+### Decision
+With `--prose`, overview, domain, screen, flow, entity and onboarding pages get one **Narrative** section,
+written by the `standard` model from the page's deterministic facts and structural text (`pages/prose.py`,
+prompt in `prompts/`). Builders decide coverage; the LLM only names and narrates. The structural sections are
+never edited.
+
+- Key (`pages.prose_ref`) = sha256(facts, title, type, prompt id + version, model, role) — ADR-0002.
+  Same key as the previous build → reuse with no call; otherwise the response cache answers identical prompts.
+- Truncated or empty answers are invalid: the key is remembered in the response cache file and not re-asked.
+- Failure or budget reached: existing prose is kept (`freshness: stale` when its facts changed); a page that
+  never had prose gets a stub at confidence 0.3. Prose pages are 0.8 (ADR-0005).
+- Spend is recorded in `llm_costs` as `page_prose` (never replacing the pipeline's rows) and counts against
+  what is left of the scan budget; failures become `degradations` (stage `pages`).
+
+### Why
+Facts are verifiable and cheap; narration is not. Keeping the LLM to one section per page bounds cost (one
+call per prose page, zero when facts are unchanged) and keeps every structural claim citable.
+
+---
+
 ## MANUAL Node Injection Heuristics
 
 ### Decision

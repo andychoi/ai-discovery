@@ -79,7 +79,7 @@
 - **Out of scope:** —
 
 ### M3.7.a Prose layer
-- **Status:** In progress (rm/M3.7a-prose-layer, 2026-11-01)
+- **Status:** Done (91ddfb1)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M3.5, M1.11

@@ -326,8 +326,6 @@ def _scan_once(g: Globals, app, layout, cfg, run, use_prose: bool, quote, decisi
         progress.stage("scan", "start", repo=str(layout.repo), prose=use_prose)
     kwargs = {} if rescan is None else {"rescan_": rescan}
     status = run(layout=layout, config=cfg, resume_=resume, only_=only_stages, **kwargs)
-    if use_prose and decision is not None:
-        _record(layout, cfg, branch, quote, decision)
     if status == "budget_exceeded":
         if g.progress == "json":
             progress.error("budget exceeded")
@@ -346,6 +344,8 @@ def _scan_once(g: Globals, app, layout, cfg, run, use_prose: bool, quote, decisi
             conn.close()
     outcome = "unchanged" if status is None else status
     hooks = run_post_scan(ScanContext(layout, cfg, scan_id, outcome)) if scan_id else []
+    if use_prose and decision is not None:   # after the hooks: page prose (M3.7.a) is part of the spend
+        _record(layout, cfg, branch, quote, decision)
     summary = _summary(layout, scan_id, cfg, outcome)
     for h in hooks:
         if not h.ok:
