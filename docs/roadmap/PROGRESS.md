@@ -24,6 +24,7 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 | migration | 0004 | M5.10 (annotations) | 2026-10-31 |
 | migration | 0005 | M2.4 (cost estimates vs actual) | 2026-11-01 |
 | migration | 0006 | M2.8 (scan_runs.worktree) | 2026-11-01 |
+| migration | 0007 | M2.6 (page_push status) | 2026-11-01 |
 
 ---
 
