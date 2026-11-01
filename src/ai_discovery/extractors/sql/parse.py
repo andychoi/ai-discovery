@@ -21,9 +21,17 @@ except ImportError:  # pragma: no cover - declared dependency; the regex path st
 
 from .literals import DYN
 
+import logging as _logging
+
+# sqlglot warns per unsupported statement; the regex fallback already counts those (degradation sql_regex_fallback)
+_logging.getLogger("sqlglot").setLevel(_logging.ERROR)
+
 DIALECTS = ("tsql", "postgres", "mysql", "oracle")
 WRITE_KINDS = {"Insert": "insert", "Update": "update", "Delete": "delete", "Merge": "merge"}
 DDL_KINDS = {"Create": "create", "Alter": "alter", "Drop": "drop"}
+# procedural blocks swallow the statements after them (`IF … THROW …; INSERT …` parses as one IfBlock):
+# never trust them for table facts — the statement goes to the regex fallback instead
+_PROCEDURAL = frozenset({"IfBlock", "WhileBlock", "Block"})
 _GO = re.compile(r"^\s*GO\s*;?\s*$", re.I | re.M)
 
 
@@ -64,7 +72,7 @@ def parse_sql(text: str, dialects: Iterable[str] = DIALECTS) -> list[StatementFa
                 trees = [t for t in sqlglot.parse(text, read=d) if t is not None]
             except Exception:
                 continue
-            if trees and not any(isinstance(t, exp.Command) for t in trees):
+            if trees and not any(isinstance(t, exp.Command) or type(t).__name__ in _PROCEDURAL for t in trees):
                 return [_facts(t, t.sql(dialect=d)) for t in trees]
     out: list[StatementFacts] = []
     for stmt_text in _statements(text):
@@ -75,7 +83,8 @@ def parse_sql(text: str, dialects: Iterable[str] = DIALECTS) -> list[StatementFa
                     trees = sqlglot.parse(stmt_text, read=d)
                 except Exception:
                     continue
-                if trees and trees[0] is not None and not isinstance(trees[0], exp.Command):
+                if trees and trees[0] is not None and not isinstance(trees[0], exp.Command) \
+                        and type(trees[0]).__name__ not in _PROCEDURAL:
                     tree = trees[0]
                     break
         if tree is None:

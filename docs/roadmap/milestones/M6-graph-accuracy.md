@@ -141,7 +141,7 @@
 - **Out of scope:** —
 
 ### M6.10 Stored procedures + EXEC edges
-- **Status:** In progress (rm/M6.10-stored-procs, 2026-11-01)
+- **Status:** Done (4357dbb)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.8

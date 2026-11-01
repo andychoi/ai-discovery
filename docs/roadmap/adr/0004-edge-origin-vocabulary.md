@@ -30,6 +30,7 @@ repowise's changelog shows two recurring classes of fixes. One is false edges fr
    | `receiver_global` | 0.75 | receiver type known, type found repo-wide by unique name |
    | `global_unique` | 0.50 | bare name unique repo-wide, same language, not a builtin, callable |
    | `sql_parsed` | 0.90 | table read/write edge from a SQL statement sqlglot parsed in the caller's code (M6.8); the statement decides `reads_table` vs `writes_table` |
+   | `proc_call` | 0.90 | call to a stored procedure by an explicit call form — `CommandType.StoredProcedure` with a bare-name literal, JDBC `{call x}`, `EXEC x`, `withProcedureName("x")`, MyBatis `CALLABLE` (M6.10); edge kind `calls_proc` |
    | `sql_regex` | 0.60 | table read/write edge from regex fallback when sqlglot cannot parse the statement (M6.8) |
    | `external_client` | 0.90 | call through a known client library (HTTP/queue/cache/payment SDK) to a synthesized external-system node; edge kind `calls_external`, evidence `framework` (added in M1.12.a) |
 

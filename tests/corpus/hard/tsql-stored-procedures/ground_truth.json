@@ -1,0 +1,19 @@
+{
+  "project": "tsql-stored-procedures",
+  "framework": "ado.net",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "OrderRepository.Place", "callee_suffix": "sqlproc::usp_placeorder", "min_confidence": 0.75},
+    {"caller_suffix": "sqlproc::usp_placeorder", "callee_suffix": "sql::Orders", "min_confidence": 0.5},
+    {"caller_suffix": "sqlproc::usp_placeorder", "callee_suffix": "sql::Customers", "min_confidence": 0.5},
+    {"caller_suffix": "sqlproc::usp_placeorder", "callee_suffix": "sqlproc::usp_auditorder", "min_confidence": 0.75},
+    {"caller_suffix": "sqlproc::usp_auditorder", "callee_suffix": "sql::AuditLog", "min_confidence": 0.5}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "csharp",
+  "_README": "Labelled from source. OrderRepository.Place runs dbo.usp_PlaceOrder through a SqlCommand with CommandType.StoredProcedure. db/procedures.sql defines usp_PlaceOrder (reads Customers in an IF EXISTS check, inserts into Orders, EXECs usp_AuditOrder) and usp_AuditOrder (inserts into AuditLog). Procedure names compare case-insensitively (T-SQL), hence the lower-cased sqlproc:: keys; table edges may come from the regex fallback (procedural T-SQL), so their floor is 0.5.",
+  "hard_case": {"catalog": "Stored procedures: code → proc, proc → table, proc → proc (EXEC)", "item": "M6.10"}
+}

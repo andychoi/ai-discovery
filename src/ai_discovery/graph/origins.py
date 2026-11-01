@@ -42,6 +42,9 @@ _ORIGIN_LIST = [
     # statement decides reads_table vs writes_table (``table_edge``), the origin only the confidence.
     Origin("sql_parsed", 0.90, edge_kind="reads_table"),
     Origin("sql_regex", 0.60, edge_kind="reads_table"),
+    # M6.10: code / procedure / MyBatis CALLABLE → stored procedure, by an explicit call form (CommandType.
+    # StoredProcedure, {call x}, EXEC x, withProcedureName)
+    Origin("proc_call", 0.90, edge_kind="calls_proc"),
     # Outbound call through a known client library (axios/kafka/redis/stripe…)
     # to a synthesized external-system node (extractors/external_system_extractor.py).
     Origin("external_client", 0.90, edge_kind="calls_external", evidence_kind="framework"),

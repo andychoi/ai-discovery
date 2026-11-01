@@ -664,3 +664,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Found while testing:** an XML comment containing `<select>` swallowed the next real statement; comments are now stripped before matching.
 - **Verify:** `pytest -q tests -k mybatis` → 3 passed; full `pytest -q` → 1865 passed, 2 skipped; `bench gate`, `--sealed`, `--external` ok; `roadmap_lint` ok.
 - **Follow-ups:** an intermittent full-suite failure (about 1 run in 6, not reproduced in 4 consecutive runs with `-rf`) predates this item — catch its name in CI; `statementType="CALLABLE"` → stored procedure edges (M6.10). No repowise code was copied or translated.
+
+## 2026-11-01 — M6.10 — Stored procedures + EXEC edges
+- **Branch/commit:** rm/M6.10-stored-procs @ 4357dbb
+- **Changes:** `extractors/sql/procs.py` (new), `extractors/sql/parse.py` (procedural blocks distrusted; sqlglot warnings silenced — the fallback is already counted), `graph/origins.py` (`proc_call` 0.90, `calls_proc`), `stages/graph.py` (procedures + edges, degradation `proc_regex_fallback`), `tests/corpus/runner.py`, `tests/test_stored_procs_m610.py` (3), hard cases `tsql-stored-procedures` (dev) + `csharp-ado-procs` (sealed) + baselines, docs (ADR-0004 row, `decisions.md` Stored procedures).
+- **Scope note:** graph stage, origins and runner are outside Owns (lane C/Q); ADR-0004 gains one origin.
+- **Found while doing it:** sqlglot parses `IF NOT EXISTS (…) THROW …; INSERT …` as one `IfBlock` that swallows the INSERT — a whole-body parse "succeeded" with no tables. Procedural blocks now send their statement to the regex fallback, and the remaining DML parses on its own.
+- **Measured:** both hard cases (written from source before the extractor; the sealed one's details were not inspected, only its aggregate) score 1.0; baselines are new entries. External repos unchanged (no stored procedures in the pinned repos). Prevalence of procedures in target estates is high for legacy .NET (Inference) — pin an owner repo to measure.
+- **Verify:** `pytest -q tests -k "proc or sql or mybatis"`; full `pytest -q` → 1868 passed, 2 skipped; `bench gate`, `--sealed`, `--external` ok; `roadmap_lint` ok.
+- **Follow-ups:** Oracle packages (`CREATE PACKAGE BODY`) and PL/SQL cursors are not split per procedure; dynamic SQL inside procedures is skipped, not hinted. No repowise code was copied or translated.

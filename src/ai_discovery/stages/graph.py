@@ -64,6 +64,18 @@ def run(ctx: RunContext) -> None:
         table_nodes = table_nodes + statements + [t for t in mb_tables if t.qualified_name not in known]
         table_edges = table_edges + mb_edges
         console.print(f"  MyBatis: [green]{len(statements)}[/] mapper statements")
+    # M6.10: stored procedures — definitions in .sql files, calls from code / procedures / MyBatis CALLABLE
+    from ..extractors import read_sql_file_nodes
+    from ..extractors.sql.procs import extract_procedures
+    proc_nodes, proc_edges, proc_stats = extract_procedures(read_sql_file_nodes(resolved.repo_path), all_nodes,
+                                                            statements)
+    if proc_edges or proc_nodes:
+        known = {n.qualified_name for n in table_nodes}
+        table_nodes = table_nodes + [n for n in proc_nodes if n.qualified_name not in known]
+        table_edges = table_edges + proc_edges
+        ctx.degrade("sql", "proc_regex_fallback", proc_stats.get("sql_regex_fallback", 0))
+        console.print(f"  Stored procedures: [green]{sum(1 for n in proc_nodes if n.node_type == 'stored_procedure')}"
+                      f"[/] ({len(proc_edges)} call/table edges)")
     if table_edges:
         ext_nodes = ext_nodes + table_nodes
         ext_edges = ext_edges + table_edges

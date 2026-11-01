@@ -1,0 +1,17 @@
+{
+  "project": "csharp-ado-procs",
+  "framework": "dapper",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "InvoiceStore.Close", "callee_suffix": "sqlproc::closeinvoice", "min_confidence": 0.75},
+    {"caller_suffix": "sqlproc::closeinvoice", "callee_suffix": "sql::Invoices", "min_confidence": 0.5},
+    {"caller_suffix": "sqlproc::closeinvoice", "callee_suffix": "sql::PendingCharges", "min_confidence": 0.5}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "csharp",
+  "_README": "Labelled from source. InvoiceStore.Close runs billing.CloseInvoice through Dapper with commandType: CommandType.StoredProcedure. database/billing.sql defines it (CREATE OR ALTER, no BEGIN/END): it updates billing.Invoices and deletes from billing.PendingCharges.",
+  "hard_case": {"catalog": "Stored procedures: code → proc, proc → table, proc → proc (EXEC)", "item": "M6.10"}
+}

@@ -137,7 +137,10 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
     _tables, table_edges, _ = extract_table_access(nodes)
     statements = read_mapper_statements(repo)
     _mb_tables, mb_edges = mybatis_edges(statements, nodes)
-    edges = edges + table_edges + mb_edges
+    from ai_discovery.extractors.sql.procs import extract_procedures
+    from ai_discovery.extractors.sql_extractor import read_sql_file_nodes
+    _procs, proc_edges, _ = extract_procedures(read_sql_file_nodes(repo), nodes, statements)
+    edges = edges + table_edges + mb_edges + proc_edges
     nodes = nodes + statements
     relationships = extract_relationships(nodes)
     ext_nodes, ext_edges = extract_external_systems(nodes)

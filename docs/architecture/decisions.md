@@ -68,6 +68,19 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
 - **Foreign keys** also come from `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` and from bracket/back-tick quoted
   table constraints, which the regex missed.
 
+### Stored procedures (M6.10)
+- **Procedure nodes** (`stored_procedure`, `sqlproc::<name>`): from `CREATE [OR ALTER | OR REPLACE] PROC | PROCEDURE |
+  FUNCTION` in `.sql` files; schema, brackets and case are dropped from the key (T-SQL compares names
+  case-insensitively). A procedure that code calls but no file defines still gets a node (`defined: false`): it
+  lives only in the database.
+- **Calls into procedures** use origin `proc_call` (0.90, `calls_proc`), and only from an explicit call form:
+  `CommandType.StoredProcedure` with a bare-name literal (ADO.NET, Dapper), JDBC `{call x}` / `{? = call x}`,
+  `withProcedureName`/`withFunctionName`, `EXEC x`, MyBatis `CALLABLE` statements. `EXEC (@sql)` and
+  `sp_executesql` are dynamic, never names.
+- **Procedure bodies → tables** go through the M6.8 table-access pass. `BEGIN`/`END`/`COMMIT`/`SET NOCOUNT` lines
+  become statement breaks; a statement sqlglot parses as a procedural block (`IF … THROW …`, `WHILE`) is never
+  trusted — it would swallow the statements after it — and goes to the keyword fallback (`sql_regex`).
+
 ### MyBatis mappers (M6.9)
 - A mapper statement is the body of the interface method its `namespace` + `id` name: it becomes a node
   `mybatis::<namespace>.<id>` (`sql_statement`, holding the flattened SQL), bound from the interface method by a
