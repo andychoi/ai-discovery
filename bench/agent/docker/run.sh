@@ -28,11 +28,13 @@ mounts=(-v "$REPO:/code-intel/ai-discovery" -v "uv-cache-agent-eval:/home/bench/
 [[ -d "$PARENT/sample-apps" ]] && mounts+=(-v "$PARENT/sample-apps:/code-intel/sample-apps:ro")
 
 cmd="${1:-check}"; shift || true
+args=""
+if [[ $# -gt 0 ]]; then args="$(printf '%q ' "$@")"; fi
 case "$cmd" in
   check)     inner='java -version 2>&1 | head -1; dotnet --version; node --version; claude --version; git --version; python -m bench.agent validate' ;;
-  dev-run)   inner="python -m bench.agent dev-run --base-url $GATEWAY $(printf '%q ' "$@")" ;;
+  dev-run)   inner="python -m bench.agent dev-run --base-url $GATEWAY $args" ;;
   shell)     inner='bash' ;;
-  *)         inner="python -m bench.agent $cmd $(printf '%q ' "$@")" ;;
+  *)         inner="python -m bench.agent $cmd $args" ;;
 esac
 exec docker run --rm -i $([[ -t 0 ]] && echo -t) --add-host host.docker.internal:host-gateway \
   ${env_args[@]+"${env_args[@]}"} "${mounts[@]}" "$IMAGE" \
