@@ -523,6 +523,10 @@ class _Resolver:
         # M6.3: a parameter/local shadows a field; the outer type (`List`) beats the JPA view (`Item`)
         type_name = (local.get(receiver) if "." not in receiver else None) or rtypes.get(receiver) \
             or rtypes.get(last) or ftypes.get(receiver) or ftypes.get(last)
+        if not type_name and receiver.endswith(")") and _family(caller.language) in _TYPED_DECLS_LANGS:
+            # M6.16: `orders.find(id).total()` — the receiver is a call; type it from the declared return
+            # type of the repo method it resolves to (a library return type is then `external` below)
+            type_name = self._returned_type(caller, receiver, imports, 0) or None
         declared = bool(type_name)
         if not type_name:
             # static call on a type name: `OrderService.create()` (JS/C#/Java statics)
@@ -538,6 +542,8 @@ class _Resolver:
                 return True
             short = type_name.rsplit(".", 1)[-1]
             if self._via_interface_declaration(caller, site, name, short, receiver, imports, call_ref):
+                return True
+            if declared and self._via_extension(caller, site, name, short, receiver, call_ref):
                 return True
             if declared and _family(caller.language) in _TYPED_DECLS_LANGS \
                     and not any(n.node_type in _TYPE_DECLS for n in self.by_name.get(short, [])):
@@ -564,6 +570,72 @@ class _Resolver:
             self._edge(caller, found[0], "inherited", call_ref, receiver=receiver)
             return True
         return self._via_implementations(caller, site, name, t.name, receiver, call_ref, bases=t.bases or [])
+
+    def _via_extension(self, caller, site, name, short, receiver, call_ref) -> bool:
+        """C# extension method in the repo on a type outside it (`builder.RegisterViews()` with
+        `static MauiAppBuilder RegisterViews(this MauiAppBuilder b)`): the declared type picks it (M6.16)."""
+        found = [n for n in self.by_name.get(name, []) if n.language == caller.language
+                 and (n.framework_hints or {}).get("extends_type") == short]
+        if len(found) == 1:
+            self._edge(caller, found[0], "receiver_typed", call_ref, receiver=receiver)
+            return True
+        if found:
+            self._miss(caller, site, call_ref, "ambiguous", len(found))
+            return True
+        return False
+
+    def _returned_type(self, caller, call_text: str, imports, depth: int) -> str:
+        """Outer declared return type of the repo method *call_text* (`a.find(x)`, `make()`, `this.m()`,
+        `a.b().c()`) resolves to; '' when it does not resolve to exactly one repo method with a type."""
+        head = _strip_call(call_text)
+        if not head or head.startswith(".") or depth > _MAX_CHAIN_DEPTH:
+            return ""   # `.m()`: the chain's head was lost (e.g. split by an `#if` block) — untypable
+        inner, _, method = head.rpartition(".")
+        if "(" in method or not method.isidentifier():
+            return ""
+        type_name = self._receiver_type_name(caller, inner or None, imports, depth)
+        cls = self._receiver_class(caller, inner or None, imports, depth, type_name)
+        target = None
+        if cls is not None:
+            target = self.qualified.get(f"{cls.qualified_name}.{method}")
+            if target is None:
+                found = self._on_ancestors(cls, method)
+                target = found[0] if len(found) == 1 else None
+        elif type_name:   # a foreign type: a repo extension method on it (`services.AddOrders()`)
+            ext = [n for n in self.by_name.get(method, []) if n.language == caller.language
+                   and (n.framework_hints or {}).get("extends_type") == type_name.rsplit(".", 1)[-1]]
+            target = ext[0] if len(ext) == 1 else None
+        return _outer_type(target.return_type) if target is not None else ""
+
+    def _receiver_type_name(self, caller, receiver: str | None, imports, depth: int) -> str:
+        """Declared (or returned) type name of a receiver expression; '' when unknown or `this`."""
+        if receiver is None or receiver in ("this", "base"):
+            return ""
+        if receiver.endswith(")"):
+            return self._returned_type(caller, receiver, imports, depth + 1)
+        cls = self._class_of(caller)
+        local = (caller.framework_hints or {}).get("local_types") or {}
+        rtypes = self.receiver_types.get(cls.qualified_name, {}) if cls is not None else {}
+        ftypes = self.field_types.get(cls.qualified_name, {}) if cls is not None else {}
+        last = receiver.removeprefix("this.")
+        return local.get(receiver) or rtypes.get(last) or ftypes.get(last) or \
+            (receiver if receiver[:1].isupper() else "")
+
+    def _receiver_class(self, caller, receiver: str | None, imports, depth: int,
+                        type_name: str | None = None) -> CodeNode | None:
+        """The one repo type (class, or Java interface with members) a receiver expression denotes."""
+        if receiver is None or receiver in ("this", "base"):
+            return self._class_of(caller)
+        if type_name is None:
+            type_name = self._receiver_type_name(caller, receiver, imports, depth)
+        if not type_name:
+            return None
+        short = type_name.rsplit(".", 1)[-1]
+        types = self._resolve_type(short) or [n for n in self.by_name.get(short, [])
+                                              if n.node_type == "interface" and (n.framework_hints or {}).get("declares_members")]
+        local_types = [t for t in types if self._is_local_type(caller, t, imports)]
+        pick = local_types if len(local_types) == 1 else types
+        return pick[0] if len(pick) == 1 else None
 
     def _via_interface_declaration(self, caller, site, name, short, receiver, imports, call_ref) -> bool:
         """M6.3: a repo interface whose members are emitted (Java) and no repo class implements the call
@@ -759,6 +831,33 @@ def _build_import_index(caller: CodeNode, extra: list[dict] | None = None) -> di
 
 _JS_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue")
 _MAX_REEXPORT_DEPTH = 8   # barrel chains deeper than this are left unresolved (M6.5.a)
+_MAX_CHAIN_DEPTH = 3      # `a().b().c().d()`: deeper call chains are not typed (M6.16)
+
+
+def _strip_call(text: str) -> str:
+    """`orders.find(id)` → `orders.find`; `make<T>(x)` → `make`; '' if *text* is not a call."""
+    text = text.strip()
+    if not text.endswith(")"):
+        return ""
+    depth = 0
+    for i in range(len(text) - 1, -1, -1):
+        depth += {")": 1, "(": -1}.get(text[i], 0)
+        if depth == 0:
+            head = text[:i].rstrip()
+            if head.endswith(">") and "<" in head:     # generic method arguments
+                head = head[: head.rindex("<")]
+            return head
+    return ""
+
+
+def _outer_type(type_text: str | None) -> str:
+    """Declared type → outer unqualified name: `java.util.List<Order>` → `List`, `Order?` → `Order`;
+    void, primitives, arrays and type parameters give ''."""
+    t = (type_text or "").strip().split("<", 1)[0].rstrip("?").strip()
+    t = t.rsplit(".", 1)[-1]
+    if not t or t.endswith("]") or t[:1].islower() or t in ("void", "var", "dynamic") or len(t) == 1:
+        return ""   # len 1: a type parameter (`T get()`), unknown here
+    return t
 
 
 def _module_matches_file(module: str, file_path: str, importer: str = "") -> bool:

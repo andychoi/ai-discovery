@@ -143,6 +143,33 @@ _EXTERNAL_CLIENTS = frozenset({"httpClient", "restClient", "kafkaProducer", "bus
 _HTTP_ATTR_PATTERN = re.compile(r"^Http(Get|Post|Put|Delete|Patch|Head|Options)$")
 
 
+def _tail_operand(text: str) -> str:
+    """The rightmost operand of a receiver (M6.16). The grammar parses `x + _repo?.Find(id)` as a conditional
+    access whose condition is the whole `x + _repo`; the receiver is `_repo`. Text inside brackets is kept."""
+    depth = 0
+    for i in range(len(text) - 1, -1, -1):
+        ch = text[i]
+        if ch in ")]}":
+            depth += 1
+        elif ch in "([{":
+            depth -= 1
+            if depth < 0:
+                return text[i + 1:].strip()
+        elif depth == 0 and (ch.isspace() or ch in "+-*/%&|^=!<>?:,;"):
+            if ch in "<>" and _generic_angle(text, i):
+                continue
+            if ch == ":" and ((i > 0 and text[i - 1] == ":") or text[i + 1:i + 2] == ":"):
+                continue   # `global::Ns.Type` alias qualifier
+            return text[i + 1:].strip()
+    return text.strip()
+
+
+def _generic_angle(text: str, i: int) -> bool:
+    """`Foo<Bar>.Baz` — an angle bracket of a generic type name, not a comparison."""
+    j = text.rfind("<", 0, i + 1) if text[i] == ">" else i
+    return j > 0 and (text[j - 1].isalnum() or text[j - 1] == "_") and ">" in text[j:] and " " not in text[j:text.find(">", j)]
+
+
 def _matches(query: Query, node) -> list[dict[str, list]]:
     """Execute a query and return a list of match dicts (paired captures)."""
     return [caps for _pat_idx, caps in QueryCursor(query).matches(node)]
@@ -280,6 +307,9 @@ class CSharpParser(LanguageParser):
                     "transitions": transitions,
                     "boundaries": boundaries
                 }
+                extends = self._extension_target(m_node)
+                if extends:
+                    m_framework_hints["extends_type"] = extends   # `static T M(this Foo x)` (M6.16)
                 if endpoint_info:
                     m_framework_hints["method"] = endpoint_info["method"]
                     m_framework_hints["route"] = endpoint_info["route"]
@@ -336,6 +366,9 @@ class CSharpParser(LanguageParser):
             if receiver is not None:
                 # `a?.b` / `a!.b` reach the same member as `a.b` (M6.2)
                 receiver = receiver.replace("?.", ".").replace("!.", ".").rstrip("!?")
+                # fluent chains span lines, sometimes around `#if` directives
+                norm = _tail_operand(re.sub(r"\s*\.\s*", ".", re.sub(r"(?m)^\s*#.*$", "", receiver)))
+                receiver = norm or receiver.strip()   # never turn a receiver into a receiver-less call
             sites.append({"name": name_nodes[0].text.decode(), "receiver": receiver})
         return sites
 
@@ -516,6 +549,18 @@ class CSharpParser(LanguageParser):
                                 entry["arg"] = arg
                             attrs.append(entry)
         return attrs
+
+    @staticmethod
+    def _extension_target(method_node) -> str | None:
+        """Outer type an extension method extends (`this IServiceCollection services` → `IServiceCollection`)."""
+        plist = next((c for c in method_node.children if c.type == "parameter_list"), None)
+        first = next((p for p in plist.children if p.type == "parameter"), None) if plist is not None else None
+        if first is None or not any(c.type == "modifier" and c.text == b"this" for c in first.children):
+            return None
+        tn = first.child_by_field_name("type")
+        if tn is None:
+            return None
+        return tn.text.decode().split("<", 1)[0].rstrip("?").rsplit(".", 1)[-1].strip() or None
 
     @staticmethod
     def _extract_params(method_node) -> list[str]:

@@ -90,6 +90,22 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
   120 → 20; `receiver_typed` 19 → 113, `inherited` 8 → 62 (a 24-edge spot check of the new typed and
   inherited edges was all correct; the graded sample needs re-drawing before precision is re-quoted).
 
+### Chained calls and extension methods (M6.16)
+- **`a.b().c()` is typed from `b`'s declared return type** when `b` resolves to exactly one repo method
+  (Java, C#; up to 3 hops; `this.m().x()` and bare `m().x()` included). The outer type is used, so a library
+  return type (`Optional<Owner>`, `List<T>`, `Task<T>`) makes `.c()` `external` — never a same-named repo
+  method. A type-parameter return (`T get()`) types nothing; generic unwrapping is not attempted.
+- **C# extension methods** record the type they extend (`this IServiceCollection s` → `extends_type`). A
+  receiver whose declared or returned type is outside the repo first tries the repo's extension methods of
+  that name on that type (`receiver_typed`); only then is the call `external`.
+- **C# receivers are the rightmost operand.** The grammar parses `1 + _repo?.Find(id)` with the whole binary
+  expression as the access's condition; the receiver is cut to `_repo` (brackets, generic `<…>` and
+  `global::` kept). Fluent chains split across lines lose their whitespace; `#if` lines are dropped. A chain
+  whose head the grammar lost (an `#if` block inside it) is left untyped.
+- Effect: eShop +2 correct typed edges (`ResilientTransaction.New(..).ExecuteAsync`, `IMediator` extension),
+  −2 wrong name guesses (`GetClient().LogoutAsync` on the OIDC client); petclinic 1 edge `global_unique` →
+  `receiver_typed`. Hard case `java-chained-call` 0.5 → 1.0.
+
 ### JS/TS module rules (M6.5.a)
 - **One query table per grammar.** Tree-sitter queries are compiled for JS, TS and TSX and chosen by file
   extension. A query compiled for the JS grammar silently matches nothing on a TS tree, which had left every
