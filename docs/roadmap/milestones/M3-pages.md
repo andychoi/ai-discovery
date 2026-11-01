@@ -78,25 +78,35 @@
 - **Verify:** `pytest -q tests/parity`
 - **Out of scope:** —
 
-### M3.7 Prose layer
-- **Status:** Planned
+### M3.7.a Prose layer
+- **Status:** In progress (rm/M3.7a-prose-layer, 2026-11-01)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M3.5, M1.11
-- **Owns:** `src/ai_discovery/pages/prose.py` (new), `src/ai_discovery/prompts/` (new), `src/ai_discovery/ai/rollup.py` (delete), `src/ai_discovery/generators/` (SDLC tree parts, delete; coordinate with lane D)
+- **Owns:** `src/ai_discovery/pages/prose.py` (new), `src/ai_discovery/prompts/` (new)
 - **Acceptance:**
   - `--prose` adds narrative sections to overview, domain, screen, flow, entity, onboarding pages; deterministic grouping decides coverage, LLM only names/narrates.
   - Reuse via `llm_cache`, key per ADR-0002; unchanged → no call.
   - Provider failure → stub at confidence 0.3 that never overwrites existing prose; truncation → invalid, not retried identically.
-  - Legacy SDLC output removed: ASIS/ASD/ASSC rollup stage, `generators/doc_generator.py` SDLC tree, legacy-mirror files and unused templates deleted; `scan --prose` uses only the page prose layer.
 - **Verify:** `pytest -q tests -k prose` (stub LLM)
+- **Out of scope:** removing the legacy SDLC output (M3.7.b); groundedness checks (M3.8).
+
+### M3.7.b Legacy SDLC output removed
+- **Status:** Planned
+- **Size:** M
+- **Lane:** B
+- **Depends on:** M3.7.a
+- **Owns:** `src/ai_discovery/ai/rollup.py` (delete), `src/ai_discovery/generators/` (SDLC tree parts, delete; coordinate with lane D)
+- **Acceptance:**
+  - Legacy SDLC output removed: ASIS/ASD/ASSC rollup stage, `generators/doc_generator.py` SDLC tree, legacy-mirror files and unused templates deleted; `scan --prose` uses only the page prose layer.
+- **Verify:** `pytest -q tests -k prose`
 - **Out of scope:** —
 
 ### M3.8 Groundedness
 - **Status:** Planned
 - **Size:** M
 - **Lane:** B
-- **Depends on:** M3.7
+- **Depends on:** M3.7.a
 - **Owns:** `src/ai_discovery/pages/grounding.py` (new); reuses `src/ai_discovery/ai/prose_validator.py`, `src/ai_discovery/ai/self_review.py`
 - **Acceptance:**
   - Backticked symbols/paths and links in prose validated against the index; unverifiable claims flagged and reflected in page confidence; one corrective re-ask then stub.
