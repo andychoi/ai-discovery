@@ -127,7 +127,7 @@
 - **Out of scope:** —
 
 ### M3.11 Retire inferred BPMN generation
-- **Status:** Planned
+- **Status:** In progress (rm/M3.11-retire-bpmn, 2026-11-01)
 - **Size:** M
 - **Lane:** A
 - **Depends on:** M4.4.b
