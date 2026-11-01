@@ -198,7 +198,7 @@
 - **Out of scope:** re-grading (the sheets stay; wrong edges simply stop being emitted).
 
 ### M6.16 Chained-call typing
-- **Status:** Planned
+- **Status:** In progress (rm/M6.16-chained-calls, 2026-10-31)
 - **Size:** S
 - **Lane:** C
 - **Depends on:** M6.2, M6.3
