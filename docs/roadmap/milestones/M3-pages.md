@@ -95,15 +95,15 @@
 - **Status:** Planned
 - **Size:** M
 - **Lane:** B
-- **Depends on:** M3.7.a
+- **Depends on:** M3.7.a, M3.10, M2.7
 - **Owns:** `src/ai_discovery/ai/rollup.py` (delete), `src/ai_discovery/generators/` (SDLC tree parts, delete; coordinate with lane D)
 - **Acceptance:**
   - Legacy SDLC output removed: ASIS/ASD/ASSC rollup stage, `generators/doc_generator.py` SDLC tree, legacy-mirror files and unused templates deleted; `scan --prose` uses only the page prose layer.
 - **Verify:** `pytest -q tests -k prose`
-- **Out of scope:** —
+- **Out of scope:** — (waits for M3.10 and M2.7: the legacy `discover ingest`, still exposed until M2.7, delivers this markdown tree to DocHub/Gitea, and its replacement `push` sends the M3.10 page export — deleting the tree first would strand that path)
 
 ### M3.8 Groundedness
-- **Status:** Planned
+- **Status:** In progress (rm/M3.8-grounding, 2026-11-01)
 - **Size:** M
 - **Lane:** B
 - **Depends on:** M3.7.a
