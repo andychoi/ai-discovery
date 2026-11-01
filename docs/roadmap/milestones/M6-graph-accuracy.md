@@ -163,7 +163,7 @@
 - **Out of scope:** —
 
 ### M6.12 Entry-point scoring
-- **Status:** Planned
+- **Status:** In progress (rm/M6.12-entry-points, 2026-11-01)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.7.a, M6.7.b, M6.11
