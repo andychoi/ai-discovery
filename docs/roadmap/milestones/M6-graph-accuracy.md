@@ -7,7 +7,7 @@
 > Every item: add fixtures for the edge cases it fixes, and record bench deltas in PROGRESS.md.
 
 ### M6.1 Walker v2
-- **Status:** Planned
+- **Status:** In progress (rm/M6.1-walker-v2, 2026-10-31)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M0.12
