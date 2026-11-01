@@ -4,8 +4,8 @@
       "table:orders",
       "table:order_items",
       "screen:orders-list",
-      "screen:orders-detail",
-      "screen:orders-invoice"
+      "domain:OrderService",
+      "screen:orders-detail"
     ],
     "remedy": "check the spelling or call `search` first",
     "target": "Order"

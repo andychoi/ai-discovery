@@ -16,8 +16,18 @@
         "type": "symbol"
       },
       {
-        "id": "symbol:com.example.controller.ProductController.list",
+        "id": "flow:com.example.controller.ProductController.list",
         "score": 0.01613,
+        "snippet": "\u2026service.ProductService.[getAllProducts] method src/main\u2026",
+        "sources": [
+          "fts"
+        ],
+        "title": "Flow: list",
+        "type": "flow"
+      },
+      {
+        "id": "symbol:com.example.controller.ProductController.list",
+        "score": 0.01587,
         "snippet": "\u2026service.ProductService.[getAllProducts] Provenance Derived from\u2026",
         "sources": [
           "fts"
@@ -27,7 +37,7 @@
       },
       {
         "id": "file:src/main/java/com/example/service/ProductService.java",
-        "score": 0.01587,
+        "score": 0.01562,
         "snippet": "\u2026service.ProductService.[getAllProducts] method 14 1\u2026",
         "sources": [
           "fts"
@@ -37,7 +47,7 @@
       },
       {
         "id": "endpoint:GET-/api/catalog/products",
-        "score": 0.01562,
+        "score": 0.01538,
         "snippet": "\u2026Calls - com.example.service.ProductService.[getAllProducts] Provenance Derived from structure (parsed code\u2026",
         "sources": [
           "fts"
@@ -63,7 +73,7 @@
     "omitted_count": 0,
     "response_budget": {
       "max_tokens": 4000,
-      "used_tokens": 440
+      "used_tokens": 492
     },
     "stale_warning": null,
     "tool": "search",
@@ -72,7 +82,7 @@
   "omitted": [],
   "status": "ok",
   "totals": {
-    "hits": 4
+    "hits": 5
   },
   "truncated": false
 }

@@ -45,7 +45,10 @@ def run(ctx: RunContext) -> None:
                         json.dumps(node.annotations),
                         json.dumps(node.params),
                         node.return_type,
-                        json.dumps(node.framework_hints),
+                        # M3.4: parse-time base types ride along, so graphs rebuilt from the DB (pages,
+                        # estimate, rehydrate) see the same base-type contracts as the live scan
+                        json.dumps({**node.framework_hints, "bases": list(node.bases)} if node.bases
+                                   else node.framework_hints),
                         node.domain,
                         node.file_hash,
                     ),

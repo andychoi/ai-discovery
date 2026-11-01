@@ -1,11 +1,11 @@
 {
   "data": {
     "counts": {
-      "batch_jobs": 0,
+      "batch_jobs": 1,
       "endpoints": 9,
       "entities": 0,
       "files": 14,
-      "flows": 0,
+      "flows": 10,
       "screens": 11,
       "stored_procs": 0,
       "symbols": 41,
@@ -15,52 +15,52 @@
       {
         "name": "entity",
         "node_count": 13,
-        "page_id": null
+        "page_id": "domain:entity"
       },
       {
         "name": "private",
         "node_count": 6,
-        "page_id": null
+        "page_id": "domain:private"
       },
       {
         "name": "ProductController",
         "node_count": 4,
-        "page_id": null
+        "page_id": "domain:ProductController"
       },
       {
         "name": "OrderController",
         "node_count": 3,
-        "page_id": null
+        "page_id": "domain:OrderController"
       },
       {
         "name": "OrderService",
         "node_count": 3,
-        "page_id": null
+        "page_id": "domain:OrderService"
       },
       {
         "name": "ProductService",
         "node_count": 3,
-        "page_id": null
+        "page_id": "domain:ProductService"
       },
       {
         "name": "repository",
         "node_count": 3,
-        "page_id": null
+        "page_id": "domain:repository"
       },
       {
         "name": "CustomerController",
         "node_count": 2,
-        "page_id": null
+        "page_id": "domain:CustomerController"
       },
       {
         "name": "CustomerService",
         "node_count": 2,
-        "page_id": null
+        "page_id": "domain:CustomerService"
       },
       {
         "name": "batch",
         "node_count": 2,
-        "page_id": null
+        "page_id": "domain:batch"
       }
     ],
     "entry_points": [
@@ -161,7 +161,7 @@
     "omitted_count": 0,
     "response_budget": {
       "max_tokens": 4000,
-      "used_tokens": 779
+      "used_tokens": 821
     },
     "stale_warning": null,
     "tool": "get_overview",

@@ -357,8 +357,9 @@ code and no edges). The scenario's trigger type comes from the evidence kind (ht
   `event.listen(session, 'after_commit', f)`) are not seen; nor are framework overrides with no contract in the
   table (MAUI `OnHandlerChanged`). Add a contract or registration pattern when a bench repo needs it.
 - A public helper on an ASP.NET `Controller` is counted (it *is* routable by convention unless `[NonAction]`).
-- `bases` are parse-time only (not persisted), so a resumed scan that rehydrates nodes from the DB loses the
-  base-type contracts; other evidence still applies.
+- `bases` are stored with each node's `framework_hints` since M3.4, so graphs rebuilt from the DB (resumed
+  scans, flow pages, the cost estimate) score the same base-type contracts; scans stored before M3.4 lack them
+  until rescanned.
 
 ---
 

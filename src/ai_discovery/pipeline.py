@@ -520,6 +520,7 @@ def _load_code_nodes_from_db(db_path: Path, scan_id: int) -> list:
         nodes = []
         for row in rows:
             import json
+            hints = json.loads(row["framework_hints"] or "{}")
             node = CodeNode(
                 file_path=row["file_path"],
                 language=row["language"],
@@ -532,9 +533,10 @@ def _load_code_nodes_from_db(db_path: Path, scan_id: int) -> list:
                 annotations=json.loads(row["annotations"] or "{}"),
                 params=json.loads(row["params"] or "{}"),
                 return_type=row["return_type"],
-                framework_hints=json.loads(row["framework_hints"] or "{}"),
+                framework_hints=hints,
                 domain=row["domain"],
                 file_hash=row["file_hash"] or "",
+                bases=list(hints.get("bases") or []),   # stored with the hints since M3.4
             )
             nodes.append(node)
         return nodes

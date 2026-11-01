@@ -44,7 +44,7 @@
 - **Out of scope:** LLM screen narrative (M3.7).
 
 ### M3.4 Builders: flow, domain, onboarding, batch job, stored proc
-- **Status:** In progress (rm/M3.4-flow-pages, 2026-11-01)
+- **Status:** Done (fe60583)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M3.2, M1.12

@@ -161,6 +161,7 @@ def _scenario_count(conn: sqlite3.Connection, scan_id: int) -> int:
                               qualified_name=row[5], source_code=row[8] or "", line_start=row[6] or 0,
                               line_end=row[7] or 0, annotations=_json(row[9], []), params=_json(row[10], []),
                               framework_hints=_json(row[11], {})))
+        nodes[-1].bases = list(nodes[-1].framework_hints.get("bases") or [])
         by_id[row[0]] = row[5]
     edges = [CallEdge(by_id[a], by_id[b], kind or "direct_call", conf if conf is not None else 1.0,
                       {"resolved_by": origin or ""})

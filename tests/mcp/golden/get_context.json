@@ -15,6 +15,14 @@
         "page_id": "endpoint:GET-/api/catalog/products"
       },
       {
+        "kind": "implements",
+        "page_id": "flow:com.example.controller.ProductController.list"
+      },
+      {
+        "kind": "link",
+        "page_id": "onboarding:ProductController"
+      },
+      {
         "kind": "link",
         "page_id": "overview:system"
       }
@@ -94,7 +102,7 @@
     "omitted_count": 0,
     "response_budget": {
       "max_tokens": 6000,
-      "used_tokens": 585
+      "used_tokens": 620
     },
     "stale_warning": null,
     "tool": "get_context",
@@ -104,7 +112,7 @@
   "status": "ok",
   "totals": {
     "annotations": 0,
-    "backlinks": 4,
+    "backlinks": 6,
     "callees": 1,
     "callers": 0,
     "links": 2,
