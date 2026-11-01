@@ -118,7 +118,7 @@
 - **Out of scope:** Spring profiles/conditional beans; Java config imported from libraries.
 
 ### M6.8 SQL via sqlglot
-- **Status:** Planned
+- **Status:** In progress (rm/M6.8-sqlglot, 2026-11-01)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M1.12
