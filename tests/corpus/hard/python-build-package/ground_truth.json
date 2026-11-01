@@ -1,0 +1,15 @@
+{
+  "project": "python-build-package",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "place_order", "callee_suffix": "assemble_order", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "python",
+  "_README": "Labelled from source. shop/build is an ordinary Python package (the order-building pipeline), not build output; place_order imports assemble_order from it. Skipping every directory named `build` drops it.",
+  "hard_case": {"catalog": "Bare directory-name excludes (packages/, build/) drop real source", "item": "M6.1"}
+}

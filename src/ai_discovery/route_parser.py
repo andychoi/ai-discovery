@@ -30,6 +30,7 @@ class RouteNode:
     path: str | None = None
     component: str | None = None
     component_source: str | None = None
+    component_file: str | None = None   # M6.6: repo-relative file the specifier resolves to
     name: str | None = None
     title: str | None = None
     roles: list[str] = field(default_factory=list)
@@ -305,7 +306,64 @@ def _find_call_array(root, fn_names: set[str]):
     return None
 
 
-def parse_route_file(path: Path, framework: str) -> RouteNode | None:
+_COMPONENT_EXTS = (".vue", ".tsx", ".ts", ".jsx", ".js", ".mjs")
+
+
+def _tsconfig_paths(repo: Path) -> list[tuple[str, list[str]]]:
+    """`compilerOptions.paths` aliases (`"@app/*": ["src/app/*"]`) from tsconfig/jsconfig, prefix → targets."""
+    import json
+    import re as _re
+
+    out: list[tuple[str, list[str]]] = []
+    for name in ("tsconfig.json", "tsconfig.app.json", "jsconfig.json"):
+        f = repo / name
+        if not f.is_file():
+            continue
+        try:   # tsconfig allows comments and trailing commas
+            text = _re.sub(r"//[^\n]*|/\*.*?\*/", "", f.read_text(encoding="utf-8", errors="replace"), flags=_re.S)
+            data = json.loads(_re.sub(r",\s*([}\]])", r"\1", text))
+        except (OSError, ValueError):
+            continue
+        opts = data.get("compilerOptions") or {}
+        base = opts.get("baseUrl") or "."
+        for alias, targets in (opts.get("paths") or {}).items():
+            out.append((alias.rstrip("*"), [str(Path(base) / t.rstrip("*")) for t in targets]))
+    return out
+
+
+def resolve_component_file(spec: str | None, route_file: Path, repo: Path) -> str | None:
+    """M6.6: the repo-relative file an import specifier of *route_file* names — relative (`./`, `../`),
+    `@/`/`~/` (→ `src/`) or a tsconfig `paths` alias; extensionless and `index` files tried. None when the
+    specifier is a package or no file matches (callers keep the specifier)."""
+    if not spec:
+        return None
+    bases: list[Path] = []
+    if spec.startswith("."):
+        bases.append((route_file.parent / spec))
+    elif spec.startswith(("@/", "~/")):
+        bases.append(repo / "src" / spec[2:])
+    for prefix, targets in _tsconfig_paths(repo):
+        if prefix and spec.startswith(prefix):
+            bases += [repo / t / spec[len(prefix):] for t in targets]
+    for base in bases:
+        cands = [base] + [base.with_name(base.name + e) for e in _COMPONENT_EXTS] + \
+            [base / f"index{e}" for e in _COMPONENT_EXTS]
+        for c in cands:
+            if c.is_file():
+                try:
+                    return c.resolve().relative_to(repo.resolve()).as_posix()
+                except ValueError:
+                    return None
+    return None
+
+
+def _resolve_files(rn: RouteNode, route_file: Path, repo: Path) -> None:
+    rn.component_file = resolve_component_file(rn.component_source, route_file, repo)
+    for c in rn.children:
+        _resolve_files(c, route_file, repo)
+
+
+def parse_route_file(path: Path, framework: str, repo: Path | None = None) -> RouteNode | None:
     lang = _grammar_for_ext(path)
     if lang is None:
         return None
@@ -330,11 +388,17 @@ def parse_route_file(path: Path, framework: str) -> RouteNode | None:
         if array is None:
             jsx_routes = _jsx_to_routes(root, imports)  # Task 5
             if jsx_routes:
-                return RouteNode(children=jsx_routes)
+                root_node = RouteNode(children=jsx_routes)
+                if repo is not None:
+                    _resolve_files(root_node, path, repo)
+                return root_node
 
     if array is None:
         return None
-    return RouteNode(children=_array_to_routes(array, field_map, imports))
+    root_node = RouteNode(children=_array_to_routes(array, field_map, imports))
+    if repo is not None:
+        _resolve_files(root_node, path, repo)
+    return root_node
 
 
 def _jsx_attr(open_node, name: str):

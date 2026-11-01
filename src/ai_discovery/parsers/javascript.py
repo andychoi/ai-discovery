@@ -117,6 +117,55 @@ _QUERIES = {g: {k: Query(lang, src) for k, src in _QUERY_SOURCES.items()} for g,
 _GRAMMAR: ContextVar[str] = ContextVar("js_grammar", default="js")
 
 
+def _ts_type(annotation) -> str:
+    """`: OrderService` / `: Repo<T>` / `: ns.Svc` → the outer type name; '' for primitives, unions, arrays."""
+    if annotation is None:
+        return ""
+    t = next((c for c in annotation.named_children), None)
+    if t is not None and t.type == "generic_type":
+        t = t.child_by_field_name("name") or next((c for c in t.named_children), None)
+    if t is not None and t.type in ("type_identifier", "nested_type_identifier"):
+        return t.text.decode().rsplit(".", 1)[-1]
+    return ""
+
+
+def _value_type(value) -> str:
+    """`new Svc()` → Svc; Angular `inject(Svc)` → Svc."""
+    if value is None:
+        return ""
+    if value.type == "new_expression":
+        ctor = value.child_by_field_name("constructor")
+        return ctor.text.decode().rsplit(".", 1)[-1] if ctor is not None and ctor.type in (
+            "identifier", "member_expression") else ""
+    if value.type == "call_expression":
+        fn, args = value.child_by_field_name("function"), value.child_by_field_name("arguments")
+        if fn is not None and fn.text == b"inject" and args is not None and args.named_children \
+                and args.named_children[0].type == "identifier":
+            return args.named_children[0].text.decode()
+    return ""
+
+
+def _local_types(fn_node) -> dict[str, str]:
+    """TS parameters with a type, and `const x: T` / `const x = new T()` / `inject(T)` locals (M6.6)."""
+    out: dict[str, str] = {}
+    stack = [fn_node]
+    while stack:
+        n = stack.pop()
+        if n is not fn_node and n.type in ("class_declaration", "class"):
+            continue
+        if n.type in ("required_parameter", "optional_parameter"):
+            pname, t = n.child_by_field_name("pattern"), _ts_type(n.child_by_field_name("type"))
+            if pname is not None and pname.type == "identifier" and t:
+                out.setdefault(pname.text.decode(), t)
+        elif n.type == "variable_declarator":
+            name = n.child_by_field_name("name")
+            t = _ts_type(n.child_by_field_name("type")) or _value_type(n.child_by_field_name("value"))
+            if name is not None and name.type == "identifier" and t:
+                out.setdefault(name.text.decode(), t)
+        stack.extend(n.children)
+    return out
+
+
 def _grammar_for(file_path: Path) -> str:
     return {".ts": "ts", ".mts": "ts", ".cts": "ts", ".tsx": "tsx"}.get(file_path.suffix.lower(), "js")
 
@@ -353,7 +402,8 @@ class JavaScriptParser(LanguageParser):
                             imports=imports,
                             framework_hints={
                                 "transitions": transitions,
-                                "boundaries": boundaries
+                                "boundaries": boundaries,
+                                **({"local_types": lt} if (lt := _local_types(member)) else {}),
                             }
                         )
                     )
@@ -403,7 +453,8 @@ class JavaScriptParser(LanguageParser):
                     imports=imports,
                     framework_hints={
                         "transitions": transitions,
-                        "boundaries": boundaries
+                        "boundaries": boundaries,
+                        **({"local_types": lt} if (lt := _local_types(node)) else {}),
                     }
                 )
             )
@@ -461,7 +512,8 @@ class JavaScriptParser(LanguageParser):
                 imports=imports,
                 framework_hints={
                     "transitions": transitions,
-                    "boundaries": boundaries
+                    "boundaries": boundaries,
+                    **({"local_types": lt} if (lt := _local_types(value_node)) else {}),
                 }
             )
         )
@@ -568,11 +620,25 @@ class JavaScriptParser(LanguageParser):
         if body is None:
             return out
         for member in body.children:
+            if member.type == "public_field_definition":   # TS `repo: Repo`, `http = inject(Http)`, `= new X()`
+                name = member.child_by_field_name("name")
+                t = _ts_type(member.child_by_field_name("type")) or _value_type(member.child_by_field_name("value"))
+                if name is not None and t:
+                    out[name.text.decode()] = t
+                continue
             if member.type != "method_definition":
                 continue
             name = cls._find_child(member, "property_identifier")
             if name is None or name.text.decode() != "constructor":
                 continue
+            params = member.child_by_field_name("parameters")
+            for prm in params.named_children if params is not None else []:
+                # M6.6: TS parameter properties (`private readonly orders: OrderService`) — Angular/Nest DI
+                if prm.type in ("required_parameter", "optional_parameter") and any(
+                        c.type in ("accessibility_modifier", "readonly") for c in prm.children):
+                    pname, t = prm.child_by_field_name("pattern"), _ts_type(prm.child_by_field_name("type"))
+                    if pname is not None and pname.type == "identifier" and t:
+                        out[pname.text.decode()] = t
             for assign in cls._descendants(member, "assignment_expression"):
                 left = assign.child_by_field_name("left")
                 right = assign.child_by_field_name("right")

@@ -1,0 +1,15 @@
+{
+  "project": "js-monorepo-packages",
+  "framework": "",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "checkout", "callee_suffix": "applyDiscount", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "javascript",
+  "_README": "Labelled from source. A yarn/npm workspace keeps all source under packages/: checkout (packages/api) calls applyDiscount from packages/core through a relative require. Walkers that skip any directory named `packages` (a NuGet folder elsewhere) lose the whole monorepo.",
+  "hard_case": {"catalog": "Bare directory-name excludes (packages/, build/) drop real source", "item": "M6.1"}
+}

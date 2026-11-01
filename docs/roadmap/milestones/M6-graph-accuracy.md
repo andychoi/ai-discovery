@@ -80,7 +80,7 @@
 - **Out of scope:** globally registered components; mixins.
 
 ### M6.6 SPA routing + Angular DI
-- **Status:** In progress (rm/M6.6-spa-routing, 2026-10-31)
+- **Status:** Done (2296ad6)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.5.a, M6.5.b

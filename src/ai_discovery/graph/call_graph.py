@@ -558,6 +558,11 @@ class _Resolver:
             if mock:
                 self._miss(caller, site, call_ref, "external")
                 return True
+            if declared and _family(caller.language) == "javascript" and \
+                    not ((imports.get(short) or {}).get("module") or ".").startswith("."):
+                # M6.6: a TS type imported from a package (`HttpClient` from '@angular/common/http')
+                self._miss(caller, site, call_ref, "external")
+                return True
             if declared and _family(caller.language) in _TYPED_DECLS_LANGS \
                     and not any(n.node_type in _TYPE_DECLS for n in self.by_name.get(short, [])):
                 # M6.2: the receiver's declared type is outside the repo (`ILogger<T> _logger`) and nothing

@@ -652,6 +652,8 @@ class ScreenMapper:
         spec = getattr(screen, "fe_component", None)
         if not spec:
             return None
+        if not spec.startswith((".", "@", "~")) and (self.repo_path / spec).is_file():
+            return spec   # M6.6: already resolved against the route file
         # 1) try the tail path verbatim (handles './pages/CustomerList.vue')
         tail = spec.lstrip("./").lstrip("/")
         if tail:

@@ -174,6 +174,18 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
 - Effect on node-express-realworld (@30b68e1): key-edge recall 0.0 → 1.0; 37 `global_unique` edges → `import_exact`;
   21 Prisma `external_client` edges now found. Re-graded sample: all correct (`bench/precision/sheets/CURRENT.json`).
 
+### SPA route files and TS receiver typing (M6.6)
+- **A route's component file is resolved, not globbed.** The import specifier is resolved against the route
+  file (`./`, `../`), `@/`/`~/` (→ `src/`) and tsconfig/jsconfig `paths` aliases, with extensionless and
+  `index` files tried; lazy `import()` (Vue/React) and Angular `loadComponent`/`loadChildren` included. The
+  screen's `fe_component` is that file; the old stem glob (first `Home.vue` anywhere) remains only the fallback
+  for unresolvable specifiers.
+- **TS declarations type receivers**: constructor parameter properties (`private readonly orders:
+  OrderService` — Angular/Nest DI), annotated class fields, `inject(X)` and `new X()` field initialisers;
+  inside functions, typed parameters and `const x: T` / `= new T()` locals. A type imported from a package
+  (`HttpClient` from `@angular/common/http`) makes the call `external`; a type the repo declares as a TS
+  `interface` (not a node) keeps the previous behaviour.
+
 ### Vue single-file components (M6.5.b)
 - **Scripts keep their offsets.** Every byte outside `<script>` / `<script setup>` bodies is blanked (newlines
   kept), so functions get their real `.vue` line numbers; `lang="ts"|"tsx"` picks the grammar.

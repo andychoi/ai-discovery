@@ -91,6 +91,8 @@ def _routenode_to_menuitem(rn: RouteNode, is_route_format: bool) -> "MenuItem":
         or (rn.path.strip("/").split("/")[-1].replace(":", "") if rn.path else "") or "Untitled"
     metadata = dict(rn.raw)
     metadata["component_source"] = rn.component_source
+    if rn.component_file:
+        metadata["component_file"] = rn.component_file   # M6.6: resolved against the route file
     metadata["redirect_to"] = rn.redirect_to
     metadata["is_catch_all"] = rn.is_catch_all
     if is_route_format:
@@ -271,9 +273,10 @@ class FrameworkRoutingDetector(MenuDetector):
         return None
 
     def _detect_vue_router(self, repo: Path) -> Optional[list[MenuItem]]:
-        for fp in [repo/"src"/"router"/"routes.ts", repo/"src"/"router"/"index.ts", repo/"src"/"router"/"routes.js"]:
+        for fp in [repo/"src"/"router"/"routes.ts", repo/"src"/"router"/"index.ts", repo/"src"/"router"/"routes.js",
+                   repo/"src"/"router"/"index.js", repo/"src"/"router.ts", repo/"src"/"router.js"]:
             if fp.exists():
-                root = parse_route_file(fp, "vue")
+                root = parse_route_file(fp, "vue", repo)
                 if root and root.children:
                     return [_routenode_to_menuitem(c, is_route_format=True) for c in root.children]
         return None
@@ -281,7 +284,7 @@ class FrameworkRoutingDetector(MenuDetector):
     def _detect_react_router(self, repo: Path) -> Optional[list[MenuItem]]:
         for fp in [repo/"src"/"router.tsx", repo/"src"/"routes.tsx", repo/"src"/"App.tsx", repo/"src"/"router"/"index.tsx"]:
             if fp.exists():
-                root = parse_route_file(fp, "react")
+                root = parse_route_file(fp, "react", repo)
                 if root and root.children:
                     return [_routenode_to_menuitem(c, is_route_format=True) for c in root.children]
         return None
@@ -289,7 +292,7 @@ class FrameworkRoutingDetector(MenuDetector):
     def _detect_angular_routing(self, repo: Path) -> Optional[list[MenuItem]]:
         for fp in [repo/"src"/"app"/"app-routing.module.ts", repo/"src"/"app"/"app.routes.ts"]:
             if fp.exists():
-                root = parse_route_file(fp, "angular")
+                root = parse_route_file(fp, "angular", repo)
                 if root and root.children:
                     return [_routenode_to_menuitem(c, is_route_format=True) for c in root.children]
         return None
@@ -507,7 +510,7 @@ def build_screen_map(menu_items: list[MenuItem], repo_path: Path) -> list[Screen
                 sid = unique_id(item.id or JsonYamlDetector._slugify(full_path))
                 screen = Screen(
                     screen_id=sid, menu_path=current_crumb, label=item.label, path=full_path,
-                    fe_component=meta.get("component_source") or None,
+                    fe_component=meta.get("component_file") or meta.get("component_source") or None,
                     permissions=item.roles,
                     metadata={k: v for k, v in meta.items() if k not in ("is_screen",)},
                 )
