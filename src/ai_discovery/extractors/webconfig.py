@@ -107,9 +107,13 @@ def read_webconfig_files(repo_path) -> list[CodeNode]:
         except OSError:
             continue
         if name == "web.xml":
-            out += extract_web_xml(text, path)
+            found = extract_web_xml(text, path)
         elif name == "web.config":
-            out += extract_web_config(text, path)
+            found = extract_web_config(text, path)
         else:
-            out += extract_struts(text, path)
+            found = extract_struts(text, path)
+        rel = path.relative_to(root).as_posix()
+        for n in found:   # identity is repo-relative: pages and MCP must not depend on the checkout location
+            n.qualified_name = n.qualified_name.replace(str(path), rel, 1)
+        out += found
     return out

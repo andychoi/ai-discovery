@@ -68,7 +68,7 @@
 - **Out of scope:** web rendering.
 
 ### M3.6 Incremental parity
-- **Status:** In progress (rm/M3.6-incremental-parity, 2026-11-01)
+- **Status:** Done (90e63d5)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M3.5, M1.9

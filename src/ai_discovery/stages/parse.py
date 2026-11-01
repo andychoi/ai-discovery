@@ -17,6 +17,40 @@ from .context import RunContext
 logger = logging.getLogger("ai_discovery.pipeline")
 
 
+def _root_prefixes(repo_path) -> tuple[str, ...]:
+    """The repo root as given and resolved (``/tmp`` vs ``/private/tmp``), each ending in '/'."""
+    from pathlib import Path as _P
+
+    raw = str(repo_path).rstrip("/\\") + "/"
+    try:
+        real = str(_P(repo_path).resolve()).rstrip("/\\") + "/"
+    except OSError:
+        real = raw
+    return tuple(dict.fromkeys((real, raw)))
+
+
+def _relative_identity(nodes, roots: tuple[str, ...]) -> None:
+    """Qualified names and call names that are absolute paths in the repo become repo-relative (M3.6).
+
+    Markup parsers (JSP, WebForms) identify a page by its file; with the absolute path, pages, MCP answers and
+    parse-cache entries all changed with the checkout location. Applied before the cache write, so cached
+    nodes are location-independent too.
+    """
+    def rel(value):
+        if isinstance(value, str):
+            for root in roots:
+                if value.startswith(root):
+                    return value[len(root):].replace("\\", "/")
+        return value
+
+    for n in nodes:
+        n.qualified_name = rel(n.qualified_name)
+        n.calls = [rel(c) for c in n.calls]
+        for site in n.call_sites:
+            if site.get("name"):
+                site["name"] = rel(site["name"])
+
+
 def run(ctx: RunContext) -> None:
     from ..pipeline import _stamp_file_hash, _timed, _with_checkpoint, console
     from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
@@ -64,6 +98,8 @@ def run(ctx: RunContext) -> None:
             enc = decoded.encoding + (":lossy" if decoded.lossy else "")
             return rel, hashlib.sha256(raw).hexdigest(), enc, decoded.is_fallback
 
+        roots = _root_prefixes(resolved.repo_path)
+
         def _parse_one(file_path):
             """Parse a single file with the first matching parser (or load it from
             the parse cache). Returns (nodes, error_exc, cache_entry, hit)."""
@@ -76,9 +112,11 @@ def run(ctx: RunContext) -> None:
                             if key[3]:   # keep the per-scan encoding-fallback count right
                                 from ..core.encoding import read_source
                                 read_source(file_path)
+                            _relative_identity(cached, roots)   # entries written before M3.6
                             return cached, None, None, True
                     try:
                         nodes = p.parse_file(file_path)
+                        _relative_identity(nodes, roots)    # M3.6: no checkout path in symbol identity
                         _stamp_file_hash(nodes, file_path)  # A-2: cross-scan identity
                         if file_path in generated:   # M6.1: designer/codegen output, kept but tagged
                             for _n in nodes:

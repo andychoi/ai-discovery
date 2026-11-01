@@ -705,3 +705,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k builders_flows` → 8 passed; full `pytest -q` → 1901 passed, 2 skipped; `bench gate`, `--sealed` ok; `roadmap_lint` ok.
 - **Follow-ups:** M6.8 `sql_table` nodes have no table pages (`business.tables` predates M6.8), so flows show those tables by name only; the legacy `ONBOARD/` generator can retire once M3.7 prose lands on onboarding pages. No repowise code was copied or translated.
 
+## 2026-11-01 — M3.6 — Incremental parity
+- **Branch/commit:** rm/M3.6-incremental-parity @ 90e63d5
+- **Changes:** `tests/parity/` (new: 3 scripted commit sequences on the golden Spring/JSP repo — edit ×2, rename `CustomerService` → `ClientService`, delete + recreate `OrderExportJob` — each scanned incrementally after every commit and compared page-by-page and link-by-link with a clean scan of a clone of the final commit; a guard that the incremental DB really holds 3 scans and a warm parse cache; a unit test of the identity rule), `stages/parse.py` (`_relative_identity`: qualified names and call names that are absolute paths inside the repo become repo-relative, before the parse-cache write and on cache hits from older entries), `extractors/webconfig.py` (descriptor endpoints named by the repo-relative descriptor path).
+- **Scope note:** `stages/parse.py` (lane A) and `extractors/webconfig.py` (lane C) are outside Owns — the parity test failed until they were fixed.
+- **Found while doing it:** incremental state itself was clean; what differed was the *checkout location*. JSP/WebForms page nodes used the absolute file path as their qualified name (WebForms `Register` call sites and `web.xml`/`web.config` endpoint names embedded it too), so the same commit scanned in two directories rendered different file pages, MCP answers carried local paths, and cached parse entries kept the old path after a repo moved.
+- **Verify:** `pytest -q tests/parity` → 5 passed; full `pytest -q` → 1905 passed, 2 skipped; `bench gate`, `--sealed`, `--external` ok; `roadmap_lint` ok.
+- **Follow-ups:** the corpus runner (`tests/corpus/runner.py`) parses without the parse stage, so its JSP/WebForms ids stay absolute (consistent with its own ground truth). No repowise code was copied or translated.
+
