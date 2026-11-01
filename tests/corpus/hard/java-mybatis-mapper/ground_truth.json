@@ -1,0 +1,19 @@
+{
+  "project": "java-mybatis-mapper",
+  "framework": "mybatis",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "OrderService.openOrders", "callee_suffix": "OrderMapper.findByCustomer", "min_confidence": 0.75},
+    {"caller_suffix": "shop.order.OrderMapper.findByCustomer", "callee_suffix": "mybatis::shop.order.OrderMapper.findByCustomer", "min_confidence": 0.75},
+    {"caller_suffix": "mybatis::shop.order.OrderMapper.findByCustomer", "callee_suffix": "sql::orders", "min_confidence": 0.75},
+    {"caller_suffix": "mybatis::shop.order.OrderMapper.findByCustomer", "callee_suffix": "sql::customers", "min_confidence": 0.75},
+    {"caller_suffix": "mybatis::shop.order.OrderMapper.insertOrder", "callee_suffix": "sql::orders", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "java",
+  "_README": "Labelled from source. OrderMapper is a MyBatis mapper interface; mapper/OrderMapper.xml (namespace shop.order.OrderMapper) implements findByCustomer as a <select> over orders JOIN customers, with an <include> column fragment and a <where>/<if> dynamic clause, and insertOrder as an INSERT INTO orders. Each interface method is bound to its statement, and each statement reads/writes its tables.",
+  "hard_case": {"catalog": "MyBatis mapper XML: namespace + id ↔ interface method; statement SQL → tables", "item": "M6.9"}
+}

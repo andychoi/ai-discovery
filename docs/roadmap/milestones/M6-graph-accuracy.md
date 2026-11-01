@@ -130,7 +130,7 @@
 - **Out of scope:** stored procs (M6.10).
 
 ### M6.9 MyBatis
-- **Status:** In progress (rm/M6.9-mybatis, 2026-11-01)
+- **Status:** Done (4b17fdc)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.8

@@ -55,6 +55,15 @@ def run(ctx: RunContext) -> None:
     table_nodes, table_edges, sql_stats = extract_table_access(all_nodes)
     for kind, count in sql_stats.items():
         ctx.degrade("sql", kind, count)
+    # M6.9: MyBatis mapper statements — interface method → statement (framework) → tables
+    from ..extractors.mybatis import mybatis_edges, read_mapper_statements
+    statements = read_mapper_statements(resolved.repo_path)
+    if statements:
+        mb_tables, mb_edges = mybatis_edges(statements, all_nodes)
+        known = {n.qualified_name for n in table_nodes}
+        table_nodes = table_nodes + statements + [t for t in mb_tables if t.qualified_name not in known]
+        table_edges = table_edges + mb_edges
+        console.print(f"  MyBatis: [green]{len(statements)}[/] mapper statements")
     if table_edges:
         ext_nodes = ext_nodes + table_nodes
         ext_edges = ext_edges + table_edges

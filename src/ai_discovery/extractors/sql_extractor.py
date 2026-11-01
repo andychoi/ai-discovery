@@ -241,7 +241,8 @@ def extract_table_access(nodes: list[CodeNode]) -> tuple[list[CodeNode], list[Ca
         edges.append(table_edge(caller.qualified_name, qn, origin, write=write))
 
     for node in nodes:
-        if node.language == "sql" or not node.source_code or node.node_type in _NOT_CALLERS:
+        if (node.language == "sql" and node.node_type != "sql_statement") or not node.source_code \
+                or node.node_type in _NOT_CALLERS:
             continue   # a class's source repeats its methods' bodies: only callables run SQL
         for f in _node_facts(node):
             if f.dynamic:

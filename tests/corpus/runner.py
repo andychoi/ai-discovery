@@ -131,6 +131,14 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
     # LSP/SCIP tier: use an authoritative symbol index if the fixture ships one.
     from ai_discovery.graph.symbol_index import load_symbol_index
     edges = build_call_graph(nodes, symbol_index=load_symbol_index(repo))
+    # M6.8 table access + M6.9 MyBatis statements, as the graph stage adds them
+    from ai_discovery.extractors.mybatis import mybatis_edges, read_mapper_statements
+    from ai_discovery.extractors.sql_extractor import extract_table_access
+    _tables, table_edges, _ = extract_table_access(nodes)
+    statements = read_mapper_statements(repo)
+    _mb_tables, mb_edges = mybatis_edges(statements, nodes)
+    edges = edges + table_edges + mb_edges
+    nodes = nodes + statements
     relationships = extract_relationships(nodes)
     ext_nodes, ext_edges = extract_external_systems(nodes)
     # HIGH-7: merge deployment-declared backing services, deduped by identity.

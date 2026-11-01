@@ -68,6 +68,16 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
 - **Foreign keys** also come from `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` and from bracket/back-tick quoted
   table constraints, which the regex missed.
 
+### MyBatis mappers (M6.9)
+- A mapper statement is the body of the interface method its `namespace` + `id` name: it becomes a node
+  `mybatis::<namespace>.<id>` (`sql_statement`, holding the flattened SQL), bound from the interface method by a
+  `framework` edge (`binding=mybatis`) when the scan has that method, and linked to its tables by the M6.8
+  table-access pass (`sql_parsed` / `sql_regex`).
+- Dynamic SQL is flattened conservatively — every `<if>`/`<when>`/`<otherwise>`/`<foreach>` body is kept once, so
+  each table any branch can touch is seen; `<include>` fragments are inlined; `#{p}` is a bind parameter; a table
+  named through `${p}` is dynamic and skipped. Comments are removed before statements are matched.
+- Annotation mappers (`@Select("…")` on the interface) need nothing extra: their SQL is an ordinary literal.
+
 ### Markup and descriptor bindings (M6.11)
 - **WebForms directives** Page, Control, Master, WebService (`.asmx`), WebHandler (`.ashx`) and Application
   (`Global.asax`) each name a code class (`Inherits` or `Class`). Handlers and services become `endpoint` nodes

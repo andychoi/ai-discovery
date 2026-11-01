@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="shop.order.OrderMapper">
+  <sql id="orderColumns">o.id, o.customer_id, o.status</sql>
+
+  <select id="findByCustomer" resultType="shop.order.Order">
+    SELECT <include refid="orderColumns"/>, c.name
+    FROM orders o
+    JOIN customers c ON c.id = o.customer_id
+    <where>
+      o.customer_id = #{customerId}
+      <if test="status != null">AND o.status = #{status}</if>
+    </where>
+  </select>
+
+  <insert id="insertOrder" parameterType="shop.order.Order">
+    INSERT INTO orders (customer_id, status)
+    VALUES (#{customerId}, #{status})
+  </insert>
+</mapper>

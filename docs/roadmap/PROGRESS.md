@@ -655,3 +655,12 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Decision:** the owner dropped VB.NET support; M6.4 is `Blocked` (unclaimed, no code written).
 - **Spike result, kept for a future revisit:** no usable Python tree-sitter VB.NET grammar — `tree-sitter-vbnet` 0.1.0 ships a Windows-only wheel; `tree-sitter-language-pack` 1.22.1 has a `vb` grammar that parses classes/methods/`Dim`/`Return`, but yields `ERROR` nodes on `Handles Me.Load` and on `Inherits` inside a class, and downloads grammars at runtime (a network call during parsing — incompatible with keyless offline scans). The fallback would be a line-oriented extractor (VB's `… End Sub` / `End Class` blocks make that reliable).
 - **Hard case:** `vbnet-codebehind-handles` (sealed) stays and keeps failing — a documented known gap, not a regression.
+
+## 2026-11-01 — M6.9 — MyBatis
+- **Branch/commit:** rm/M6.9-mybatis @ 4b17fdc
+- **Changes:** `extractors/mybatis.py` (new: `read_mapper_statements`, `flatten`, `mybatis_edges`), `extractors/sql_extractor.py` (`sql_statement` nodes are SQL callers), `stages/graph.py` (statements persisted with table nodes), `tests/corpus/runner.py` (table-access + MyBatis edges, as in the pipeline), `tests/test_mybatis_m69.py` (3), hard case `java-mybatis-mapper` (dev) + baseline, `decisions.md` (MyBatis mappers).
+- **Scope note:** graph stage, SQL extractor and runner are outside Owns (lane C/Q).
+- **Measured:** hard case `java-mybatis-mapper` (dev, written from source before the extractor) scores 1.0 on every dimension (a new baseline entry). External repos unchanged (none uses MyBatis). Prevalence in target estates is still Unverified — needs an owner repo.
+- **Found while testing:** an XML comment containing `<select>` swallowed the next real statement; comments are now stripped before matching.
+- **Verify:** `pytest -q tests -k mybatis` → 3 passed; full `pytest -q` → 1865 passed, 2 skipped; `bench gate`, `--sealed`, `--external` ok; `roadmap_lint` ok.
+- **Follow-ups:** an intermittent full-suite failure (about 1 run in 6, not reproduced in 4 consecutive runs with `-rf`) predates this item — catch its name in CI; `statementType="CALLABLE"` → stored procedure edges (M6.10). No repowise code was copied or translated.
