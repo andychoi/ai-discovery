@@ -12,7 +12,7 @@
   "dependencies": {
     "@fontsource/inter": "5.1.0",
     "cytoscape": "3.30.4",
-    "dompurify": "3.2.3",
+    "dompurify": "3.4.17",
     "lucide-react": "0.460.0",
     "marked": "14.1.4",
     "mermaid": "11.4.1",
