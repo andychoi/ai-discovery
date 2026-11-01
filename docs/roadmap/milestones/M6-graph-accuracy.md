@@ -155,3 +155,16 @@
   - Per language × origin precision (graded sample) and per-repo recall tracked; regression beyond tolerance fails CI; saturated fixtures (all 1.0) replaced with hard cases from the edge-case catalog; sealed split never used for tuning.
 - **Verify:** `python -m bench gate`
 - **Out of scope:** —
+
+### M6.14 Re-graded precision samples after M6.2/M6.3
+- **Status:** In progress (rm/M6.14-regrade-precision, 2026-10-31)
+- **Size:** M
+- **Lane:** Q
+- **Depends on:** M6.2, M6.3, M6.13
+- **Owns:** `bench/precision/sheets/`, `bench/gate.py`, `docs/roadmap/benchmarks/` (results page, raw runs)
+- **Acceptance:**
+  - New seeded sample for every stratum whose emitted-edge count drifted > 20% since the M1.12 sample (spring-petclinic, eShop); strata that did not drift keep their graded rows; every new row graded from source with a reason.
+  - `bench/precision/sheets/CURRENT.json` names the sheet and the recorded run per repo; the gate reads it (no hard-coded sheet suffix).
+  - Results page with per-stratum precision (Wilson 95% CI) before/after and who graded.
+- **Verify:** `python -m bench gate --external` (no drift warnings on the re-sampled repos)
+- **Out of scope:** microblog, node-express (no drift).
