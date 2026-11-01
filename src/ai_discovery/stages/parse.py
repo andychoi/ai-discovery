@@ -185,8 +185,9 @@ def run(ctx: RunContext) -> None:
         # HIGH-7: GraphQL SDL + gRPC/proto contracts — object types/messages
         # become entities, root operations/RPCs become endpoints. Deduped by
         # identity (entities) and (method, route) (endpoints).
-        from ..extractors import read_graphql_files, read_proto_files
-        contract_nodes = read_graphql_files(resolved.repo_path) + read_proto_files(resolved.repo_path)
+        from ..extractors import read_graphql_files, read_proto_files, read_webconfig_files
+        contract_nodes = read_graphql_files(resolved.repo_path) + read_proto_files(resolved.repo_path) \
+            + read_webconfig_files(resolved.repo_path)   # M6.11: web.xml / web.config / struts mappings
         if contract_nodes:
             existing_qns = {n.qualified_name for n in all_nodes}
             ep_routes = {

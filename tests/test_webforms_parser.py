@@ -9,7 +9,7 @@ FIX = Path(__file__).parent / "fixtures" / "webforms"
 
 def test_parser_extensions_and_can_parse():
     p = WebFormsParser()
-    assert p.extensions == frozenset({".aspx", ".ascx"})
+    assert p.extensions == frozenset({".aspx", ".ascx", ".master", ".asmx", ".ashx", ".asax"})   # M6.11
     assert p.can_parse(FIX / "Default.aspx") is True
     assert p.can_parse(FIX / "x.cs") is False
 

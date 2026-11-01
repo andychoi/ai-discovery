@@ -1,0 +1,16 @@
+{
+  "project": "csharp-raw-migration-fk",
+  "framework": "efcore",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [
+    {"from_entity": "Orders", "to_entity": "Customers", "cardinality": "N:1"},
+    {"from_entity": "OrderLines", "to_entity": "Orders", "cardinality": "N:1"}
+  ],
+  "key_call_edges": [],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "csharp",
+  "_README": "Labelled from source. T-SQL DDL in raw migration strings: Orders.CustomerId → Customers via ALTER TABLE … WITH CHECK ADD CONSTRAINT … FOREIGN KEY, and OrderLines.OrderId → Orders via a bracketed table-level CONSTRAINT inside CREATE TABLE. Schema-qualified, bracket-quoted identifiers ([dbo].[Orders]).",
+  "hard_case": {"catalog": "Dialect DDL (T-SQL brackets, ALTER TABLE ADD CONSTRAINT) in SQL strings", "item": "M6.8"}
+}

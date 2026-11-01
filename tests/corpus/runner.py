@@ -23,6 +23,7 @@ from ai_discovery.extractors import (
     read_infra_files,
     read_openapi_files,
     read_proto_files,
+    read_webconfig_files,
 )
 from ai_discovery.graph.call_graph import build_call_graph
 from ai_discovery.graph.models import CallEdge, CodeNode, EntityRelationship
@@ -97,6 +98,8 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
     """Parse one fixture with the real API. `language` is the parser key."""
     nodes: list[CodeNode] = []
     for lang in language.split("+"):   # "csharp+webforms": several parsers over one fixture
+        if lang not in _PARSERS:
+            continue   # a language whose parser does not exist yet (hard case for a planned item) scores as missed
         parser = _parser_for(lang)
         for f in walk_repo(repo_path, {lang}):
             try:
@@ -113,7 +116,7 @@ def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
     }
     existing_qns = {n.qualified_name for n in nodes}
     contract_nodes = (
-        read_openapi_files(repo) + read_graphql_files(repo) + read_proto_files(repo)
+        read_openapi_files(repo) + read_graphql_files(repo) + read_proto_files(repo) + read_webconfig_files(repo)
     )
     for n in contract_nodes:
         if n.qualified_name in existing_qns:

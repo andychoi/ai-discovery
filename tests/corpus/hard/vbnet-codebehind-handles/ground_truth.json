@@ -1,0 +1,18 @@
+{
+  "project": "vbnet-codebehind-handles",
+  "framework": "webforms",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "Default.aspx", "callee_suffix": "DefaultPage.Page_Load", "min_confidence": 0.75},
+    {"caller_suffix": "Default.aspx", "callee_suffix": "DefaultPage.SaveButton_Click", "min_confidence": 0.75},
+    {"caller_suffix": "DefaultPage.Page_Load", "callee_suffix": "DefaultPage.LoadOrders", "min_confidence": 0.75},
+    {"caller_suffix": "DefaultPage.SaveButton_Click", "callee_suffix": "DefaultPage.SaveOrder", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "vbnet+webforms",
+  "_README": "Labelled from source. VB.NET code-behind with AutoEventWireup=\"false\": events are wired by Handles clauses, not markup attributes — Page_Load Handles Me.Load, SaveButton_Click Handles SaveButton.Click (the control declared in Default.aspx). Each handler calls a private Sub of the same class.",
+  "hard_case": {"catalog": "VB.NET code-behind: Handles clauses wire page/control events", "item": "M6.4"}
+}

@@ -17,6 +17,7 @@ from .openapi_extractor import extract_openapi_endpoints, read_openapi_files
 from .infra_extractor import read_infra_files
 from .graphql_extractor import extract_graphql, read_graphql_files
 from .proto_extractor import extract_proto, read_proto_files
+from .webconfig import read_webconfig_files
 
 __all__ = [
     "extract_sql_entities",
@@ -31,4 +32,5 @@ __all__ = [
     "read_graphql_files",
     "extract_proto",
     "read_proto_files",
+    "read_webconfig_files",
 ]

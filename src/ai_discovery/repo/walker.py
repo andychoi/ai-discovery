@@ -39,7 +39,7 @@ LANG_EXTENSIONS: dict[str, frozenset[str]] = {
     "java": frozenset({".java"}),
     "python": frozenset({".py"}),
     "javascript": frozenset({".js", ".ts", ".tsx", ".jsx", ".vue"}),
-    "webforms": frozenset({".aspx", ".ascx"}),
+    "webforms": frozenset({".aspx", ".ascx", ".master", ".asmx", ".ashx", ".asax"}),
     "jsp": frozenset({".jsp", ".jspx", ".tag", ".tagx"}),
     # A-6 import-map tier
     "go": frozenset({".go"}),

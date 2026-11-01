@@ -56,6 +56,21 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
   0.8 to `receiver_global` 0.75; the corpus bars were lowered to 0.75 with a
   note per fixture.
 
+### Markup and descriptor bindings (M6.11)
+- **WebForms directives** Page, Control, Master, WebService (`.asmx`), WebHandler (`.ashx`) and Application
+  (`Global.asax`) each name a code class (`Inherits` or `Class`). Handlers and services become `endpoint` nodes
+  (route = path under the web application root); pages, controls and master pages stay `ui_component`.
+- **Three markup bindings, all `framework` edges:** `markup_event` (`OnClick="Save_Click"`; a missing handler is
+  `not_found`), `markup_auto` (lifecycle names ASP.NET calls by convention — `Page_Load` & co. when
+  `AutoEventWireup` is on, `Application_*`/`Session_*` in Global.asax, `ProcessRequest` — bound only when the
+  method exists on the class or an ancestor, otherwise dropped silently because it is not a call), and
+  `markup_register` (`<%@ Register Src="~/Controls/Cart.ascx" %>` → the control, `~` = the nearest folder with a
+  project file or web.config). `SqlDataSource` commands are kept on the page as `sql` hints.
+- **Descriptors** (`extractors/webconfig.py`): `web.xml` servlet mappings, `web.config` HTTP handlers and Struts 1/2
+  action mappings become endpoints (method `ANY` unless a verb is declared) whose `xml_mapping` call sites bind,
+  like `markup_auto`, only to methods that exist (`doGet`/`doPost`/`service`, `ProcessRequest`, `execute` or the
+  Struts 2 `method`).
+
 ### Walker v2: which files a scan reads (M6.1)
 - **Git decides first.** Inside a git work tree the file set is `git ls-files -co --exclude-standard`; elsewhere a
   filesystem walk honours every `.gitignore` (pathspec). `.discoveryignore` and `scan.exclude` add gitignore-syntax

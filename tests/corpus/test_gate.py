@@ -26,7 +26,9 @@ def test_hard_cases_are_labelled_from_source() -> None:
         gt = json.loads(gt_path.read_text())
         assert gt["_README"].startswith("Labelled from source"), gt_path
         assert gt["hard_case"]["catalog"] and gt["hard_case"]["item"].startswith("M6.")
-        assert gt.get("key_call_edges") or gt.get("forbidden_call_edges")
+        # at least one labelled fact (M6.8 cases label relationships, M6.11 endpoints)
+        assert any(gt.get(k) for k in ("key_call_edges", "forbidden_call_edges", "relationships", "endpoints",
+                                       "entities", "external_systems")), gt_path
 
 
 def test_hard_cases_are_not_saturated() -> None:

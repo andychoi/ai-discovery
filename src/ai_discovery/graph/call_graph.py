@@ -226,6 +226,8 @@ class _Resolver:
         receiver = site.get("receiver")
         if site.get("binding") in ("template_handler", "template_component"):
             return self._template_site(caller, site, imports)
+        if site.get("binding") in _MARKUP_BINDINGS:
+            return self._markup_site(caller, site)
 
         if self.symbol_index is not None:
             indexed = self.symbol_index.resolve(caller.qualified_name, call_ref, receiver)
@@ -320,6 +322,29 @@ class _Resolver:
             self._miss(caller, site, call_ref, "external")
             return True
         return False
+
+    def _markup_site(self, caller, site) -> None:
+        """M6.11: a markup page / XML mapping naming code by qualified name (`Shop.Orders.Save_Click`, the
+        `.ascx` a page registers, the action class a struts mapping routes to) is a `framework` binding.
+        Lifecycle and mapping-convention names (`Page_Load`, `execute`, `doGet`) bind only if the method
+        exists — on the class or an ancestor — and are dropped silently otherwise (they are not calls)."""
+        ref, binding = site["name"], site["binding"]
+        target = self.qualified.get(ref)
+        if target is None and "." in ref:
+            owner_qn, _, member = ref.rpartition(".")
+            owner = self.qualified.get(owner_qn)
+            if owner is None:   # code class named by its short or partially qualified name
+                cands = [t for t in self._resolve_type(owner_qn) if t.qualified_name.endswith(owner_qn)]
+                owner = cands[0] if len(cands) == 1 else None
+            if owner is not None:
+                target = self.qualified.get(f"{owner.qualified_name}.{member}")
+                if target is None and owner.node_type in _CLASS_TYPES:
+                    found = self._on_ancestors(owner, member)
+                    target = found[0] if len(found) == 1 else None
+        if target is not None and target.qualified_name != caller.qualified_name:
+            self._edge(caller, target, "framework", ref, binding=binding)
+        elif binding in ("markup_event", "markup_register"):
+            self._miss(caller, site, ref, "not_found")
 
     def _template_site(self, caller, site, imports) -> None:
         """M6.5.b: a Vue template binding is a framework binding. A handler names a function of the same
@@ -995,6 +1020,7 @@ def _build_import_index(caller: CodeNode, extra: list[dict] | None = None) -> di
     return index
 
 
+_MARKUP_BINDINGS = frozenset({"markup_event", "markup_auto", "markup_register", "xml_mapping"})
 _JS_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue")
 _MAX_REEXPORT_DEPTH = 8   # barrel chains deeper than this are left unresolved (M6.5.a)
 _MAX_CHAIN_DEPTH = 3      # `a().b().c().d()`: deeper call chains are not typed (M6.16)
