@@ -99,7 +99,7 @@
 - **Out of scope:** spending on model runs (M5.7.b).
 
 ### M5.7.b Agent-loop eval — run and publish
-- **Status:** Blocked (owner approval of the pre-registration and spend ceiling)
+- **Status:** In progress (rm/M5.7b-agent-eval, 2026-10-31)
 - **Size:** M
 - **Lane:** E
 - **Depends on:** M5.7.a

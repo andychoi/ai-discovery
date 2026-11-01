@@ -1,6 +1,8 @@
 # Pre-registration: agent-loop eval (M5.7)
 
-- **Status: Draft** — awaiting owner approval of the spend ceiling and bands. Nothing has been run.
+- **Status: Draft** — spend ceiling approved by the owner on 2026-10-31 ($2.50 per run). The harness is being validated
+  end to end in the run container against a local gateway model (no Anthropic spend; results in `bench/agent/results/dev/`,
+  never part of the eval). Freezing follows that validation. Nothing has been run.
   To freeze: set `status: Frozen` in the block below, commit this page alone, and record the commit here.
   After freezing, changes are **deviations** (listed at the end of the results page), never edits.
 - **Freeze commit:** _(none yet)_
@@ -15,8 +17,8 @@ reps: 3
 seed: 20261031
 arms: bare, discover, discover-auto
 exploratory_arms: codex-bare, codex-discover, repowise
-budget_per_run_usd: 4.00
-budget_total_usd: 400
+budget_per_run_usd: 2.50
+budget_total_usd: 337.50
 timeout_minutes: 30
 bootstrap_resamples: 10000
 -->
@@ -72,18 +74,18 @@ The bands are mirrored in `bench/agent/score.py:BANDS`; a test keeps the two in 
 
 ## 5. Procedure and exclusions
 
-1. Environment: a disposable machine or container (agents run with `bypassPermissions` inside the workspace) with JDK 17+, .NET 9 SDK and Node 20. Record OS and tool versions.
+1. Environment: the disposable container `bench/agent/docker/Dockerfile` (agents run with `bypassPermissions` inside the workspace) with JDK 17+, .NET 9 SDK and Node 20. Record OS and tool versions.
 2. `python -m bench.agent validate` and `python -m bench.agent preflight` before the first run. A task whose **unmodified base** fails to build or test has that metric excluded for every arm (recorded, never silently).
 3. Runs execute in the frozen random order (`python -m bench.agent plan`), resumable; every transcript and diff is kept under `bench/agent/results/`.
 4. **Infrastructure failures** (harness error before the agent starts, provider outage) are re-run once. **Agent outcomes** — timeout, spend cap reached, no edits — count as they are.
 5. The runner stops before a run could cross the total ceiling; unfinished cells are reported as missing, never imputed.
 
-## 6. Spend ceiling (to approve)
+## 6. Spend ceiling (approved 2026-10-31)
 
 - 15 tasks × 3 arms × 3 repetitions = **135 runs**.
-- Per run: capped at **$4.00** by `claude --max-budget-usd`.
-- Total: capped at **$400** by the runner, which tracks each run's reported cost and stops before the next run could cross it.
-- The expected spend is unknown until real runs report cost; the ceilings bound it. Lowering `reps` to 2 reduces the batch to 90 runs.
+- Per run: capped at **$2.50** by `claude --max-budget-usd` (owner approval, 2026-10-31).
+- Total: capped at **$337.50** (135 × $2.50) by the runner, which tracks each run's reported cost and stops before the next run could cross it.
+- The expected spend is unknown until real runs report cost; the ceilings bound it. A run that hits the per-run cap counts as an agent outcome (§5.4), not an infrastructure failure.
 
 ## 7. Threats to validity (stated in advance)
 
