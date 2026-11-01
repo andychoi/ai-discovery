@@ -1,8 +1,8 @@
 {
   "_doc": "Graded precision sheet and recorded run per repo, read by `python -m bench gate --external` (bench/gate.py). Re-sampling a repo (roadmap M6.14) adds a new sheet + run and points its entry here; older sheets stay for history.",
   "eshop": {
-    "sheet": "eshop-dc7ea499cd35-seed13-m615.csv",
-    "run": "m615-ai-discovery-keyless-eshop.json"
+    "sheet": "eshop-dc7ea499cd35-seed14-m67a.csv",
+    "run": "m67a-ai-discovery-keyless-eshop.json"
   },
   "microblog": {
     "sheet": "microblog-a975ef648643-seed11-m112.csv",

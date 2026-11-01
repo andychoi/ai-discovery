@@ -1,0 +1,17 @@
+{
+  "project": "java-spring-bean-method",
+  "framework": "spring",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "Reminder.remind", "callee_suffix": "SmsSender.send", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "Reminder.remind", "callee_suffix": "EmailSender.send"}
+  ],
+  "external_systems": [],
+  "language": "java",
+  "_README": "Labelled from source. The only Sender bean is produced by NotifyConfig.sender() (@Bean), which returns a new SmsSender; EmailSender implements Sender but is never a bean (no stereotype, no @Bean). Reminder's injected sender.send therefore reaches SmsSender.send only.",
+  "hard_case": {"catalog": "Spring @Bean factory method decides the implementation", "item": "M6.7.b"}
+}

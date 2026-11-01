@@ -1,0 +1,17 @@
+{
+  "project": "angular-service-injection",
+  "framework": "angular",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "OrderDetailComponent.open", "callee_suffix": "OrderService.load", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [
+    {"caller_suffix": "OrderDetailComponent.open", "callee_suffix": "ReportService.load"}
+  ],
+  "external_systems": [],
+  "language": "javascript",
+  "_README": "Labelled from source. The component's constructor parameter property `private readonly orders: OrderService` (Angular DI) types this.orders, so this.orders.load reaches OrderService.load. ReportService.load shares the name and must never be linked.",
+  "hard_case": {"catalog": "TS constructor parameter properties (Angular DI) type receivers", "item": "M6.6"}
+}

@@ -91,7 +91,7 @@
 - **Out of scope:** —
 
 ### M6.7.a DI registrations: ASP.NET, Spring qualifiers, test mocks
-- **Status:** In progress (rm/M6.7a-di-registrations, 2026-10-31)
+- **Status:** Done (ad1b363)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M1.12

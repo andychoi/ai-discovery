@@ -143,6 +143,10 @@ _EXTERNAL_CLIENTS = frozenset({"httpClient", "restClient", "kafkaProducer", "bus
 _HTTP_ATTR_PATTERN = re.compile(r"^Http(Get|Post|Put|Delete|Patch|Head|Options)$")
 
 
+# test doubles (M6.7.a): `_repo = Substitute.For<IRepo>()`, `Mock.Of<IRepo>()`, `A.Fake<IRepo>()`
+_CS_MOCK_ASSIGN = re.compile(r"\b(\w+)\s*=\s*(?:Substitute\.For|Mock\.Of|A\.Fake)\s*<")
+
+
 def _tail_operand(text: str) -> str:
     """The rightmost operand of a receiver (M6.16). The grammar parses `x + _repo?.Find(id)` as a conditional
     access whose condition is the whole `x + _repo`; the receiver is `_repo`. Text inside brackets is kept."""
@@ -256,7 +260,8 @@ class CSharpParser(LanguageParser):
                 line_start=cls_node.start_point.row + 1,
                 line_end=cls_node.end_point.row + 1,
                 annotations=attr_names,
-                framework_hints=framework_hints,
+                framework_hints={**framework_hints, **({"mocks": m} if (m := sorted(set(
+                    _CS_MOCK_ASSIGN.findall(cls_node.text.decode(errors="replace"))))) else {})},
                 calls=ctor_calls,
                 imports=imports,
                 fields=class_fields,

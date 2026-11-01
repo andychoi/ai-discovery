@@ -90,6 +90,26 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
   120 → 20; `receiver_typed` 19 → 113, `inherited` 8 → 62 (a 24-edge spot check of the new typed and
   inherited edges was all correct; the graded sample needs re-drawing before precision is re-quoted).
 
+### DI registrations and test doubles (M6.7.a)
+- **Dispatch is narrowed by what the container injects**, and the chosen target is a `framework` edge
+  (`framework_binds`); with no DI fact, dispatch is unchanged (one implementation → `framework`, 2–24 →
+  `dispatch` to each, more → `dispatch_cap`). Order of evidence:
+  1. Spring `@Qualifier("x")` / `@Named("x")` on the field, or on the constructor parameter of the same name
+     → the bean named `x` (`@Component("x")`, `@Service("x")`…, else the decapitalised class name);
+  2. ASP.NET `Add{Scoped,Transient,Singleton,HttpClient}<I, T>()` / `TryAdd*` anywhere in the repo (files are
+     read, since a top-level `Program.cs` has no node) → the registered `T`; same-named `T`s in several
+     projects → the caller's project's;
+  3. Spring `@Primary` → that bean.
+  Two or more registered/qualified candidates → `di_ambiguous`, no edge.
+- **Test doubles stop at the declared type.** A receiver assigned from `Substitute.For<T>()`, `Mock.Of<T>()`,
+  `A.Fake<T>()`, `mock(..)`/`spy(..)` or annotated `@Mock`/`@MockBean`/`@MockitoBean`/`@Spy` never reaches an
+  implementation class (`external`); a call to a method the declared interface itself declares (a Spring Data
+  repository) keeps its edge to that declaration.
+- Effect on eShop (graded): `framework` 0.767 → 0.958 (the 7 NSubstitute rows gone), `global_unique` 0.926 →
+  0.962; production ClientApp services bind to the registered real implementation instead of dispatching to the
+  unit-test `Mock*` classes too (those 9 dispatch edges were graded "correct" under any-implementation semantics;
+  the stratum was re-sampled). Not yet modelled: single-type `AddHttpClient<T>()` (2 wrong HybridApp dispatches).
+
 ### Precision rules from the M6.14 re-grade (M6.15)
 - **Same short name, different interface.** An implementation is a dispatch target only if it does not
   explicitly import a *different* type of that name than the caller (`jakarta.validation.Validator` vs

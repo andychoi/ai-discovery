@@ -170,6 +170,7 @@ class _Resolver:
         self.js_top: dict[tuple[str, str], list[CodeNode]] = defaultdict(list)
         self._posix_files: dict[str, str] = {}
         self.sfc_components: dict[str, CodeNode] = {}   # M6.5.b: `.vue` file → its component node
+        self._di_registrations: dict[str, set[str]] | None = None   # M6.7.a, read lazily
         for n in nodes:
             if _family(n.language) == "javascript" and n.file_path:
                 posix = posixpath.normpath(n.file_path.replace("\\", "/"))
@@ -516,6 +517,11 @@ class _Resolver:
     def _via_receiver_type(self, caller, site, name, receiver, imports, call_ref) -> bool:
         """Receiver is a typed field/param of the enclosing class, or a type name itself."""
         cls = self._class_of(caller)
+        mocks = set((caller.framework_hints or {}).get("mocks") or ()) | \
+            set(((cls.framework_hints or {}).get("mocks") or ()) if cls is not None else ())
+        # M6.7.a: a test double (`Substitute.For<IRepo>()`, `@Mock`) answers the call: it may target the
+        # declared type's own method, but never reaches an implementation class
+        mock = bool(mocks) and receiver.removeprefix("this.").split(".")[0] in mocks
         ftypes = self.field_types.get(cls.qualified_name, {}) if cls is not None else {}
         rtypes = self.receiver_types.get(cls.qualified_name, {}) if cls is not None else {}
         local = (caller.framework_hints or {}).get("local_types") or {}
@@ -528,6 +534,9 @@ class _Resolver:
             # type of the repo method it resolves to (a library return type is then `external` below)
             type_name = self._returned_type(caller, receiver, imports, 0) or None
         declared = bool(type_name)
+        if not type_name and mock:   # `var bus = Substitute.For<IEventBus>()`: untyped here, still a double
+            self._miss(caller, site, call_ref, "external")
+            return True
         if not type_name:
             # static call on a type name: `OrderService.create()` (JS/C#/Java statics)
             if receiver[:1].isupper() and self._resolve_type(receiver):
@@ -537,13 +546,16 @@ class _Resolver:
         types = self._resolve_type(type_name)
         if not types:
             # an interface (not a class node): go straight to the implementations
-            if self._via_implementations(caller, site, name, type_name.rsplit(".", 1)[-1], receiver,
-                                         call_ref, bases=None):
+            if not mock and self._via_implementations(caller, site, name, type_name.rsplit(".", 1)[-1], receiver,
+                                                      call_ref, bases=None):
                 return True
             short = type_name.rsplit(".", 1)[-1]
             if self._via_interface_declaration(caller, site, name, short, receiver, imports, call_ref):
                 return True
             if declared and self._via_extension(caller, site, name, short, receiver, call_ref):
+                return True
+            if mock:
+                self._miss(caller, site, call_ref, "external")
                 return True
             if declared and _family(caller.language) in _TYPED_DECLS_LANGS \
                     and not any(n.node_type in _TYPE_DECLS for n in self.by_name.get(short, [])):
@@ -568,6 +580,9 @@ class _Resolver:
         found = self._on_ancestors(t, name)
         if len(found) == 1:
             self._edge(caller, found[0], "inherited", call_ref, receiver=receiver)
+            return True
+        if mock:
+            self._miss(caller, site, call_ref, "external")
             return True
         return self._via_implementations(caller, site, name, t.name, receiver, call_ref, bases=t.bases or [])
 
@@ -687,6 +702,14 @@ class _Resolver:
                         and not _different_import(want, _imported_qn(impl, type_short))}
         if not impl_targets and bases is None:
             return False
+        if len(impl_targets) > 1:
+            chosen = self._di_select(caller, receiver, type_short, list(impl_targets.values()))
+            if chosen is not None:
+                if len(chosen) != 1:
+                    self._miss(caller, site, call_ref, "di_ambiguous", len(chosen))
+                    return True
+                self._edge(caller, chosen[0], "framework", call_ref, receiver=receiver, binding="di")
+                return True
         if len(impl_targets) == 1:
             self._edge(caller, next(iter(impl_targets.values())), "framework", call_ref, receiver=receiver)
         elif len(impl_targets) > O.DISPATCH_CAP:
@@ -699,6 +722,49 @@ class _Resolver:
             foreign = any(not self._resolve_type(b) for b in bases or [])
             self._miss(caller, site, call_ref, "external" if foreign else "not_found")
         return True
+
+    def _di_select(self, caller, receiver, type_short, targets: list[CodeNode]) -> list[CodeNode] | None:
+        """M6.7.a: the implementation(s) the DI container injects for *type_short*, among *targets*
+        (implementation methods). None = no DI fact applies (dispatch as before)."""
+        owner = {t.qualified_name: self.qualified.get(t.qualified_name.rsplit(".", 1)[0]) for t in targets}
+        hints = {qn: (o.framework_hints or {}) if o is not None else {} for qn, o in owner.items()}
+        cls = self._class_of(caller)
+        field = (receiver or "").removeprefix("this.").split(".")[0]
+        qualifier = ((cls.framework_hints or {}).get("qualifiers") or {}).get(field) if cls is not None else None
+        if qualifier:                                   # Spring @Qualifier("sms") → bean named sms
+            return [t for t in targets if hints[t.qualified_name].get("bean_name") == qualifier]
+        registered = self.di_registrations().get(type_short)
+        if registered:                                  # ASP.NET AddScoped<I, T>()
+            chosen = [t for t in targets if owner[t.qualified_name] is not None
+                      and owner[t.qualified_name].name in registered]
+            if len(chosen) > 1:   # same-named classes in several projects: the caller's own project's
+                mine = [t for t in chosen if self.project_dir(t.file_path) == self.project_dir(caller.file_path)]
+                chosen = mine if len(mine) == 1 else chosen
+            if chosen:
+                return chosen
+        primary = [t for t in targets if hints[t.qualified_name].get("primary")]
+        if len(primary) == 1:                           # Spring @Primary
+            return primary
+        return None
+
+    def di_registrations(self) -> dict[str, set[str]]:
+        """ASP.NET registrations `Add{Scoped,Transient,Singleton}<I, T>()` (and `TryAdd*`, `AddHttpClient`)
+        from every `.cs` file of every project — top-level `Program.cs` emits no node, so files are read."""
+        if self._di_registrations is None:
+            regs: dict[str, set[str]] = defaultdict(set)
+            projects = sorted({self.project_dir(f) for f in self.files if f.endswith(".cs")} - {""})
+            for proj in projects:
+                for f in Path(proj).rglob("*.cs"):
+                    if any(part in ("bin", "obj") for part in f.parts):
+                        continue
+                    try:
+                        text = f.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        continue
+                    for iface, impl in _DI_REGISTRATION.findall(text):
+                        regs[_short_type(iface)].add(_short_type(impl))
+            self._di_registrations = dict(regs)
+        return self._di_registrations
 
     def _bindable(self, caller: CodeNode, target: CodeNode) -> bool:
         """Name-only tiers: same language, a callable target, and — in languages
@@ -849,6 +915,14 @@ def _different_import(want: str, have: str) -> bool:
     """M6.15: two files that import *different* types of the same short name (`jakarta.validation.Validator`
     vs Spring's `org.springframework.validation.Validator`) are not talking about one interface."""
     return bool(want and have and want != have)
+
+
+_DI_REGISTRATION = re.compile(
+    r"\b(?:Try)?Add(?:Scoped|Transient|Singleton|HttpClient)\s*<\s*([\w.]+(?:<[^<>]*>)?)\s*,\s*([\w.]+(?:<[^<>]*>)?)\s*>")
+
+
+def _short_type(text: str) -> str:
+    return text.split("<", 1)[0].rsplit(".", 1)[-1].strip()
 
 
 def _strip_call(text: str) -> str:

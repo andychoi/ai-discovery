@@ -13,5 +13,5 @@
   "external_systems": [],
   "language": "java",
   "_README": "Labelled from source. AlertService's constructor injects NotificationSender with @Qualifier(\"sms\"); the bean named sms is SmsSender, so sender.send reaches SmsSender.send only. EmailSender is the other implementation and must not be linked.",
-  "hard_case": {"catalog": "Spring @Qualifier selects one implementation", "item": "M6.7"}
+  "hard_case": {"catalog": "Spring @Qualifier selects one implementation", "item": "M6.7.a"}
 }

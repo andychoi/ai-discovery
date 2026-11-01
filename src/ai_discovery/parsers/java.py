@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 
 import tree_sitter_java as tsjava
@@ -119,6 +121,25 @@ def _captures(query: Query, node) -> dict[str, list]:
     return QueryCursor(query).captures(node)
 
 
+_JAVA_STRING_ARG = re.compile(r'^\(\s*(?:value\s*=\s*)?"([^"]+)"')
+_JAVA_MOCK_ASSIGN = re.compile(r"\b(\w+)\s*=\s*(?:Mockito\.)?(?:mock|spy)\s*\(")
+
+
+def _java_annotations(node) -> dict[str, str]:
+    """Annotations in a declaration's `modifiers`: name → string argument ('' for markers / no string)."""
+    out: dict[str, str] = {}
+    mods = next((c for c in node.children if c.type == "modifiers"), None)
+    for a in mods.named_children if mods is not None else []:
+        if a.type not in ("marker_annotation", "annotation"):
+            continue
+        name = a.child_by_field_name("name")
+        args = a.child_by_field_name("arguments")
+        value = _JAVA_STRING_ARG.search(args.text.decode()) if args is not None else None
+        if name is not None:
+            out[name.text.decode().rsplit(".", 1)[-1]] = value.group(1) if value else ""
+    return out
+
+
 class JavaParser(LanguageParser):
     """Parses Java files using tree-sitter and emits CodeNode instances."""
 
@@ -202,6 +223,7 @@ class JavaParser(LanguageParser):
                 framework_hints["receiver_types"] = receiver_types
             if node_type == "interface":
                 framework_hints["declares_members"] = True
+            framework_hints.update(self._di_hints(cls_node, class_name, annotations))   # M6.7.a
 
             nodes.append(CodeNode(
                 file_path=fp,
@@ -558,6 +580,48 @@ class JavaParser(LanguageParser):
             t = t[t.index("<") + 1 : t.rindex(">")]
             t = t.split(",")[-1].strip()  # Map<K,V> → V
         return t.split(".")[-1].strip()
+
+    @staticmethod
+    def _di_hints(cls_node, class_name: str, annotations: list[dict]) -> dict:
+        """Spring DI facts for the resolver (M6.7.a): the bean name of a stereotype class, `@Primary`,
+        `@Qualifier`/`@Named` values on fields and constructor parameters, and test-double fields."""
+        out: dict = {}
+        names = {a["name"]: a.get("args", "") for a in annotations}
+        stereo = next((n for n in ("Component", "Service", "Repository", "Controller", "RestController",
+                                   "Configuration") if n in names), None)
+        if stereo:
+            value = _JAVA_STRING_ARG.search(names[stereo] or "")
+            out["bean_name"] = value.group(1) if value else class_name[:1].lower() + class_name[1:]
+        if "Primary" in names:
+            out["primary"] = True
+        qualifiers: dict[str, str] = {}
+        mocks: list[str] = []
+        body = cls_node.child_by_field_name("body")
+        for member in body.named_children if body is not None else []:
+            if member.type == "field_declaration":
+                anns = _java_annotations(member)
+                declared = [d.child_by_field_name("name") for d in member.named_children
+                            if d.type == "variable_declarator"]
+                for d in [d for d in declared if d is not None]:
+                    name = d.text.decode()
+                    if anns.get("Qualifier") or anns.get("Named"):
+                        qualifiers[name] = anns.get("Qualifier") or anns.get("Named")
+                    if any(a in anns for a in ("Mock", "MockBean", "MockitoBean", "Spy", "SpyBean")):
+                        mocks.append(name)
+            elif member.type == "constructor_declaration":
+                params = member.child_by_field_name("parameters")
+                for prm in params.named_children if params is not None else []:
+                    anns = _java_annotations(prm)
+                    pname = prm.child_by_field_name("name")
+                    if pname is not None and (anns.get("Qualifier") or anns.get("Named")):
+                        # `this.sender = sender` is the usual shape: the field shares the parameter's name
+                        qualifiers[pname.text.decode()] = anns.get("Qualifier") or anns.get("Named")
+        mocks += _JAVA_MOCK_ASSIGN.findall(cls_node.text.decode(errors="replace"))
+        if qualifiers:
+            out["qualifiers"] = qualifiers
+        if mocks:
+            out["mocks"] = sorted(set(mocks))
+        return out
 
     @staticmethod
     def _receiver_type(type_text: str) -> str:
