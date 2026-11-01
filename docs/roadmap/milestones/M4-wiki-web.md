@@ -41,15 +41,26 @@
 - **Verify:** `cd web && npm test`; manual: `discover serve` on fixture
 - **Out of scope:** graph explorer.
 
-### M4.4 Graph explorer + drilldowns
-- **Status:** Planned
+### M4.4.a Graph explorer + impact view
+- **Status:** In progress (rm/M4.4a-graph-explorer, 2026-11-01)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M4.3
-- **Owns:** `web/src/`
+- **Owns:** `web/src/`, `src/ai_discovery/server/api_v1.py` (`/impact`)
 - **Acceptance:**
-  - Neighborhood view capped (server returns true totals; "showing 200 of 3,412"); evidence-kind legend; low-confidence edges visually distinct.
-  - Screen → flow → entity → table drilldown; BPMN/DMN rendering for flow/entity pages; impact view once M5.2 exists.
+  - Neighborhood view capped (server returns true totals; "showing 200 of 3,412"); evidence-kind legend; low-confidence edges visually distinct; path finder A→B.
+  - Impact view (M5.2): ranked blast radius, unknowns, "copy as IMPACT_REPORT.md".
+- **Verify:** `cd web && npm test`
+- **Out of scope:** drilldowns and BPMN/DMN rendering (M4.4.b).
+
+### M4.4.b Drilldowns + BPMN/DMN rendering
+- **Status:** Planned
+- **Size:** M
+- **Lane:** D
+- **Depends on:** M4.4.a
+- **Owns:** `web/src/`, `src/ai_discovery/pages/builders/`
+- **Acceptance:**
+  - Screen → flow → entity → table drilldown; BPMN/DMN rendering for flow/entity pages.
 - **Verify:** `cd web && npm test`
 - **Out of scope:** —
 
