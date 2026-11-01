@@ -153,3 +153,22 @@ def test_report_with_no_runs(capsys) -> None:
     assert main(["report"]) == 0
     out = capsys.readouterr().out
     assert "No runs yet" in out and "runs pending" in out
+
+
+def test_dev_mode_key_and_env(tmp_path, monkeypatch) -> None:
+    """M5.7.b dev runs: key from a file or env, gateway env for `claude`, results outside the eval's runs/."""
+    from bench.agent import runner
+
+    (tmp_path / "raw").write_text("sk-test-123\n")
+    (tmp_path / "kv").write_text("OTHER=x\nAIGW_DEV_KEY='sk-kv-456'\n")
+    assert runner.read_key(key_file=tmp_path / "raw") == "sk-test-123"
+    assert runner.read_key(key_file=tmp_path / "kv") == "sk-kv-456"
+    monkeypatch.setenv("AIGW_DEV_KEY", "sk-env-789")
+    assert runner.read_key() == "sk-env-789"
+    monkeypatch.delenv("AIGW_DEV_KEY")
+    with pytest.raises(SystemExit):
+        runner.read_key()
+    env = runner.dev_env("http://gw:11433/anthropic/", "sk-x", "glm-coding-flash")
+    assert env["ANTHROPIC_BASE_URL"] == "http://gw:11433/anthropic" and env["ANTHROPIC_AUTH_TOKEN"] == "sk-x"
+    assert env["ANTHROPIC_MODEL"] == env["ANTHROPIC_SMALL_FAST_MODEL"] == "glm-coding-flash"
+    assert runner.DEV.parent == runner.RESULTS and runner.DEV.name == "dev"

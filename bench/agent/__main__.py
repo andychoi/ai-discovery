@@ -8,6 +8,8 @@
   run --confirm-spend [--task ID ...] [--arm NAME ...] [--limit N] [--exploratory]
                              run the eval — refuses unless the pre-registration is Frozen and committed
   report [--write]           score results against the pre-registered bands (works with zero runs)
+  dev-run --model M --base-url URL [--key-file F | --key-env NAME] [--task ID ...] [--arm NAME ...] [--limit N]
+                             harness development against a gateway model; results/dev/, never part of the eval
 """
 
 from __future__ import annotations
@@ -86,6 +88,16 @@ def cmd_run(args) -> int:
     return 0
 
 
+def cmd_dev_run(args) -> int:
+    cfg = runner.load_prereg()
+    key = runner.read_key(key_file=Path(args.key_file) if args.key_file else None, key_env=args.key_env)
+    done = runner.run_dev(cfg, model=args.model, base_url=args.base_url, key=key,
+                          only_tasks=set(args.task or []) or None, only_arms=set(args.arm or []) or None,
+                          limit=args.limit)
+    print(f"{done} dev run(s) completed → {runner.DEV}")
+    return 0
+
+
 def cmd_report(args) -> int:
     cfg = runner.load_prereg()
     runs = score.load_runs(runner.RESULTS / "runs")
@@ -110,6 +122,15 @@ def main(argv: list[str] | None = None) -> int:
     for name, fn in (("tasks", cmd_tasks), ("validate", cmd_validate), ("fetch", cmd_fetch),
                      ("preflight", cmd_preflight)):
         sub.add_parser(name).set_defaults(fn=fn)
+    p = sub.add_parser("dev-run")
+    p.add_argument("--model", required=True)
+    p.add_argument("--base-url", required=True, help="Anthropic-protocol base URL, e.g. http://localhost:11433/anthropic")
+    p.add_argument("--key-file")
+    p.add_argument("--key-env", default="AIGW_DEV_KEY")
+    p.add_argument("--task", action="append")
+    p.add_argument("--arm", action="append")
+    p.add_argument("--limit", type=int, default=1)
+    p.set_defaults(fn=cmd_dev_run)
     p = sub.add_parser("plan")
     p.add_argument("--exploratory", action="store_true")
     p.set_defaults(fn=cmd_plan)

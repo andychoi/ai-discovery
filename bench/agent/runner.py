@@ -124,13 +124,14 @@ def preflight(tasks: list[Task], repos: dict[str, RepoSpec], work: Path) -> dict
     return out
 
 
-def run_one(cell: dict, task: Task, repo: RepoSpec, cfg: Config, out_dir: Path) -> dict:
+def run_one(cell: dict, task: Task, repo: RepoSpec, cfg: Config, out_dir: Path, *,
+            model: Optional[str] = None, env_extra: Optional[dict] = None) -> dict:
     arm = arms_mod.ARMS[cell["arm"]]
     run_dir = out_dir / "work" / cell["run_id"]
     ws = make_workspace(repo, task, run_dir / "ws")
     scratch = run_dir / "harness"
     scratch.mkdir(parents=True, exist_ok=True)
-    record = {**cell, "stack": task.stack, "model": arms_mod.model_for(arm, cfg.model, cfg.codex_model),
+    record = {**cell, "stack": task.stack, "model": model or arms_mod.model_for(arm, cfg.model, cfg.codex_model),
               "role": arm.role}
     record["setup"] = arms_mod.prepare(arm, ws, run=lambda argv: subprocess.run(argv, check=True,
                                                                                   capture_output=True))
@@ -142,7 +143,7 @@ def run_one(cell: dict, task: Task, repo: RepoSpec, cfg: Config, out_dir: Path) 
     with transcript.open("w", encoding="utf-8") as fh:
         try:
             proc = subprocess.run(argv, cwd=ws, stdout=fh, stderr=subprocess.STDOUT, text=True,
-                                  timeout=cfg.timeout_minutes * 60, env={**os.environ, **env})
+                                  timeout=cfg.timeout_minutes * 60, env={**os.environ, **env, **(env_extra or {})})
             record["exit_code"] = proc.returncode
         except subprocess.TimeoutExpired:
             record["exit_code"] = "timeout"
@@ -203,4 +204,58 @@ def run_all(cfg: Config, *, confirm_spend: bool, out_dir: Path = RESULTS, only_t
     return done
 
 
-__all__ = ["Config", "load_prereg", "frozen", "plan", "preflight", "run_all", "run_one"]
+DEV = RESULTS / "dev"
+
+
+def read_key(*, key_file: Optional[Path] = None, key_env: str = "AIGW_DEV_KEY") -> str:
+    """The gateway key for dev runs: a file holding the key (or `NAME=value` lines), else an environment
+    variable. The value is never printed or written to results."""
+    if key_file is not None:
+        text = Path(key_file).expanduser().read_text(encoding="utf-8").strip()
+        for line in text.splitlines():
+            name, sep, value = line.partition("=")
+            if sep and name.strip() in (key_env, "ANTHROPIC_AUTH_TOKEN", "AIGW_API_KEY"):
+                return value.strip().strip("\"'")
+        if "=" not in text and "\n" not in text:
+            return text
+        raise SystemExit(f"{key_file}: no {key_env}=… line")
+    value = os.environ.get(key_env, "")
+    if not value:
+        raise SystemExit(f"no gateway key: set {key_env} or pass --key-file")
+    return value
+
+
+def dev_env(base_url: str, key: str, model: str) -> dict[str, str]:
+    """Point `claude` at an Anthropic-protocol gateway with a non-Anthropic model (harness development only)."""
+    return {"ANTHROPIC_BASE_URL": base_url.rstrip("/"), "ANTHROPIC_AUTH_TOKEN": key, "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_MODEL": model, "ANTHROPIC_DEFAULT_HAIKU_MODEL": model, "ANTHROPIC_SMALL_FAST_MODEL": model,
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+
+
+def run_dev(cfg: Config, *, model: str, base_url: str, key: str, out_dir: Path = DEV,
+            only_tasks: Optional[set] = None, only_arms: Optional[set] = None, limit: Optional[int] = 1) -> int:
+    """Harness development runs against a gateway model. Same workspaces, arms and scoring as the eval, but the
+    pre-registration need not be frozen, results go to ``results/dev/`` and never count toward the eval."""
+    repos, tasks = load()
+    by_id = {t.id: t for t in tasks}
+    cells = [c for c in plan(cfg, tasks)
+             if (not only_tasks or c["task"] in only_tasks) and (not only_arms or c["arm"] in only_arms)]
+    runs = out_dir / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    env = dev_env(base_url, key, model)
+    done = 0
+    for cell in cells[: limit if limit is not None else len(cells)]:
+        task = by_id[cell["task"]]
+        record = run_one(cell, task, repos[task.repo], cfg, out_dir, model=model, env_extra=env)
+        record["dev"] = {"base_url": base_url, "model": model}
+        (runs / f"{cell['run_id']}.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        done += 1
+        agent = record.get("agent") or {}
+        print(f"[dev {done}] {cell['run_id']}: exit {record.get('exit_code')} turns {agent.get('turns')} "
+              f"tools {agent.get('tool_calls')} changed {len(record['changed_files'])} "
+              f"recall {record['files']['recall']} build {record['build']['status']} test {record['test']['status']}")
+    return done
+
+
+__all__ = ["Config", "load_prereg", "frozen", "plan", "preflight", "run_all", "run_one", "run_dev", "read_key",
+           "dev_env"]
