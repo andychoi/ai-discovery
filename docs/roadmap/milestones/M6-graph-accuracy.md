@@ -54,23 +54,36 @@
 - **Verify:** `pytest -q tests -k vbnet`
 - **Out of scope:** —
 
-### M6.5 Vue SFC + TS barrels
-- **Status:** Planned
+### M6.5.a CommonJS bindings + TS barrels
+- **Status:** In progress (rm/M6.5a-commonjs-barrels, 2026-10-31)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M0.3
+- **Owns:** `src/ai_discovery/parsers/javascript.py`; resolver JS module matching in `src/ai_discovery/graph/call_graph.py` (same lane, as in M6.2/M6.3)
+- **Acceptance:**
+  - CommonJS `require` bindings become imports: `const x = require('./m')` (namespace), `const { a, b: c } = require('./m')` (named, aliased); `x.fn()` resolves to the function defined in `./m` (`import_exact`), never by global name.
+  - Arrow-function / function-expression consts keep their call sites (hard case `js-commonjs-arrow` passes: both key edges ≥ 0.75).
+  - ES namespace imports (`import * as x from './m'`) + `x.fn()` resolve the same way.
+  - TS re-exports/barrels (`export * from`, `export { a as b } from`) followed to a fixed point (cycle-safe, depth-capped); aliases preserved; barrel files with no declarations are read from disk.
+- **Verify:** `pytest -q tests -k "commonjs or barrel"`; `python -m bench gate`
+- **Out of scope:** dynamic `require(expr)`; `module.exports = class …` default-export typing.
+
+### M6.5.b Vue SFC
+- **Status:** Planned
+- **Size:** M
+- **Lane:** C
+- **Depends on:** M6.5.a
 - **Owns:** `src/ai_discovery/parsers/vue.py` (new), `src/ai_discovery/parsers/javascript.py`
 - **Acceptance:**
   - `.vue` `<script>`/`<script setup>` parsed with byte offsets preserved (non-script regions blanked); template component tags and `@event` handlers become edges.
-  - TS re-exports/barrels (`export * from`, `export {a as b}`) resolved to a fixed point; aliases preserved.
-- **Verify:** `pytest -q tests -k "vue or barrel"`
-- **Out of scope:** —
+- **Verify:** `pytest -q tests -k vue`
+- **Out of scope:** globally registered components; mixins.
 
 ### M6.6 SPA routing + Angular DI
 - **Status:** Planned
 - **Size:** M
 - **Lane:** C
-- **Depends on:** M6.5
+- **Depends on:** M6.5.a, M6.5.b
 - **Owns:** `src/ai_discovery/route_parser.py`, `src/ai_discovery/extractors/` (new adapters)
 - **Acceptance:**
   - Vue/React/Angular routes (incl. lazy `import()`) → screens with component file; Angular `@Injectable` constructor DI edges.
