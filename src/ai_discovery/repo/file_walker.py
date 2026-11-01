@@ -11,7 +11,7 @@ _LANG_EXTENSIONS: dict[str, frozenset[str]] = {
     "csharp": frozenset({".cs"}),
     "java": frozenset({".java"}),
     "python": frozenset({".py"}),
-    "javascript": frozenset({".js", ".ts", ".tsx", ".jsx"}),
+    "javascript": frozenset({".js", ".ts", ".tsx", ".jsx", ".vue"}),
     "webforms": frozenset({".aspx", ".ascx"}),
     "jsp": frozenset({".jsp", ".jspx", ".tag", ".tagx"}),
     # A-6 import-map tier

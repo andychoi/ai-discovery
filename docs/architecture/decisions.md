@@ -109,6 +109,20 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
 - Effect on node-express-realworld (@30b68e1): key-edge recall 0.0 → 1.0; 37 `global_unique` edges → `import_exact`;
   21 Prisma `external_client` edges now found. Re-graded sample: all correct (`bench/precision/sheets/CURRENT.json`).
 
+### Vue single-file components (M6.5.b)
+- **Scripts keep their offsets.** Every byte outside `<script>` / `<script setup>` bodies is blanked (newlines
+  kept), so functions get their real `.vue` line numbers; `lang="ts"|"tsx"` picks the grammar.
+- **One `ui_component` node per SFC** (qualified name = file stem) carries the template's bindings as call sites.
+  Options-API `methods` become `<Stem>.<name>` method nodes; script-setup functions already are.
+- **Template bindings are `framework` edges.** `@event` / `v-on:` handlers bind to a function **of the same
+  file** (matched by file path, never by qualified name — two `Index.vue` files must not cross-link); inline
+  statements (`count++`) and `$emit`/`$router` bind nothing. A component tag (PascalCase or kebab-case) binds
+  only when the script imports it: a relative import → the imported `.vue` file's component node; a library
+  import (`element-plus`) → `external`; an unimported tag (HTML, globally registered) → no call site.
+- **`this.m()` in an Options-API method** → the same component's method (`self_scope`).
+- Not covered: globally registered components, mixins, `setup()` inner functions, template expressions other
+  than event handlers (`:prop="fn()"`).
+
 ### History (pre-ADR-0004)
 The 2026-05/06 cascade — stage 0 index (1.0), exact (1.0), import-scope
 (0.95), receiver-type (0.93; HIGH-3), short-name contextual 0.95…0.6 with A-3

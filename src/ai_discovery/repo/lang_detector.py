@@ -27,6 +27,7 @@ _EXT_MAP: dict[str, str] = {
     ".ts": "javascript",
     ".tsx": "javascript",
     ".jsx": "javascript",
+    ".vue": "javascript",   # M6.5.b: SFC scripts
     ".aspx": "webforms",
     ".ascx": "webforms",
     ".jsp": "jsp",

@@ -169,12 +169,15 @@ class _Resolver:
         # M6.5.a: JS/TS module-level definitions by (file, name) — file stems collide across directories
         self.js_top: dict[tuple[str, str], list[CodeNode]] = defaultdict(list)
         self._posix_files: dict[str, str] = {}
+        self.sfc_components: dict[str, CodeNode] = {}   # M6.5.b: `.vue` file → its component node
         for n in nodes:
             if _family(n.language) == "javascript" and n.file_path:
                 posix = posixpath.normpath(n.file_path.replace("\\", "/"))
                 self._posix_files[posix] = n.file_path
                 if n.qualified_name == f"{Path(n.file_path).stem}.{n.name}":
                     self.js_top[(posix, n.name)].append(n)
+                if n.node_type == "ui_component" and (n.framework_hints or {}).get("vue") == "sfc":
+                    self.sfc_components[posix] = n
         self._js_files: dict[tuple[str, str], str | None] = {}
         self._reexports: dict[str, list[dict]] = {}
         self._import_cache: dict[tuple, bool] = {}
@@ -219,6 +222,8 @@ class _Resolver:
     def resolve_site(self, caller: CodeNode, site: dict, imports: dict[str, dict]) -> None:
         call_ref = site["name"]
         receiver = site.get("receiver")
+        if site.get("binding") in ("template_handler", "template_component"):
+            return self._template_site(caller, site, imports)
 
         if self.symbol_index is not None:
             indexed = self.symbol_index.resolve(caller.qualified_name, call_ref, receiver)
@@ -314,6 +319,29 @@ class _Resolver:
             return True
         return False
 
+    def _template_site(self, caller, site, imports) -> None:
+        """M6.5.b: a Vue template binding is a framework binding. A handler names a function of the same
+        file (matched by file, so two `Index.vue` files never cross-link); a component tag names the `.vue`
+        file its import points to. A tag imported from a library is ``external``."""
+        name = site["name"]
+        if site["binding"] == "template_handler":
+            posix = posixpath.normpath(caller.file_path.replace("\\", "/"))
+            found = [t for t in self.js_top.get((posix, name), []) if t.node_type in O.CALLABLE_TYPES]
+            if len(found) == 1:
+                self._edge(caller, found[0], "framework", name, binding="template_handler")
+            else:
+                self._miss(caller, site, name, "ambiguous" if found else "not_found", len(found))
+            return
+        module = (imports.get(name) or {}).get("module") or ""
+        if not module.startswith("."):
+            return self._miss(caller, site, name, "external")
+        file = self._js_module_file(module, caller.file_path)
+        target = self.sfc_components.get(file) if file else None
+        if target is not None:
+            self._edge(caller, target, "framework", name, binding="template_component")
+        else:
+            self._miss(caller, site, name, "not_found")
+
     def _via_js_module(self, caller, site, name, receiver, imp, call_ref) -> bool | None:
         """M6.5.a: a relative JS/TS import (ES or CommonJS) names the module file, so the call binds to the
         function defined there — following barrel re-exports — instead of a repo-wide name guess.
@@ -407,6 +435,14 @@ class _Resolver:
                 return True
             if len(found) > 1:
                 self._miss(caller, site, call_ref, "ambiguous", len(found))
+                return True
+        if cls is None and explicit and (caller.framework_hints or {}).get("vue") == "options_method":
+            # M6.5.b: `this.load()` inside a Vue Options-API method — a method of the same component
+            posix = posixpath.normpath(caller.file_path.replace("\\", "/"))
+            found = [t for t in self.js_top.get((posix, name), [])
+                     if t.node_type in O.CALLABLE_TYPES and t.qualified_name != caller.qualified_name]
+            if len(found) == 1:
+                self._edge(caller, found[0], "self_scope", call_ref)
                 return True
         if explicit:
             foreign = cls is not None and self._has_foreign_base(caller)

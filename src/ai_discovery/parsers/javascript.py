@@ -135,7 +135,7 @@ class JavaScriptParser(LanguageParser):
 
     @property
     def extensions(self) -> frozenset[str]:
-        return frozenset({".js", ".ts", ".tsx", ".jsx"})
+        return frozenset({".js", ".ts", ".tsx", ".jsx", ".vue"})
 
     # ── public API ────────────────────────────────────────────────────
 
@@ -149,12 +149,83 @@ class JavaScriptParser(LanguageParser):
         if _is_minified(source):
             logger.debug("Skipping minified file: %s", file_path)
             return []
-        grammar = _grammar_for(file_path)
+        sfc = None
+        if file_path.suffix.lower() == ".vue":   # M6.5.b: scripts at their real offsets, template scanned
+            from .vue import split_sfc
+            sfc = split_sfc(source)
+            source, grammar = sfc.script, sfc.grammar
+        else:
+            grammar = _grammar_for(file_path)
         token = _GRAMMAR.set(grammar)
         try:
-            return self._parse_tree(Parser(_GRAMMARS[grammar]).parse(source).root_node, file_path, _enc_hints)
+            root = Parser(_GRAMMARS[grammar]).parse(source).root_node
+            nodes = self._parse_tree(root, file_path, _enc_hints)
+            if sfc is not None:
+                nodes += self._sfc_nodes(root, sfc, file_path, nodes, _enc_hints)
+            return nodes
         finally:
             _GRAMMAR.reset(token)
+
+    # ── Vue single-file components (M6.5.b) ─────────────────────────
+
+    def _sfc_nodes(self, root, sfc, file_path: Path, script_nodes: list[CodeNode], hints: dict) -> list[CodeNode]:
+        """Options-API methods plus one ``ui_component`` node (qualified name = file stem) whose call
+        sites are the template's bindings: handlers (resolved in this file) and imported component tags."""
+        stem, fp = file_path.stem, str(file_path)
+        imports = self._extract_imports(root)
+        have = {n.qualified_name for n in script_nodes}
+        out: list[CodeNode] = []
+        for name, member in self._options_methods(root):
+            qn = f"{stem}.{name}"
+            if qn in have:
+                continue
+            have.add(qn)
+            out.append(CodeNode(file_path=fp, language="javascript", node_type="method", name=name,
+                                qualified_name=qn, source_code=member.text.decode(),
+                                line_start=member.start_point.row + 1, line_end=member.end_point.row + 1,
+                                calls=self._extract_calls(member), call_sites=self._extract_call_sites(member),
+                                imports=imports, framework_hints={"vue": "options_method", **hints}))
+        bound = {imp.get("alias") or imp.get("name") for imp in imports}
+        sites = [{"name": h, "receiver": None, "line": line, "binding": "template_handler"}
+                 for h, line in sfc.handlers if not h.startswith("$")]
+        sites += [{"name": tag, "receiver": None, "line": line, "binding": "template_component"}
+                  for tag, line in sfc.components if tag in bound]
+        out.append(CodeNode(file_path=fp, language="javascript", node_type="ui_component", name=stem,
+                            qualified_name=stem, source_code=sfc.template,
+                            line_start=sfc.template_line or 1, line_end=sfc.template_end or 1,
+                            calls=[s["name"] for s in sites], call_sites=sites, imports=imports,
+                            framework_hints={"vue": "sfc", **hints}))
+        return out
+
+    @classmethod
+    def _options_methods(cls, root) -> list[tuple[str, object]]:
+        """`export default { methods: { save() {…}, load: () => … } }` (also inside `defineComponent(…)`)."""
+        out: list[tuple[str, object]] = []
+        for stmt in root.children:
+            if stmt.type != "export_statement":
+                continue
+            value = stmt.child_by_field_name("value")
+            if value is not None and value.type == "call_expression":
+                args = value.child_by_field_name("arguments")
+                value = next((a for a in args.named_children if a.type == "object"), None) if args else None
+            if value is None or value.type != "object":
+                continue
+            for pair in value.named_children:
+                key = pair.child_by_field_name("key") if pair.type == "pair" else None
+                body = pair.child_by_field_name("value") if key is not None else None
+                if key is None or key.text != b"methods" or body is None or body.type != "object":
+                    continue
+                for member in body.named_children:
+                    if member.type == "method_definition":
+                        name = member.child_by_field_name("name")
+                    elif member.type == "pair" and (v := member.child_by_field_name("value")) is not None \
+                            and v.type in ("arrow_function", "function_expression", "function"):
+                        name = member.child_by_field_name("key")
+                    else:
+                        continue
+                    if name is not None:
+                        out.append((name.text.decode().strip("\"'"), member))
+        return out
 
     def _parse_tree(self, root, file_path: Path, _enc_hints: dict) -> list[CodeNode]:
         file_stem = file_path.stem
