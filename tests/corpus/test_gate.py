@@ -118,3 +118,20 @@ def test_sealed_run_reports_counts_only(flag, capsys) -> None:
     assert "details withheld" in out
     for case in (p.parent.name for p in gate.HARD.glob("*/ground_truth.json") if gate.split_of(p.parent.name) == "sealed"):
         assert case not in out
+
+
+def test_current_sheets_name_existing_graded_samples() -> None:
+    """CURRENT.json (M6.14) names one graded sheet + recorded run per repo; every graded row has a reason."""
+    current = gate.current_sheets()
+    assert {"eshop", "spring-petclinic", "microblog", "node-express-realworld"} <= set(current)
+    for repo_id, (sheet, run) in current.items():
+        assert sheet.name.startswith(repo_id + "-") and run.name.endswith(f"-{repo_id}.json")
+        rows = gate.load_sheet(sheet)
+        assert rows and all(r["verdict"] in ("correct", "wrong") and r["reason"].strip() for r in rows)
+
+
+def test_current_sheets_rejects_a_missing_file(tmp_path) -> None:
+    bad = tmp_path / "CURRENT.json"
+    bad.write_text(json.dumps({"x": {"sheet": "nope.csv", "run": "nope.json"}}))
+    with pytest.raises(FileNotFoundError):
+        gate.current_sheets(bad)

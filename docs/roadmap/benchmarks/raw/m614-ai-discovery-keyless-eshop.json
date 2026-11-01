@@ -1,0 +1,66 @@
+{
+  "cost_usd": 0,
+  "date": "2026-10-31",
+  "docs": 0,
+  "edges_by_resolved_by": {
+    "dispatch": 64,
+    "external_client": 33,
+    "framework": 66,
+    "global_unique": 173,
+    "inherited": 15,
+    "receiver_global": 22,
+    "receiver_typed": 63,
+    "same_file": 1,
+    "self_scope": 175
+  },
+  "edges_total": 612,
+  "files": {
+    "indexed": 512,
+    "skipped": {
+      "no_symbols": 58,
+      "skip_dir": 3,
+      "unsupported_extension": 572
+    },
+    "top_unsupported_extensions": {
+      ".csproj": 28,
+      ".css": 30,
+      ".json": 43,
+      ".md": 50,
+      ".png": 31,
+      ".razor": 40,
+      ".svg": 53,
+      ".webp": 105,
+      ".woff2": 62,
+      ".xaml": 25
+    }
+  },
+  "ground_truth": {
+    "status": "no_ground_truth"
+  },
+  "mode": "keyless",
+  "nodes_by_kind": {
+    "class": 503,
+    "db_model": 3,
+    "endpoint": 31,
+    "enum": 9,
+    "external_system": 3,
+    "function": 5,
+    "interface": 42,
+    "method": 861
+  },
+  "ok": true,
+  "pages_hook": "779 pages, 779 indexed",
+  "repo": "eshop",
+  "scan_status": "completed",
+  "screens": 0,
+  "sha": "dc7ea499cd356924fb6689b3702964a5869dbae9",
+  "source": "local",
+  "stack": "aspnet-core",
+  "tool": "ai-discovery",
+  "unresolved": {
+    "edges_without_target": 0,
+    "unresolved_calls_rows": 2850
+  },
+  "void": false,
+  "wall_seconds": 1.86
+}

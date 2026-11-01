@@ -157,7 +157,7 @@
 - **Out of scope:** —
 
 ### M6.14 Re-graded precision samples after M6.2/M6.3
-- **Status:** In progress (rm/M6.14-regrade-precision, 2026-10-31)
+- **Status:** Done (6c23e44)
 - **Size:** M
 - **Lane:** Q
 - **Depends on:** M6.2, M6.3, M6.13
@@ -168,3 +168,32 @@
   - Results page with per-stratum precision (Wilson 95% CI) before/after and who graded.
 - **Verify:** `python -m bench gate --external` (no drift warnings on the re-sampled repos)
 - **Out of scope:** microblog, node-express (no drift).
+
+### M6.15 Precision fixes from the M6.14 re-grade
+- **Status:** Planned
+- **Size:** M
+- **Lane:** C
+- **Depends on:** M6.14
+- **Owns:** `src/ai_discovery/graph/call_graph.py`, `src/ai_discovery/parsers/csharp.py`, `src/ai_discovery/parsers/java.py`
+- **Acceptance:**
+  - Interface implementations matched by the import-resolved interface, not the short base name (petclinic: `jakarta.validation.Validator` ≠ Spring `Validator`).
+  - A local variable whose declared type is a foreign import never gets a `global_unique` guess (petclinic `PropertySource.getName`).
+  - C# `external_client` requires a client-typed receiver (`HttpClient`, `GrpcChannel`, …), not a variable named `request` (eShop: 10 of 30 graded wrong).
+  - Duplicate generated types (two copies of a `.proto`) prefer the caller's project.
+  - Each fix has a hard case; the gate's `known_wrong_still_emitted` lists shrink for the strata named in `docs/roadmap/benchmarks/2026-10-31-precision-regrade.md`.
+- **Verify:** `python -m bench gate --external`
+- **Out of scope:** re-grading (the sheets stay; wrong edges simply stop being emitted).
+
+### M6.16 Chained-call typing
+- **Status:** Planned
+- **Size:** S
+- **Lane:** C
+- **Depends on:** M6.2, M6.3
+- **Owns:** `src/ai_discovery/parsers/java.py`, `src/ai_discovery/parsers/csharp.py`, `src/ai_discovery/graph/call_graph.py`
+- **Acceptance:**
+  - Methods record their declared return type; a call `a.b().c()` types `c`'s receiver from `b`'s return type when `b` resolved to a repo method (Java, C#).
+  - Library return types (`Optional<T>`, `List<T>`, `Task<T>`) are foreign: the call is `external`, never guessed; generic unwrapping is out of scope.
+  - New edges use `receiver_typed`; hard case added.
+- **Verify:** `pytest -q tests -k chained`
+- **Out of scope:** generic type inference; fluent builders returning `this` beyond one hop.
+

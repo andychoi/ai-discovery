@@ -41,8 +41,7 @@ FIXTURE_BASELINE = ROOT / "tests" / "corpus" / "baseline.json"
 HARD_BASELINES = {"dev": HARD / "baseline_dev.json", "sealed": HARD / "baseline_sealed.json"}
 SHEETS = Path(__file__).parent / "precision" / "sheets"
 RAW = ROOT / "docs" / "roadmap" / "benchmarks" / "raw"
-SHEET_SUFFIX = "-seed11-m112.csv"          # the graded M1.12 sample (bench/precision/sheets)
-RUN_PREFIX = "m112-ai-discovery-keyless-"  # the recorded M1.12 runs (docs/roadmap/benchmarks/raw)
+CURRENT = SHEETS / "CURRENT.json"           # repo id → {sheet, run}: the graded sample and its recorded run
 SPLIT_SEED = 6013
 TOLERANCE = 1e-3
 RESAMPLE_SHARE = 0.20
@@ -236,6 +235,21 @@ def recall_check(repo_id: str, current: dict, recorded: Optional[dict]) -> tuple
     return out, failures
 
 
+def current_sheets(path: Path = CURRENT) -> dict[str, tuple[Path, Path]]:
+    """Repo id → (graded sheet, recorded run) named by ``CURRENT.json``; a missing file is an error."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    out = {}
+    for repo_id, entry in sorted(data.items()):
+        if repo_id.startswith("_"):
+            continue
+        sheet, run = SHEETS / entry["sheet"], RAW / entry["run"]
+        for f in (sheet, run):
+            if not f.exists():
+                raise FileNotFoundError(f"{path.name}: {repo_id} names {f.name}, which does not exist")
+        out[repo_id] = (sheet, run)
+    return out
+
+
 def external_gate(*, fetch: bool = False, repo_ids: Optional[list[str]] = None) -> GateResult:
     from .precision.sampler import emitted_edges
     from .repos import fetch as fetch_repo, load_repos, locate
@@ -243,8 +257,7 @@ def external_gate(*, fetch: bool = False, repo_ids: Optional[list[str]] = None) 
 
     res = GateResult()
     repos = load_repos()
-    for sheet in sorted(SHEETS.glob(f"*{SHEET_SUFFIX}")):
-        repo_id = sheet.name[: -len(SHEET_SUFFIX)].rsplit("-", 1)[0]
+    for repo_id, (sheet, recorded_path) in current_sheets().items():
         if repo_ids and repo_id not in repo_ids:
             continue
         repo = repos.get(repo_id)
@@ -271,7 +284,6 @@ def external_gate(*, fetch: bool = False, repo_ids: Optional[list[str]] = None) 
             emitted = emitted_edges(state / "discovery.db", 1, src.path)
         finally:
             shutil.rmtree(state, ignore_errors=True)
-        recorded_path = RAW / f"{RUN_PREFIX}{repo_id}.json"
         recorded = json.loads(recorded_path.read_text()) if recorded_path.exists() else None
         strata, p_fail, p_warn = precision_check(load_sheet(sheet), emitted,
                                                  (recorded or {}).get("edges_by_resolved_by"))
