@@ -10,7 +10,7 @@ from __future__ import annotations
 from ai_discovery.config import (
     BedrockConfig, OllamaConfig, MLXGemmaConfig, MLXQwenConfig,
     OpenAIConfig, GeminiConfig, AnthropicConfig, AIGWConfig, OMLXConfig, OpenRouterConfig,
-    RagConfig, ProcessMiningConfig, AdvisorConfig, StoreConfig
+    RagConfig, ProcessMiningConfig, AdvisorConfig, ScanConfig, StoreConfig
     )
 
 
@@ -141,6 +141,11 @@ def render_template(provider: str = "aigw", *, prose: bool = False) -> str:
         ("", None),
         ("# Snapshot retention: completed scans kept in the index (the current one is always kept)", None),
         ("store", {"keep_snapshots": StoreConfig().keep_snapshots}),
+        ("", None),
+        ("# Which files a scan reads (M6.1); .gitignore and .discoveryignore always apply.", None),
+        ("# Add gitignore-syntax excludes with  exclude: [\"**/Scripts/vendor/**\"]", None),
+        ("scan", {"max_file_kb_source": ScanConfig().max_file_kb_source,
+                  "max_file_kb_other": ScanConfig().max_file_kb_other, "submodules": ScanConfig().submodules}),
     ])
 
     # Process Mining config

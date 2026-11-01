@@ -45,6 +45,8 @@ def run(ctx: RunContext) -> None:
         cache_hits = 0
         results: dict = {}
 
+        generated: set = set()   # filled from the walker before parsing starts (M6.1)
+
         def _cache_key(file_path):
             """(repo-relative path, sha256, encoding decision) — None if unreadable."""
             import hashlib
@@ -78,6 +80,9 @@ def run(ctx: RunContext) -> None:
                     try:
                         nodes = p.parse_file(file_path)
                         _stamp_file_hash(nodes, file_path)  # A-2: cross-scan identity
+                        if file_path in generated:   # M6.1: designer/codegen output, kept but tagged
+                            for _n in nodes:
+                                _n.framework_hints["generated"] = True
                     except Exception as exc:
                         logger.debug("parse traceback for %s", file_path, exc_info=True)
                         return [], (file_path, exc), None, False
@@ -98,7 +103,12 @@ def run(ctx: RunContext) -> None:
         ) as progress:
             from ..core.encoding import reset_fallback_stats
             reset_fallback_stats()  # M0.4: per-scan fallback count
-            files = list(walk_repo(resolved.repo_path, set(lang_stats.keys())))
+            from .walk import _walker
+            walker = _walker(ctx)
+            generated.update(walker.generated)
+            files = list(walk_repo(resolved.repo_path, set(lang_stats.keys()), walker=walker))
+            for reason, (count, sample) in walker.skip_reasons().items():   # M6.1: every skip is visible
+                ctx.degrade("walk", reason, count, sample)
             task = progress.add_task("Parsing", total=len(files))
 
             # tree-sitter's C-level parse releases the GIL, so threads give

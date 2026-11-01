@@ -1,0 +1,16 @@
+{
+  "project": "webforms-page-load",
+  "framework": "webforms",
+  "endpoints": [],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "Orders.aspx", "callee_suffix": "Orders.Page_Load", "min_confidence": 0.75},
+    {"caller_suffix": "Orders.Page_Load", "callee_suffix": "Orders.BindOrders", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "csharp+webforms",
+  "_README": "Labelled from source. Orders.aspx declares AutoEventWireup=\"true\" with code-behind Shop.Web.Orders, so ASP.NET calls Orders.Page_Load on every request without any markup attribute naming it; Page_Load calls BindOrders. The page → Page_Load edge is the auto-wired lifecycle binding.",
+  "hard_case": {"catalog": "WebForms Page_Load auto-wiring (AutoEventWireup)", "item": "M6.11"}
+}

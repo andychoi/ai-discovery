@@ -56,6 +56,17 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
   0.8 to `receiver_global` 0.75; the corpus bars were lowered to 0.75 with a
   note per fixture.
 
+### Walker v2: which files a scan reads (M6.1)
+- **Git decides first.** Inside a git work tree the file set is `git ls-files -co --exclude-standard`; elsewhere a
+  filesystem walk honours every `.gitignore` (pathspec). `.discoveryignore` and `scan.exclude` add gitignore-syntax
+  excludes. Symlinked directories are never followed; nested repositories and submodules are opt-in.
+- **Bare directory names are not evidence.** Only always-tooling names are skipped by name; `packages`, `bin`, `obj`,
+  `target`, `build`, `out`, `dist`, `env`, `publish`, `artifacts` are skipped only when their surroundings show they
+  are output (see `design/graph-accuracy.md` §3, "As built"). A yarn workspace's `packages/` and a Python package
+  named `build` are source; `assets/` is no longer skipped.
+- **Every skip is a degradation** of stage `walk`, with up to five sample paths; generated files are kept and their
+  nodes tagged `generated`.
+
 ### C# scope rules (M6.2)
 - **Namespaces.** A type's qualified name uses its enclosing block namespaces, else the file-scoped
   `namespace X;`, else the file stem. Before M6.2 the file-scoped form fell back to the stem, so two

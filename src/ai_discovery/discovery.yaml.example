@@ -44,6 +44,13 @@ rag:
 store:
   keep_snapshots: 3
 
+# Which files a scan reads (M6.1); .gitignore and .discoveryignore always apply.
+# Add gitignore-syntax excludes with  exclude: ["**/Scripts/vendor/**"]
+scan:
+  max_file_kb_source: 2048
+  max_file_kb_other: 500
+  submodules: false
+
 # Flow Statistics Configuration (Phase 16) — OPTIONAL
 # Set enabled: true to enable per-scenario flow statistics reports
 process_mining:

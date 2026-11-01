@@ -71,14 +71,14 @@ def _node_for(token: str, source: str, declared_as: str) -> CodeNode:
 
 def read_infra_files(repo_path) -> list[CodeNode]:
     """Return external-system nodes declared in docker-compose / K8s manifests."""
-    from ..repo.lang_detector import _SKIP_DIRS
+    from ..repo.walker import excluded_path
 
     repo_path = Path(repo_path)
     systems: dict[str, CodeNode] = {}
     for path in sorted(repo_path.rglob("*")):
         if path.suffix.lower() not in (".yml", ".yaml") or not path.is_file():
             continue
-        if any(part in _SKIP_DIRS for part in path.parts):
+        if excluded_path(path, repo_path):   # repo-relative (M6.1)
             continue
         try:
             if path.stat().st_size > 2_000_000:

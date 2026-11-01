@@ -67,14 +67,14 @@ def extract_openapi_endpoints(spec: dict, source: str = "openapi") -> list[CodeN
 def read_openapi_files(repo_path) -> list[CodeNode]:
     """Find and parse OpenAPI/Swagger specs under *repo_path*, returning endpoint
     nodes. Spec files aren't tree-sitter languages, so the normal walk skips them."""
-    from ..repo.lang_detector import _SKIP_DIRS
+    from ..repo.walker import excluded_path
 
     repo_path = Path(repo_path)
     out: list[CodeNode] = []
     for path in sorted(repo_path.rglob("*")):
         if path.suffix.lower() not in (".json", ".yaml", ".yml") or not path.is_file():
             continue
-        if any(part in _SKIP_DIRS for part in path.parts):
+        if excluded_path(path, repo_path):   # repo-relative (M6.1)
             continue
         # Cheap pre-filter: spec-ish filename, or a small file we can sniff.
         name = path.name.lower()

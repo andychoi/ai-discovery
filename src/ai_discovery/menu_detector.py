@@ -20,7 +20,7 @@ import yaml
 from .route_parser import parse_route_file, RouteNode
 from .webforms_extractor import extract_webforms_page
 from .jsp_extractor import extract_jsp_page
-from .repo.lang_detector import _SKIP_DIRS
+from .repo.walker import excluded_path
 
 logger = logging.getLogger(__name__)
 
@@ -308,7 +308,7 @@ class WebFormsMenuDetector(MenuDetector):
         repo = Path(repo_path)
         aspx = [
             p for p in sorted(repo.rglob("*.aspx"))
-            if not (_SKIP_DIRS & set(p.parts))
+            if not excluded_path(p, repo)   # repo-relative (M6.1)
         ]
         if not aspx:
             return None
@@ -363,7 +363,7 @@ class JspMenuDetector(MenuDetector):
         repo = Path(repo_path)
         pages = [
             p for p in sorted(list(repo.rglob("*.jsp")) + list(repo.rglob("*.jspx")))
-            if not (_SKIP_DIRS & set(p.parts))
+            if not excluded_path(p, repo)   # repo-relative (M6.1)
         ]
         if not pages:
             return None

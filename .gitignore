@@ -77,3 +77,6 @@ web/dist/
 # M5.7 agent eval: full-history task repos and per-run scratch workspaces
 bench/agent/.repos/
 bench/agent/results/work/
+
+# hard-case fixtures whose point is a source directory named like build output (M6.1)
+!tests/corpus/hard/**/build/

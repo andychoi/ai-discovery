@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<struts-config>
+  <action-mappings>
+    <action path="/orders" type="shop.web.OrderAction">
+      <forward name="success" path="/WEB-INF/jsp/orders.jsp"/>
+    </action>
+  </action-mappings>
+</struts-config>

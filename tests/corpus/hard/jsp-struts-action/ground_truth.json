@@ -1,0 +1,15 @@
+{
+  "project": "jsp-struts-action",
+  "framework": "struts",
+  "endpoints": [{"method": "ANY", "path": "/orders"}],
+  "entities": [],
+  "relationships": [],
+  "key_call_edges": [
+    {"caller_suffix": "OrderAction.execute", "callee_suffix": "OrderAction.list", "min_confidence": 0.75}
+  ],
+  "forbidden_call_edges": [],
+  "external_systems": [],
+  "language": "java+jsp",
+  "_README": "Labelled from source. struts-config.xml maps the request path /orders to shop.web.OrderAction (Struts 1 action, execute() entry) forwarding to orders.jsp. The endpoint /orders exists only in the XML mapping.",
+  "hard_case": {"catalog": "Struts action mappings (struts-config.xml) as endpoints", "item": "M6.11"}
+}

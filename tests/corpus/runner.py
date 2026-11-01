@@ -34,6 +34,9 @@ _PARSERS = {
     "csharp": ("ai_discovery.parsers.csharp", "CSharpParser"),
     "python": ("ai_discovery.parsers.python_parser", "PythonParser"),
     "javascript": ("ai_discovery.parsers.javascript", "JavaScriptParser"),
+    # markup tiers (M6.11 hard cases pair them with their code-behind language: "csharp+webforms")
+    "webforms": ("ai_discovery.parsers.webforms", "WebFormsParser"),
+    "jsp": ("ai_discovery.parsers.jsp", "JspParser"),
     # A-6 import-map tier (lightweight extractors)
     "go": ("ai_discovery.parsers.import_map", "GoImportMapParser"),
     "rust": ("ai_discovery.parsers.import_map", "RustImportMapParser"),
@@ -92,13 +95,14 @@ def _parser_for(language: str):
 
 def run_fixture(repo_path: Path, language: str) -> ExtractionResult:
     """Parse one fixture with the real API. `language` is the parser key."""
-    parser = _parser_for(language)
     nodes: list[CodeNode] = []
-    for f in walk_repo(repo_path, {language}):
-        try:
-            nodes.extend(parser.parse_file(f))
-        except Exception:  # a single unparseable file must not abort the run
-            continue
+    for lang in language.split("+"):   # "csharp+webforms": several parsers over one fixture
+        parser = _parser_for(lang)
+        for f in walk_repo(repo_path, {lang}):
+            try:
+                nodes.extend(parser.parse_file(f))
+            except Exception:  # a single unparseable file must not abort the run
+                continue
     # HIGH-7: merge contract-declared endpoints/entities (OpenAPI + GraphQL +
     # proto), deduped against AST by (method, route) for endpoints and by
     # qualified_name for entities.

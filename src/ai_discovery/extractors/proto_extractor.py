@@ -65,12 +65,12 @@ def extract_proto(text: str, source: str = "proto") -> list[CodeNode]:
 
 
 def read_proto_files(repo_path) -> list[CodeNode]:
-    from ..repo.lang_detector import _SKIP_DIRS
+    from ..repo.walker import excluded_path
 
     repo_path = Path(repo_path)
     out: list[CodeNode] = []
     for path in sorted(repo_path.rglob("*.proto")):
-        if any(part in _SKIP_DIRS for part in path.parts):
+        if excluded_path(path, repo_path):   # repo-relative (M6.1)
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")

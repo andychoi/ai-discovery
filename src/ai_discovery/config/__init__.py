@@ -159,6 +159,16 @@ class OpenRouterConfig:
 
 
 @dataclass
+class ScanConfig:
+    """Which files a scan reads (M6.1, `repo/walker.py`)."""
+    # gitignore-syntax patterns excluded on top of .gitignore and .discoveryignore
+    exclude: list[str] = field(default_factory=list)
+    max_file_kb_source: int = 2048    # larger source files are skipped (`file_too_large`)
+    max_file_kb_other: int = 500
+    submodules: bool = False          # walk git submodules / nested repositories
+
+
+@dataclass
 class StoreConfig:
     """Snapshot retention (M1.5): completed scans kept besides the current one's."""
     keep_snapshots: int = 3
@@ -269,6 +279,7 @@ class DiscoveryConfig:
     openrouter: OpenRouterConfig = field(default_factory=OpenRouterConfig)
     rag: RagConfig = field(default_factory=RagConfig)
     store: StoreConfig = field(default_factory=StoreConfig)
+    scan: ScanConfig = field(default_factory=ScanConfig)
     process_mining: ProcessMiningConfig = field(default_factory=ProcessMiningConfig)
     advisor: AdvisorConfig = field(default_factory=AdvisorConfig)
 

@@ -28,6 +28,7 @@ class RunContext:
 
     # ── stage outputs ──────────────────────────────────────────────────────
     lang_stats: dict = field(default_factory=dict)                 # walk
+    walker: Any = None                                             # walk (M6.1 RepoWalker, shared with parse)
     all_nodes: list = field(default_factory=list)                  # parse
     domains_dict: dict = field(default_factory=dict)               # domains
     domains: list = field(default_factory=list)                    # domains
