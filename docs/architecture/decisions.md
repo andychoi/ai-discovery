@@ -74,6 +74,22 @@ This document explains *why* we chose specific heuristics and trade-offs in AI-D
 - Interfaces and enums are type nodes but not class types for receiver typing: a call through an interface
   still resolves to the implementations (`framework` for one, `dispatch` for 2–24).
 
+### Java scope rules (M6.3)
+- **Type kinds.** Interfaces (with their declared methods), enums (with methods) and records are nodes;
+  interface bases include `extends` lists. Single-segment packages (`package a;`) are recognised.
+- **Receiver type ≠ entity type.** Receiver typing keeps the outer declared type (`List<Item> items` →
+  `List`, a library type → `external`); the JPA/table view keeps the element type (`Item`). Two maps:
+  `receiver_types` (resolution) and `field_types` (pages, relationships).
+- **Locals and parameters** type receivers (`Owner owner`, `var pet = new Pet()`), shadowing fields.
+- **Repo interfaces without implementations** (Spring Data repositories): a call reaches the interface's
+  *declared* method (`receiver_typed`); a method it only inherits from a library interface (`save` from
+  `JpaRepository`) is `external`; with 1 / 2–24 repo implementations the call keeps going to them
+  (`framework` / `dispatch`).
+- **Foreign declared receiver → no guess** now applies to Java as well as C#.
+- Effect on spring-petclinic (@753d35c): key-edge recall 0.333 → 1.0; name-only `global_unique` edges
+  120 → 20; `receiver_typed` 19 → 113, `inherited` 8 → 62 (a 24-edge spot check of the new typed and
+  inherited edges was all correct; the graded sample needs re-drawing before precision is re-quoted).
+
 ### History (pre-ADR-0004)
 The 2026-05/06 cascade — stage 0 index (1.0), exact (1.0), import-scope
 (0.95), receiver-type (0.93; HIGH-3), short-name contextual 0.95…0.6 with A-3

@@ -24,10 +24,19 @@ _MAPPING_ANNOTATIONS: dict[str, str] = {
 
 # ── Tree-sitter queries ─────────────────────────────────────────────
 
+# M6.3: every type declaration. Records behave like classes; interfaces keep their declared methods
+# (Spring Data repositories are interfaces whose implementation is generated at run time); enums keep
+# their methods.
+_TYPE_KINDS = {"class_declaration": "class", "record_declaration": "class", "interface_declaration": "interface",
+               "enum_declaration": "enum"}
 _CLASS_QUERY = Query(
     JAVA_LANGUAGE,
-    "(class_declaration name: (identifier) @class.name) @class.def",
+    """[(class_declaration name: (identifier) @class.name)
+        (record_declaration name: (identifier) @class.name)
+        (interface_declaration name: (identifier) @class.name)
+        (enum_declaration name: (identifier) @class.name)] @class.def""",
 )
+_PRIMITIVES = frozenset({"var", "int", "long", "short", "byte", "char", "boolean", "float", "double", "void"})
 
 _METHOD_QUERY = Query(
     JAVA_LANGUAGE,
@@ -93,7 +102,7 @@ _EXTERNAL_CLIENTS = frozenset({"restTemplate", "webClient", "feign", "httpClient
 
 _PACKAGE_QUERY = Query(
     JAVA_LANGUAGE,
-    "(package_declaration (scoped_identifier) @pkg.name)",
+    "(package_declaration [(scoped_identifier) (identifier)] @pkg.name)",   # M6.3: `package a;` too
 )
 
 _IMPORT_QUERY = Query(
@@ -152,7 +161,7 @@ class JavaParser(LanguageParser):
             ann_names = [a["name"] for a in annotations]
 
             # Determine node_type
-            node_type = "class"
+            node_type = _TYPE_KINDS.get(cls_node.type, "class")
             framework_hints: dict = {}
 
             if any(n in ("Entity", "Table") for n in ann_names):
@@ -186,6 +195,13 @@ class JavaParser(LanguageParser):
             field_types = self._extract_field_types(cls_node)
             if field_types:
                 framework_hints["field_types"] = field_types
+            # M6.3: receiver typing keeps the outer type (`List<Item> items` → `List`), unlike the
+            # JPA view above (→ `Item`); the resolver prefers this map.
+            receiver_types = self._extract_field_types(cls_node, unwrap=self._receiver_type)
+            if receiver_types:
+                framework_hints["receiver_types"] = receiver_types
+            if node_type == "interface":
+                framework_hints["declares_members"] = True
 
             nodes.append(CodeNode(
                 file_path=fp,
@@ -236,6 +252,11 @@ class JavaParser(LanguageParser):
                     "transitions": transitions, 
                     "boundaries": boundaries
                 }
+                local_types = self._extract_local_types(m_node)
+                if local_types:
+                    m_hints["local_types"] = local_types   # params + locals (M6.3)
+                if node_type == "interface" and m_node.child_by_field_name("body") is None:
+                    m_hints["abstract"] = True
                 if endpoint_info:
                     m_node_type = "endpoint"
                     m_hints["method"] = endpoint_info["method"]
@@ -467,7 +488,7 @@ class JavaParser(LanguageParser):
                                 last = c
                         if last is not None:
                             bases.append(last.text.decode())
-            elif child.type == "super_interfaces":
+            elif child.type in ("super_interfaces", "extends_interfaces"):
                 for sub in child.children:
                     if sub.type == "type_list":
                         for ti in sub.children:
@@ -538,8 +559,50 @@ class JavaParser(LanguageParser):
             t = t.split(",")[-1].strip()  # Map<K,V> → V
         return t.split(".")[-1].strip()
 
+    @staticmethod
+    def _receiver_type(type_text: str) -> str:
+        """Outer, unqualified type for receiver typing: `List<Item>` → `List`, `a.b.Repo` → `Repo`,
+        `Item[]` → `Item[]` (arrays are never a repo type). Primitives and `var` give ''."""
+        t = (type_text or "").strip()
+        t = t.split("<", 1)[0].strip()
+        t = t.rsplit(".", 1)[-1].strip()
+        return "" if t in _PRIMITIVES else t
+
     @classmethod
-    def _extract_field_types(cls, cls_node) -> dict:
+    def _extract_local_types(cls, m_node) -> dict:
+        """Parameter and local-variable names → declared outer type; `var x = new Foo()` → `Foo`."""
+        out: dict[str, str] = {}
+
+        def walk(n) -> None:
+            for c in n.children:
+                if c.type in ("class_body", "lambda_expression", "class_declaration"):
+                    continue   # inner scopes declare their own names
+                if c.type in ("formal_parameter", "spread_parameter", "catch_formal_parameter"):
+                    tn = c.child_by_field_name("type")
+                    nn = c.child_by_field_name("name")
+                    if tn is not None and nn is not None and (t := cls._receiver_type(tn.text.decode())):
+                        out.setdefault(nn.text.decode(), t)
+                elif c.type == "local_variable_declaration":
+                    tn = c.child_by_field_name("type")
+                    declared = cls._receiver_type(tn.text.decode()) if tn is not None else ""
+                    for d in c.children:
+                        if d.type != "variable_declarator":
+                            continue
+                        nn = d.child_by_field_name("name")
+                        value = d.child_by_field_name("value")
+                        t = declared
+                        if not t and value is not None and value.type == "object_creation_expression":
+                            vt = value.child_by_field_name("type")
+                            t = cls._receiver_type(vt.text.decode()) if vt is not None else ""
+                        if nn is not None and t:
+                            out.setdefault(nn.text.decode(), t)
+                walk(c)
+
+        walk(m_node)
+        return out
+
+    @classmethod
+    def _extract_field_types(cls, cls_node, unwrap=None) -> dict:
         """Map field / constructor-param names to their declared (bare) type.
 
         Enables DI/receiver-type call resolution (HIGH-3): a call
@@ -550,15 +613,22 @@ class JavaParser(LanguageParser):
         injection (`CheckoutController(OrderService orderService)`).
         """
         out: dict[str, str] = {}
-        body = next((c for c in cls_node.children if c.type == "class_body"), None)
+        unwrap = unwrap or cls._unwrap_type
+        body = next((c for c in cls_node.children if c.type in ("class_body", "enum_body", "interface_body")), None)
         if body is not None:
-            for member in body.children:
+            members = list(body.children)
+            for m in body.children:   # enum fields live under enum_body_declarations
+                if m.type == "enum_body_declarations":
+                    members.extend(m.children)
+            for member in members:
                 if member.type != "field_declaration":
                     continue
                 type_node = member.child_by_field_name("type")
                 if type_node is None:
                     continue
-                tname = cls._unwrap_type(type_node.text.decode())
+                tname = unwrap(type_node.text.decode())
+                if not tname:
+                    continue
                 for child in member.children:
                     if child.type == "variable_declarator":
                         nn = child.child_by_field_name("name")
@@ -574,8 +644,8 @@ class JavaParser(LanguageParser):
                         continue
                     tn = p.child_by_field_name("type")
                     nn = p.child_by_field_name("name")
-                    if tn is not None and nn is not None:
-                        out.setdefault(nn.text.decode(), cls._unwrap_type(tn.text.decode()))
+                    if tn is not None and nn is not None and (t := unwrap(tn.text.decode())):
+                        out.setdefault(nn.text.decode(), t)
         return out
 
     @classmethod

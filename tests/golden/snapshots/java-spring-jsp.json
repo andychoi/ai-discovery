@@ -84,6 +84,7 @@
     "output-java-spring-jsp/ASD/orderservice.md",
     "output-java-spring-jsp/ASD/productcontroller.md",
     "output-java-spring-jsp/ASD/productservice.md",
+    "output-java-spring-jsp/ASD/repository.md",
     "output-java-spring-jsp/ASIS/<abs-path-segment>.md",
     "output-java-spring-jsp/ASIS/acme.md",
     "output-java-spring-jsp/ASIS/batch.md",
@@ -94,6 +95,7 @@
     "output-java-spring-jsp/ASIS/orderservice.md",
     "output-java-spring-jsp/ASIS/productcontroller.md",
     "output-java-spring-jsp/ASIS/productservice.md",
+    "output-java-spring-jsp/ASIS/repository.md",
     "output-java-spring-jsp/ASSC/<abs-path-segment>.md",
     "output-java-spring-jsp/ASSC/acme.md",
     "output-java-spring-jsp/ASSC/batch.md",
@@ -104,6 +106,7 @@
     "output-java-spring-jsp/ASSC/orderservice.md",
     "output-java-spring-jsp/ASSC/productcontroller.md",
     "output-java-spring-jsp/ASSC/productservice.md",
+    "output-java-spring-jsp/ASSC/repository.md",
     "output-java-spring-jsp/INTERFACES/java-spring-jsp-dependencies.md",
     "output-java-spring-jsp/ONBOARD/java-spring-jsp-onboard-OrderController.md",
     "output-java-spring-jsp/ONBOARD/java-spring-jsp-onboard-ProductController.md",
@@ -139,18 +142,19 @@
     "ProductService",
     "acme",
     "batch",
-    "entity"
+    "entity",
+    "repository"
   ],
   "intermediate_files": [
     "interfaces.json"
   ],
   "llm_calls": {
-    "invoke:tier1": 42,
+    "invoke:tier1": 45,
     "invoke:tier2": 2,
     "invoke_structured:screen": 11,
-    "invoke_structured:tier1": 10,
-    "invoke_with_advisor:tier2": 40,
-    "invoke_with_advisor:tier3": 30
+    "invoke_structured:tier1": 11,
+    "invoke_with_advisor:tier2": 41,
+    "invoke_with_advisor:tier3": 33
   },
   "scan_status": "completed",
   "screen_ids": [
@@ -168,19 +172,19 @@
   ],
   "table_counts": {
     "annotations": 0,
-    "business_flows": 10,
+    "business_flows": 11,
     "call_edges": 9,
-    "code_nodes": 42,
+    "code_nodes": 45,
     "current_scan": 1,
     "db_relationship": 3,
     "degradations": 0,
-    "domains": 10,
+    "domains": 11,
     "entity_state_machines": 0,
     "file_parse_cache": 18,
-    "generated_docs": 32,
+    "generated_docs": 35,
     "llm_cache": 0,
     "llm_costs": 0,
-    "node_summaries": 42,
+    "node_summaries": 45,
     "page_links": 0,
     "page_notes": 0,
     "page_tombstones": 0,

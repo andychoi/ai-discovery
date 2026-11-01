@@ -90,7 +90,7 @@ def fixture_run(tmp_path_factory) -> tuple[dict, Path, Path]:
 def test_run_emits_the_protocol_metrics(fixture_run) -> None:
     result, repo_dir, _ = fixture_run
     assert result["ok"] and not result["void"] and result["cost_usd"] == 0
-    assert result["files"]["indexed"] == 11
+    assert result["files"]["indexed"] == 14   # + 3 repository interfaces since M6.3
     assert result["files"]["skipped"]["skip_dir"] == 1                # node_modules/x/index.js
     assert result["files"]["skipped"]["unsupported_extension"] >= 1   # README.txt, .gitignore …
     assert result["nodes_by_kind"]["endpoint"] >= 1 and result["screens"] == 11

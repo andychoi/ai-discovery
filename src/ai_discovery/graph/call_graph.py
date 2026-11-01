@@ -23,7 +23,7 @@ _CLASS_TYPES = ("class", "db_model")
 _TYPE_DECLS = _CLASS_TYPES + ("interface", "enum")   # any repo type (M6.2: C# interface/enum nodes)
 # Languages whose parser emits every type kind (interfaces too), so "no repo type of that name" really
 # means "a library type". Java joins with M6.3 (interface nodes); until then its interfaces look foreign.
-_TYPED_DECLS_LANGS = frozenset({"csharp"})
+_TYPED_DECLS_LANGS = frozenset({"csharp", "java"})   # java since M6.3 (interface/enum/record nodes)
 _SELF_RECEIVERS = frozenset({"self", "this", "cls", "Me", "base", "super"})
 # Languages where a receiver-less call inside a method means `this.name()`.
 _IMPLICIT_THIS = frozenset({"java", "csharp", "vbnet"})
@@ -124,6 +124,7 @@ class _Resolver:
         self.by_name: dict[str, list[CodeNode]] = defaultdict(list)
         # HIGH-3: class qualified_name → {field/param name: declared type}.
         self.field_types: dict[str, dict[str, str]] = {}
+        self.receiver_types: dict[str, dict[str, str]] = {}
         # P0-2: interface/base short name → implementing/extending class nodes.
         self.impls: dict[str, list[CodeNode]] = defaultdict(list)
         self.members: dict[str, list[CodeNode]] = defaultdict(list)   # owner qn → direct members
@@ -137,6 +138,10 @@ class _Resolver:
                 if "." in node.qualified_name:
                     self.members[node.qualified_name.rsplit(".", 1)[0]].append(node)
                 self.by_name[node.name].append(node)
+            rtypes = (node.framework_hints or {}).get("receiver_types")
+            if rtypes:   # M6.3: outer declared types for receiver typing (Java)
+                self.receiver_types.setdefault(node.qualified_name, {}).update(
+                    {k: v for k, v in rtypes.items() if k not in self.receiver_types.get(node.qualified_name, {})})
             ftypes = (node.framework_hints or {}).get("field_types")
             if ftypes:
                 self.field_types.setdefault(node.qualified_name, {}).update(
@@ -399,7 +404,12 @@ class _Resolver:
         """Receiver is a typed field/param of the enclosing class, or a type name itself."""
         cls = self._class_of(caller)
         ftypes = self.field_types.get(cls.qualified_name, {}) if cls is not None else {}
-        type_name = ftypes.get(receiver) or ftypes.get(receiver.rsplit(".", 1)[-1])
+        rtypes = self.receiver_types.get(cls.qualified_name, {}) if cls is not None else {}
+        local = (caller.framework_hints or {}).get("local_types") or {}
+        last = receiver.rsplit(".", 1)[-1]
+        # M6.3: a parameter/local shadows a field; the outer type (`List`) beats the JPA view (`Item`)
+        type_name = (local.get(receiver) if "." not in receiver else None) or rtypes.get(receiver) \
+            or rtypes.get(last) or ftypes.get(receiver) or ftypes.get(last)
         declared = bool(type_name)
         if not type_name:
             # static call on a type name: `OrderService.create()` (JS/C#/Java statics)
@@ -414,6 +424,8 @@ class _Resolver:
                                          call_ref, bases=None):
                 return True
             short = type_name.rsplit(".", 1)[-1]
+            if self._via_interface_declaration(caller, site, name, short, receiver, imports, call_ref):
+                return True
             if declared and _family(caller.language) in _TYPED_DECLS_LANGS \
                     and not any(n.node_type in _TYPE_DECLS for n in self.by_name.get(short, [])):
                 # M6.2: the receiver's declared type is outside the repo (`ILogger<T> _logger`) and nothing
@@ -439,6 +451,44 @@ class _Resolver:
             self._edge(caller, found[0], "inherited", call_ref, receiver=receiver)
             return True
         return self._via_implementations(caller, site, name, t.name, receiver, call_ref, bases=t.bases or [])
+
+    def _via_interface_declaration(self, caller, site, name, short, receiver, imports, call_ref) -> bool:
+        """M6.3: a repo interface whose members are emitted (Java) and no repo class implements the call
+        — e.g. a Spring Data repository: the call reaches the declared method (implemented at run time).
+        A method the interface only inherits from a library interface (`save` from JpaRepository) is
+        ``external``; one it neither declares nor inherits is ``not_found``."""
+        ifaces = [n for n in self.by_name.get(short, [])
+                  if n.node_type == "interface" and (n.framework_hints or {}).get("declares_members")]
+        if not ifaces:
+            return False
+        local = [i for i in ifaces if self._is_local_type(caller, i, imports)]
+        if len(local) == 1:
+            iface, origin_name = local[0], "receiver_typed"
+        elif len(ifaces) == 1:
+            iface, origin_name = ifaces[0], "receiver_global"
+        else:
+            self._miss(caller, site, call_ref, "di_ambiguous", len(ifaces))
+            return True
+        target = self.qualified.get(f"{iface.qualified_name}.{name}")
+        if target is not None:
+            self._edge(caller, target, origin_name, call_ref, receiver=receiver)
+            return True
+        frontier, seen = [iface], {iface.qualified_name}
+        for _ in range(_MAX_INHERIT_DEPTH):
+            parents = [p for b in (frontier[0].bases or []) for p in self.by_name.get(b.rsplit(".", 1)[-1], [])
+                       if p.node_type == "interface" and p.qualified_name not in seen] if frontier else []
+            found = [t for p in parents if (t := self.qualified.get(f"{p.qualified_name}.{name}")) is not None]
+            if len(found) == 1:
+                self._edge(caller, found[0], "inherited", call_ref, receiver=receiver)
+                return True
+            if not parents:
+                break
+            seen.update(p.qualified_name for p in parents)
+            frontier = parents
+        foreign = any(not any(n.node_type in _TYPE_DECLS for n in self.by_name.get(b.rsplit(".", 1)[-1], []))
+                      for b in iface.bases or [])
+        self._miss(caller, site, call_ref, "external" if foreign else "not_found")
+        return True
 
     def _via_implementations(self, caller, site, name, type_short, receiver, call_ref, *, bases) -> bool:
         """P0-2 interface → implementation(s) defining *name*.

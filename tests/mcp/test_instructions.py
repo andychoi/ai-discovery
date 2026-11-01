@@ -21,7 +21,7 @@ def test_render_is_deterministic_capped_and_complete(scanned) -> None:
     assert a == b and a.startswith(ins.BEGIN) and a.rstrip().endswith(ins.END)
     assert ins.tokens(a) <= ins.DEFAULT_MAX_TOKENS
     for needle in ("get_overview", "get_impact", "get_change_impact", "working_tree", "content_trust",
-                   "java (11 files)", "Entry points", "Screens"):
+                   "java (14 files)", "Entry points", "Screens"):
         assert needle in a, needle
 
 

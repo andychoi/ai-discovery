@@ -100,9 +100,9 @@ def test_not_indexed_has_remedy(tmp_path) -> None:
 
 def test_overview(project) -> None:
     data = _ok(api.overview(project))
-    assert data["counts"]["files"] == 11 and data["counts"]["symbols"] == 38
+    assert data["counts"]["files"] == 14 and data["counts"]["symbols"] == 41   # + 3 repository interfaces (M6.3)
     assert data["counts"]["screens"] == 11 and data["counts"]["tables"] == 4 and data["counts"]["endpoints"] == 9
-    assert data["stacks"] == [{"language": "java", "files": 11}]
+    assert data["stacks"] == [{"language": "java", "files": 14}]
     eps = [e["id"] for e in data["entry_points"]]
     assert CTRL in eps and len(eps) <= 20
     assert "java" in data["unresolved_ratio_by_lang"] and 0 < data["unresolved_ratio_by_lang"]["java"] < 1
@@ -162,7 +162,7 @@ def test_context_file_and_unresolved(project) -> None:
     assert all(not c["id"].startswith("com.example.service.ProductService.") for c in data["callers"])
     # repository calls (findAll, save, …) have no definition in the repo: counted, never dropped
     assert data["unresolved_calls_here"] == 4
-    assert {(u["callee_name"], u["reason"]) for u in data["unresolved_calls"]} >= {("save", "not_found"),
+    assert {(u["callee_name"], u["reason"]) for u in data["unresolved_calls"]} >= {("save", "external"),   # inherited from JpaRepository (M6.3)
                                                                                     ("orElse", "builtin")}
     assert _ok(api.context(project, f"symbol:{SVC}"))["unresolved_calls_here"] == 1   # findAll
     ctrl_file = _ok(api.context(project, "file:src/main/java/com/example/controller/OrderController.java"))

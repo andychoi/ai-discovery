@@ -31,7 +31,7 @@
 - **Out of scope:** VB.NET (M6.4).
 
 ### M6.3 Java coverage
-- **Status:** In progress (rm/M6.3-java-coverage, 2026-10-31)
+- **Status:** Done (0c9bbca)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M0.3
