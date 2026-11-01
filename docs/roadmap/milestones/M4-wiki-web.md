@@ -54,7 +54,7 @@
 - **Out of scope:** drilldowns and BPMN/DMN rendering (M4.4.b).
 
 ### M4.4.b Drilldowns + BPMN/DMN rendering
-- **Status:** Planned
+- **Status:** In progress (rm/M4.4b-drilldowns, 2026-11-01)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M4.4.a
