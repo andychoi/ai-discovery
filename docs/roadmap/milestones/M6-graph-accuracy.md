@@ -104,16 +104,18 @@
 - **Verify:** `pytest -q tests -k di`; `python -m bench gate --external`
 - **Out of scope:** Spring XML beans, `@Bean` factory methods, Unity/Autofac (M6.7.b).
 
-### M6.7.b DI adapters: Spring XML, @Bean, Unity/Autofac
-- **Status:** Planned
+### M6.7.b DI adapters: Spring @Bean and XML, single-type and factory registrations, Unity/Autofac
+- **Status:** In progress (rm/M6.7b-di-adapters, 2026-10-31)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.7.a
-- **Owns:** `src/ai_discovery/extractors/di_*.py`
+- **Owns:** `src/ai_discovery/graph/call_graph.py` (DI selection), `src/ai_discovery/parsers/java.py` (`@Bean` hints)
 - **Acceptance:**
-  - Spring XML beans (`<bean id class>`, `ref`), `@Bean` factory methods (return type → bean), Unity/Autofac registrations (Unverified prevalence — measure on a pinned repo first).
-- **Verify:** `pytest -q tests -k di`
-- **Out of scope:** —
+  - Spring `@Bean` factory methods (bean name = method name or `@Bean("x")`, implementation = the `new X(..)` it returns) and XML beans (`<bean id|name class>` in the module's XML files) are beans; when exactly one implementation of an interface is a known bean, dispatch narrows to it (hard case `java-spring-bean-method` passes); `@Qualifier` also matches `@Bean`/XML names.
+  - ASP.NET single-type (`AddHttpClient<T>()`, `AddScoped<T>()`) and factory registrations (`AddSingleton<I>(sp => new T(..))`); registrations of the caller's own project win, and a registered short name resolves through the registering file's namespace/usings (eShop `ChatState` → WebAppComponents `CatalogService`, not HybridApp's).
+  - Unity `RegisterType<I, T>()` and Autofac `RegisterType<T>().As<I>()` (prevalence unverified — no pinned repo uses them; unit tests only).
+- **Verify:** `pytest -q tests -k di`; `python -m bench gate --external`
+- **Out of scope:** Spring profiles/conditional beans; Java config imported from libraries.
 
 ### M6.8 SQL via sqlglot
 - **Status:** Planned
