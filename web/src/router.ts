@@ -1,5 +1,12 @@
 // Tiny History-API router (no dependency). The server falls back to
 // index.html for every non-API path, so deep links work on reload.
+// In a static export (file://, M3.10) the History API cannot change the path, so routes live in the hash:
+// "#/docs/<id>", "#/search?q=…".
+import { staticData } from "./staticData";
+
+function hashMode(): boolean {
+  return staticData() !== null;
+}
 export type Route =
   | { name: "overview" }
   | { name: "doc"; pageId: string }
@@ -17,11 +24,21 @@ export function isPageId(value: string): boolean {
 }
 
 export function docHref(pageId: string): string {
-  return pageId === "overview:system" ? "/" : `/docs/${encodeURIComponent(pageId)}`;
+  const path = pageId === "overview:system" ? "/" : `/docs/${encodeURIComponent(pageId)}`;
+  return hashMode() ? `#${path}` : path;
 }
 
 export function searchHref(q: string): string {
-  return `/search?q=${encodeURIComponent(q)}`;
+  const path = `/search?q=${encodeURIComponent(q)}`;
+  return hashMode() ? `#${path}` : path;
+}
+
+/** [pathname, search] of the current route — from the hash in a static export. */
+export function currentLocation(): [string, string] {
+  if (!hashMode()) return [window.location.pathname, window.location.search];
+  const raw = window.location.hash.replace(/^#/, "") || "/";
+  const i = raw.indexOf("?");
+  return i < 0 ? [raw, ""] : [raw.slice(0, i), raw.slice(i)];
 }
 
 export function parseRoute(rawPath: string, search = ""): Route {
@@ -37,6 +54,12 @@ export function parseRoute(rawPath: string, search = ""): Route {
 }
 
 export function navigate(href: string): void {
+  if (hashMode()) {
+    const target = href.replace(/^#/, "");
+    if (window.location.hash.replace(/^#/, "") !== target) window.location.hash = target;   // fires hashchange
+    window.scrollTo(0, 0);
+    return;
+  }
   if (href === window.location.pathname + window.location.search) return;
   window.history.pushState({}, "", href);
   window.dispatchEvent(new PopStateEvent("popstate"));

@@ -740,3 +740,11 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests -k "grounding or prose"` → 37 passed; full `pytest -q` → 1936 passed, 2 skipped; `bench gate`, `--sealed` ok; `roadmap_lint` ok.
 - **Follow-ups:** measure the re-ask and ungrounded rates on a real provider run (needs a key). No repowise code was copied or translated.
 
+## 2026-11-01 — M3.10 — JSON + static HTML export
+- **Branch/commit:** rm/M3.10-export @ 28598ac
+- **Changes:** `export/` (new: `json.py`, `html.py`, `markdown.py`), `cli/commands/export.py` (new: `discover export --format markdown|html|json [--out]`), web (`staticData.ts` + tests, hash routing in `router.ts`/`App.tsx`, `api.ts` reads inlined data and refuses writes in an export, `vite.static.config.ts`), `scripts/build_web.py` (builds and checks both bundles; rewrites the export `index.html` to classic scripts), `pyproject.toml` + `.gitignore` (`server/static_export` shipped, not committed), `tests/test_export_m310.py` (5), `tests/cli/test_cli_smoke.py` (command set + export), `design/wiki-web.md` §6 as built.
+- **Scope note:** web/, scripts/, cli/ and packaging are outside Owns (`export/*.py`); `markdown` was added because the same command defines it and M3.7.b/push need it.
+- **Decisions:** answers recorded through the real API (TestClient, in-process) so the export cannot drift from `serve`; a second classic IIFE bundle because `file://` refuses module scripts and lazy chunks (3.4 MB, ~1 MB gzip); dependency-free client search (token match) instead of a vendored index library; local paths blanked in the exported `/status`; `</` escaped in `data.js`.
+- **Verify:** `pytest -q tests -k "export_json or export_html"` → 3 passed (+2 markdown/errors); vitest 21 passed; full `pytest -q` → 1941 passed, 2 skipped; `bench gate`, `--sealed` ok; `roadmap_lint` ok; headless Chrome from `file://`: overview, `#/docs/batch_job:…` and `#/search?q=export orders` (17 hits) render.
+- **Follow-ups:** legacy `export-graph` stays until M2.7 removes legacy commands; graph neighbourhoods are not inlined (the graph view is M4.4). No repowise code was copied or translated.
+

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { BookOpen } from "lucide-react";
 import { getJson, type Meta } from "./api";
-import { parseRoute, type Route } from "./router";
+import { currentLocation, docHref, parseRoute, type Route } from "./router";
 import { Link } from "./components/Link";
 import { NavTree } from "./components/NavTree";
 import { PageView } from "./components/PageView";
@@ -11,11 +11,12 @@ import { StatusBanner } from "./components/StatusBanner";
 import { Empty } from "./components/States";
 
 function useRoute(): Route {
-  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname, window.location.search));
+  const [route, setRoute] = useState<Route>(() => parseRoute(...currentLocation()));
   useEffect(() => {
-    const onPop = () => setRoute(parseRoute(window.location.pathname, window.location.search));
+    const onPop = () => setRoute(parseRoute(...currentLocation()));
     window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
+    window.addEventListener("hashchange", onPop);      // static export routes live in the hash
+    return () => { window.removeEventListener("popstate", onPop); window.removeEventListener("hashchange", onPop); };
   }, []);
   return route;
 }
@@ -36,7 +37,7 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <Link href="/" className="brand"><BookOpen size={18} aria-hidden /> {project || "ai-discovery"}</Link>
+        <Link href={docHref("overview:system")} className="brand"><BookOpen size={18} aria-hidden /> {project || "ai-discovery"}</Link>
         <SearchPalette />
       </header>
       <aside className="sidebar"><NavTree current={current} /></aside>

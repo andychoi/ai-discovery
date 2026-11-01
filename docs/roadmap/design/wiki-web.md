@@ -79,6 +79,15 @@ All responses use the `Answer` envelope from `design/architecture-v1.md` §6:
 - **Command:** `discover export --format html` copies the SPA bundle plus `data.js`, which inlines all pages, the tree and the search index as JS (`window.__DISCOVERY_DATA__`). It does not use `fetch()`, because `file://` blocks it.
 - **Search:** client-side, over a prebuilt lunr-style index (choose a small, vendorable library at implementation time; Unverified which).
 - **Graph view:** limited to precomputed neighborhoods of the top-N nodes.
+- **As built (M3.10):**
+  - **Answers:** `export/html.py` records every GET answer the wiki reads by calling the real API in-process (`TestClient`, no socket): `/status`, `/tree`, `/screens` and `/pages/<id>` for every page. The export shows exactly what `serve` would; local paths in `/status` are blanked.
+  - **Bundle:** `file://` refuses module scripts and lazily loaded chunks, so the export uses its own bundle (`web/vite.static.config.ts` → `server/static_export`): one classic IIFE script with dynamic imports inlined and relative paths. `index.html` loads `data.js` first. `scripts/build_web.py` builds and checks both bundles.
+  - **Routing:** in a static export the SPA routes through the hash (`#/docs/<id>`).
+  - **Search:** a dependency-free token match over an inlined index (title and plain page text, every token must match, title hits first).
+  - **Read-only:** notes and reviews are read-only, and source snippets are not included.
+  - **Verified:** a headless Chrome load from `file://` renders the overview, a hash-routed page and search results.
+- **JSON** (`export/json.py`): schema `ai-discovery/knowledge-graph` v2 supersedes `export-graph` (v1). It has repo-relative paths, no source or page bodies, no export timestamp (re-exports are byte-identical), plus unresolved calls and the page index with links.
+- **Markdown** (`export/markdown.py`): one file per page (`<type>/<key>.md`) with JSON-valued front matter. This is what `push` delivers once it lands.
 
 ## 7. Retirement
 M4.6 deletes `src/ai_discovery/viewer/` and its tests (`tests/test_viewer_dashboard.py`). The quality widgets move to `/status` and the overview: confidence histogram, weakest docs, scoped to `current_scan`.

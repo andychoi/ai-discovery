@@ -6,7 +6,7 @@
   "description": "ai-discovery wiki SPA. Built into src/ai_discovery/server/static/ by scripts/build_web.py; no Node at runtime.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build": "tsc -p tsconfig.json --noEmit && vite build && vite build -c vite.static.config.ts",
     "test": "vitest run"
   },
   "dependencies": {

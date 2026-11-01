@@ -1,4 +1,6 @@
 // Typed access to the API v1 Answer envelope (design/wiki-web.md §3).
+import { staticAnswer, staticData } from "./staticData";
+
 export type AnswerStatus = "ok" | "not_found" | "not_indexed" | "unknown" | string;
 
 export interface Meta {
@@ -34,6 +36,8 @@ export function isAnswer(value: unknown): value is Answer<unknown> {
 }
 
 export async function getJson<T>(path: string, fetcher: typeof fetch = fetch): Promise<Answer<T>> {
+  const data = staticData();
+  if (data) return staticAnswer<T>(data, path);       // static export: no fetch (file://)
   const res = await fetcher(`/api/v1${path}`, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${path}`);
   const body: unknown = await res.json();
@@ -51,6 +55,7 @@ export class AuthRequired extends Error {
 
 export async function postJson<T>(path: string, body: unknown, token: string | null = null,
                                   fetcher: typeof fetch = fetch): Promise<Answer<T>> {
+  if (staticData()) throw new Error("This is a read-only static export: notes and reviews need `discover serve`.");
   const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetcher(`/api/v1${path}`, { method: "POST", headers, body: JSON.stringify(body) });

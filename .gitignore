@@ -71,6 +71,7 @@ tests/corpus/external/.cache/
 
 # Wiki SPA (M4.2): built by scripts/build_web.py, shipped in the wheel
 src/ai_discovery/server/static/
+src/ai_discovery/server/static_export/
 web/node_modules/
 web/dist/
 

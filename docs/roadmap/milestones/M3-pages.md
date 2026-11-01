@@ -115,7 +115,7 @@
 - **Out of scope:** —
 
 ### M3.10 JSON + static HTML export
-- **Status:** In progress (rm/M3.10-export, 2026-11-01)
+- **Status:** Done (28598ac)
 - **Size:** M
 - **Lane:** D
 - **Depends on:** M3.5, M4.3

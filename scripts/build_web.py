@@ -23,6 +23,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 STATIC = ROOT / "src" / "ai_discovery" / "server" / "static"
+# M3.10: the `discover export --format html` bundle — one classic script, relative paths (file://)
+STATIC_EXPORT = ROOT / "src" / "ai_discovery" / "server" / "static_export"
+_MODULE_TAG = re.compile(r'<script type="module" crossorigin src="(\./assets/app\.js)"></script>')
 
 _EXTERNAL = r"""(?:https?:)?//(?!localhost\b|127\.0\.0\.1\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"""
 LOAD_PATTERNS: dict[str, list[re.Pattern[str]]] = {
@@ -64,13 +67,29 @@ def build() -> None:
     _run([npm, "ci"] if (WEB / "package-lock.json").exists() else [npm, "install"])
     _run([npm, "run", "test"])
     _run([npm, "run", "build"])
+    patch_export_index()
+
+
+def patch_export_index() -> None:
+    """Browsers refuse module scripts from file://: load data.js, then the bundle as a classic script."""
+    index = STATIC_EXPORT / "index.html"
+    html = index.read_text(encoding="utf-8")
+    if "./data.js" not in html:
+        html, n = _MODULE_TAG.subn(r'<script src="./data.js"></script>\n    <script defer src="\1"></script>', html)
+        if n != 1:
+            sys.exit(f"unexpected export index.html (no module script tag to rewrite): {index}")
+        index.write_text(html, encoding="utf-8")
 
 
 def check() -> int:
-    if not (STATIC / "index.html").is_file():
-        print(f"no build at {STATIC} (run scripts/build_web.py)", file=sys.stderr)
+    for root in (STATIC, STATIC_EXPORT):
+        if not (root / "index.html").is_file():
+            print(f"no build at {root} (run scripts/build_web.py)", file=sys.stderr)
+            return 1
+    if 'type="module"' in (STATIC_EXPORT / "index.html").read_text(encoding="utf-8"):
+        print("static export index.html still loads a module script (file:// refuses it)", file=sys.stderr)
         return 1
-    problems = find_external_loads(STATIC)
+    problems = find_external_loads(STATIC) + find_external_loads(STATIC_EXPORT)
     if problems:
         print("built assets load external resources (must be bundled locally):", file=sys.stderr)
         for p in problems[:50]:
