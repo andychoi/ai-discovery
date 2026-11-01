@@ -51,7 +51,7 @@ def run(ctx: RunContext) -> None:
         _display_checkpoint_status(db_path, scan_id)
 
         console.print()
-        console.print(f"  [dim]Ingest:      discover ingest -p {project_slug} --target dochub[/]")
+        console.print("  [dim]Deliver:     discover push --target dochub   (or --target gitea)[/]")
         console.print()
 
         # Instructions for resume

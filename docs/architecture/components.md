@@ -50,7 +50,7 @@ src/ai_discovery/
 │   ├── doc_generator.py ← Jinja2 render; slug doc_ids; PREFIX folder layout
 │   ├── bpmn_generator.py← Mermaid (sequence + flowchart), BPMN 2.0 XML, IPO table, FSM, pseudo event log
 │   ├── onboarding_generator.py ← ONBOARD/ per-domain tour guides from the call graph (table = deterministic, narrative = 1 Tier-2 call)
-│   ├── graph_export.py  ← Canonical knowledge-graph JSON (`discover export-graph`)
+│   ├── graph_export.py  ← Canonical knowledge-graph JSON (`discover export --format json`)
 │   ├── push.py          ← Ingest to DocHub API / Gitea / offline copy
 │   └── templates/       ← *.md.j2 per doc type
 │

@@ -77,7 +77,7 @@ Practical guides for working on specific areas:
 
 - **`guides/exploring-results/navigation.md`** — `discover serve` wiki (badges, citations, notes, search) and `discover status`, plus legacy `chat`/`impact`/`query` recipes
 
-> Related outputs: `discover export-graph` emits a canonical knowledge-graph JSON (`generators/graph_export.py`), and the **ONBOARD/** tour guides (`generators/onboarding_generator.py`) give a per-domain pedagogical learning path through the high-confidence call chain.
+> Related outputs: `discover export --format json` emits a canonical knowledge-graph JSON (`generators/graph_export.py`), and the **ONBOARD/** tour guides (`generators/onboarding_generator.py`) give a per-domain pedagogical learning path through the high-confidence call chain.
 
 ---
 
@@ -92,7 +92,7 @@ Cross-cutting features layered onto the core pipeline (most trace to assessment 
 - **Multi-provider LLM layer** — bedrock / ollama / mlx-gemma / mlx-qwen / openai / gemini / anthropic, routed via `shared/llm_router.py`. See `architecture/overview.md` (LLM Tier Model).
 - **Fingerprint-based incremental re-scan** (`repo/resolver.py`) — non-git folder scans get a stable content fingerprint for change detection.
 - **JSP parsing & menu detection** — server-rendered (`.jsp`/`.aspx`) screen detection feeding screen-centric specs.
-- **`discover export-graph`** — canonical knowledge-graph JSON export (`generators/graph_export.py`).
+- **`discover export --format json`** — canonical knowledge-graph JSON export (`generators/graph_export.py`).
 - **Hierarchical `structured_steps`** — see `specs/2026-06-01-processing-logic-level-structuring.md`.
 
 ---

@@ -101,15 +101,6 @@ def test_contradictory_global_flags_exit_2(args, reason) -> None:
     assert json.loads(result.output.splitlines()[-1])["error"]["reason"] == reason
 
 
-def test_legacy_commands_accept_global_flags(tmp_path: Path) -> None:
-    import sqlite3
-
-    db = tmp_path / "q.db"
-    sqlite3.connect(db).close()
-    args = hoist_global_flags(["query", "select 1", "--db", str(db), "-v", "--no-color", "--progress", "none"])
-    assert runner.invoke(app, args).exit_code == 0
-
-
 # ── errors and exit codes ─────────────────────────────────────────────────
 
 def test_reason_registry_matches_design_exit_codes() -> None:

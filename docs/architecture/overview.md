@@ -70,7 +70,7 @@ Source Repository
  [19] Finalise ──── totals, scan_runs.status=completed
        │
        ▼
-       discover ingest (separate command) ──── DocHub API / Gitea
+       discover push (separate command) ──── DocHub API / Gitea
 ```
 
 ---
@@ -187,19 +187,19 @@ DocHub prefix folders:
 
 ## CLI Commands
 
+The v1 command set (M2): `init`, `scan`, `status`, `doctor`, `serve`, `export`, `drift`, `push`, `ask`, `impact`,
+`mcp`. The generated reference with every option is README.md → "CLI Reference" (`scripts/gen_cli_reference.py`).
+
 ```
-discover scan   REPO -p SLUG [--branch BRANCH] [--docs-root ./data]
-                             [--output ./data/discovery-output]
-                             [--resume] [--rescan] [--budget N] [--prod]
-
-discover ingest -p SLUG --target dochub|gitea
-                         [--api-url URL] [--api-key KEY]
-                         [--gitea-url URL] [--gitea-token TOKEN]
-                         [--only-failed]
-
-discover chat   -p SLUG [--top-k 5] [--tier2]
-
-discover query  "SELECT ..." --db path/to/discovery.db
+discover init [--yes] [--prose] [--git-hook]
+discover scan [--prose --yes] [--full] [--only STAGES] [--dry-run] [--watch]
+discover serve                      # wiki + API v1 on one local port
+discover ask "where are orders paid?"
+discover impact table:orders        # what may break
+discover drift                      # exit 6 when sources changed since the scan
+discover export --format json|html|markdown
+discover push --target dochub|gitea [--only-failed] [--dry-run]
+discover mcp install --target claude
 ```
 
 ---

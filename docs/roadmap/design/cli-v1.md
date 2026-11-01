@@ -191,6 +191,12 @@ Format: snake_case. Slugs are stable, so they can be used in tests and telemetry
 
 ## 6. Old → new mapping (all 13 old commands)
 
+As built (M2.7):
+- **Removed:** the legacy CLI (`cli/legacy.py`) is gone, along with modules only it used: `ingest/` (ingest-docs) and `generators/push.py` (the old tree push).
+- **`ask`:** the query service's hybrid search, with page ids and the `file:line` citations behind each hit. No model call.
+- **`impact`:** prints the M5.2 answer. Not found or ambiguous → exit 5 `target_not_found` with candidates.
+- **README:** the README "CLI Reference" is generated from the Typer app (`scripts/gen_cli_reference.py`), and `tests/cli/test_cli_reference.py` fails when it is stale.
+
 | Old (`cli.py`) | New | Notes |
 |---|---|---|
 | `init` | `init` | Writes `.discovery/config.yaml`; menu |

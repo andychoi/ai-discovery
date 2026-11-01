@@ -27,7 +27,7 @@ The skill must know which scan to triage. Ask the user for both the source repo 
 Required from user:
   - source_repo_path:  e.g. /Users/x/ai/ai-discovery/data/java-springboot-ecommerce-application
   - discovery_output:  e.g. /Users/x/ai/ai-discovery/data/output-java-springboot-ecommerce-application
-                       (or project_slug, resolved via `discover view -p <slug>`)
+                       (or project_slug, resolved via `discover serve`)
 ```
 
 Confirm both paths exist and that the discovery output contains a `discovery-<slug>.db` SQLite file with at least one row in `generated_docs`. If not, abort with a clear error — the skill cannot triage what hasn't been scanned.

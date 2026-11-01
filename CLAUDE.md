@@ -60,10 +60,9 @@ Traditional ai-discovery generates **domain-centric docs** (organized by busines
 
 ### Workflow
 
-1. **Auto-detect menu system** (`discover detect-screens <repo>`)
+1. **Auto-detect menu system** (part of `discover scan`; `discover scan --only screens` runs just this stage)
    - Scans for menu definitions: JSON/YAML files, TypeScript constants, framework routing
-   - Extracts screen definitions and menu hierarchy
-   - Outputs `screen_map.yaml` and `menu_tree.json`
+   - Extracts screen definitions and menu hierarchy into the index (screen pages in the wiki)
 
 2. **Map screens to backend** (integrated with existing `discover scan`)
    - For each detected screen, links to:
@@ -79,7 +78,7 @@ Traditional ai-discovery generates **domain-centric docs** (organized by busines
    - Sections: Purpose, When Used, User Actions, Rules, Data, Downstream Effects, Permissions, Open Items, Technical Reference
    - Frontmatter includes drift-detection hashes
 
-4. **Detect drift** (`discover verify-drift <repo> --spec-dir ./docs/screens`)
+4. **Detect drift** (`discover drift --type screen`, or `discover drift` for every page)
    - Reads `source_hashes` from each spec
    - Compares against current source files
    - Reports which specs are out of sync
@@ -108,16 +107,22 @@ Screen specs **link out** to supporting docs. Screens do NOT replace domain docs
 ### CLI Commands
 
 ```bash
-# Detect menu system and extract screens
-discover detect-screens /path/to/repo --output ./data
+# Scan (screens included); only the screen stage
+discover scan
+discover scan --only screens
 
-# Check if specs are out of sync with source code
-discover verify-drift /path/to/repo --spec-dir ./data/specs
+# Have the sources behind the pages changed since the scan? (exit 6 on drift; CI-friendly)
+discover drift
+discover drift --type screen
 
-# Export the canonical knowledge-graph JSON (nodes, call edges, domains, FKs,
-# FSMs, doc/screen index) — portable, diffable view of a completed scan
-discover export-graph -p myproject
+# Export the knowledge-graph JSON (nodes, edges, domains, FKs, FSMs, page index) — portable, diffable
+discover export --format json        # also: --format html (wiki from file://), --format markdown
+
+# Deliver the wiki to DocHub / Gitea (one document per page)
+discover push --target dochub
 ```
+
+The full, generated command reference is in README.md ("CLI Reference"; `scripts/gen_cli_reference.py`).
 
 ### Supported Menu Formats (Hybrid Detection)
 
@@ -149,7 +154,7 @@ source_hashes:
 ---
 ```
 
-`discover verify-drift` flags drifted specs for regeneration (cost-saving: only regen what changed).
+`discover drift` flags drifted pages for regeneration (cost-saving: only regen what changed).
 
 ---
 
@@ -292,9 +297,9 @@ Five custom skills accelerate development. The first three help build the discov
 ### Task: "I ran `discover scan` — how do I check quality?"
 
 1. Open the wiki: `discover serve` — pages with confidence and freshness badges, citations with source view, search, notes; `discover status` for scan health
-2. Spot-check one entity end-to-end: `discover impact <Entity> -p <slug>`
-3. Probe coverage gaps: `discover chat -p <slug>`
-4. Audit low-confidence edges: `discover query "SELECT ... FROM call_edge WHERE confidence < 0.65 ..."`
+2. Spot-check one entity end-to-end: `discover impact entity:<Entity>` (or any symbol / `table:` / `screen:`)
+3. Probe coverage gaps: `discover ask "<what you expect to find>"`
+4. Audit low-confidence edges: `sqlite3 .discovery/discovery.db "SELECT ... FROM call_edges WHERE confidence < 0.65 ..."`
 5. Onboard onto a domain: read the per-domain tour guides under `ONBOARD/` (`generators/onboarding_generator.py`) — a pedagogical path through the resolved call graph, entry point first.
 
 **Reference**: `docs/guides/exploring-results/navigation.md`

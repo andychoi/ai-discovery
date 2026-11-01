@@ -1,9 +1,11 @@
 """`discover` CLI (roadmap M2: v1 CLI).
 
-Assembly: the root Typer ``app`` (from ``legacy.py`` until the v1 commands
-replace the old ones in M2.2–M2.7) gets the global flags (``context.py``) and
-the v1 commands from ``commands/`` — one module per command, each importing its
+Assembly: the root Typer ``app`` gets the global flags (``context.py``) and the
+v1 commands from ``commands/`` — one module per command, each importing its
 heavy dependencies inside the command body so ``discover --help`` stays fast.
+The pre-v1 commands (chat, query, federate, view, test-llm, detect-screens,
+export-graph, verify-drift, ingest, ingest-docs) were removed in M2.7; see
+``docs/roadmap/design/cli-v1.md`` §6 for what replaces each.
 """
 
 from __future__ import annotations
@@ -14,9 +16,12 @@ from typing import Optional
 
 import typer
 
+from rich.console import Console
+
 from .context import PROGRESS_MODES, Globals, apply_no_color, hoist_global_flags
-from .legacy import *  # noqa: F401,F403  (legacy commands, until M2.7 removes them)
-from .legacy import _layout, _load_config, app, console  # noqa: F401
+
+console = Console()
+app = typer.Typer(name="discover", help="Brownfield codebase discovery: a code graph, a wiki and an MCP server.")
 
 
 def _version_callback(value: bool) -> None:

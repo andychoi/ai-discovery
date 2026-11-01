@@ -96,16 +96,6 @@ def test_legacy_read_falls_back_to_pre_track3_tree(tmp_path: Path) -> None:
     assert ProjectLayout.legacy(tmp_path / "out", "shop").state_dir == tmp_path / "out" / "output-shop"
 
 
-# ── readers agree with the writer (fixes the chat path bugs) ──────────────
-
-def test_chat_and_ingest_read_the_docs_root_the_scan_writes(tmp_path: Path) -> None:
-    from ai_discovery.cli import _layout
-
-    writer = ProjectLayout.legacy(tmp_path / "out", "shop", tmp_path / "docs")
-    reader = _layout(tmp_path / "out", "shop", tmp_path / "docs")
-    assert (reader.db_path, reader.docs_dir) == (writer.db_path, writer.docs_dir)
-
-
 # ── guard: one resolver ───────────────────────────────────────────────────
 
 def test_no_path_literals_outside_core_paths() -> None:
@@ -119,17 +109,3 @@ def test_no_path_literals_outside_core_paths() -> None:
     assert not offenders, f"build project paths via core.paths.ProjectLayout: {offenders}"
 
 
-def test_impact_reads_artifacts_via_layout(tmp_path: Path) -> None:
-    """Regression: impact used a removed local (`artifacts_dir`) after M1.2."""
-    import json
-
-    from typer.testing import CliRunner
-
-    from ai_discovery.cli import app
-
-    layout = ProjectLayout.legacy(tmp_path / "out", "shop").ensure()
-    layout.artifact("entity_state_machines.json").write_text(
-        json.dumps({"version": 1, "entity_state_machines": []}), encoding="utf-8")
-    result = CliRunner().invoke(app, ["impact", "Order", "-p", "shop", "-o", str(tmp_path / "out")])
-    assert not isinstance(result.exception, NameError), result.output
-    assert "No entity matches" in " ".join(result.output.split())

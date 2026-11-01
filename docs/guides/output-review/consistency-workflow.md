@@ -26,7 +26,7 @@ Ask the user for the discovery output path. Source repo is **not** required — 
 ```
 Required from user:
   - discovery_output:  e.g. /Users/x/ai/ai-discovery/data/output-java-springboot-ecommerce-application
-                       (or project_slug, resolved via `discover view -p <slug>`)
+                       (or project_slug, resolved via `discover serve`)
 Optional:
   - domain_tag:        e.g. "ecommerce", "fintech", "saas" — enables domain-pattern absence checks
                        (read from frontmatter `tags` field if present)
@@ -236,7 +236,7 @@ The intended audience is whoever owns the discovery output's quality:
 
 - **No `links_to` populated anywhere.** The output predates the cross-artifact link graph (assessment Track 5). Most consistency checks return false positives. Skip them and emit a `[CRITICAL] Output predates Phase 5 link graph; re-scan to enable consistency checking.` finding.
 - **Pattern library has no entries for the user's domain.** Skip Check 3.6 and note in the report. The library should be extended in `docs/guides/output-review/consistency-workflow.md` (this file).
-- **Output spans multiple repos (federation).** The link graph is cross-repo. Use `discover federate` artifacts as the source of truth for cross-service edges; per-repo checks still run independently.
+- **Output spans multiple repos (federation).** The link graph is cross-repo. Run the checks per repository (`discover federate` was removed in M2.7; a multi-repo workspace is Exploring).
 
 ---
 

@@ -69,7 +69,7 @@ def run(ctx: RunContext) -> None:
                 console.print(f"  Dependency catalog: [green]{dep_path.name}[/]")
         console.print(f"  Written: [green]{len(written)}[/] markdown files to {docs_dir}")
 
-        # Keep DB.doc_id aligned with the on-disk filenames so `discover ingest`
+        # Keep DB.doc_id aligned with the on-disk filenames so the legacy delivery path (removed in M2.7; `discover push` sends pages)
         # can locate every file without re-deriving paths.
         conn = get_conn(db_path)
         try:

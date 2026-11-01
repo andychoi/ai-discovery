@@ -766,3 +766,10 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q tests/cli -k "drift or push or export"` → 17 passed; full `pytest -q` → 1950 passed, 2 skipped (+ golden refresh); `bench gate` ok; `roadmap_lint` ok.
 - **Next:** M2.7 (delete the legacy CLI, incl. `ingest`), then M3.7.b. No repowise code was copied or translated.
 
+## 2026-11-01 — M2.7 — `ask` + `impact`; old CLI deleted
+- **Branch/commit:** rm/M2.7-ask-legacy-removal @ e58afdd
+- **Changes:** `cli/commands/ask.py`, `cli/commands/impact.py` (new); `cli/__init__.py` owns `app`; deleted `cli/legacy.py` (10 commands + legacy `impact`), `ingest/` and `generators/push.py` (only the removed commands used them) with their tests; `scripts/gen_cli_reference.py` + generated README "CLI Reference"; `tests/cli/test_cli_reference.py`, `tests/cli/test_ask_impact.py`; smoke tests now assert the removed commands are gone; README/CLAUDE.md/guides/architecture docs moved to v1 commands; scan-finalise hint now points at `push`.
+- **Scope note:** deleting `ingest/` and `generators/push.py` goes beyond the Owns list — both were reachable only from the removed commands (`ingest-docs` "always crashed" per design §6; importing external docs is Exploring).
+- **Verify:** `pytest -q tests/cli` → all pass; full `pytest -q` → 1870 passed, 2 skipped (the drop is the deleted legacy tests); `bench gate` ok; `roadmap_lint` ok; `gen_cli_reference.py --check` ok.
+- **Unblocks:** M3.7.b (nothing delivers the legacy SDLC tree any more). No repowise code was copied or translated.
+

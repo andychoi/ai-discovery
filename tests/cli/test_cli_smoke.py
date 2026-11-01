@@ -22,11 +22,11 @@ from ai_discovery.cli import app
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 SPRING_APP = FIXTURES / "projects" / "spring-boot-app"
 
-COMMANDS = [
-    "chat", "ingest", "query", "impact", "federate", "view",
-    "test-llm", "ingest-docs", "export-graph", "detect-screens", "verify-drift",
-]
-V1_COMMANDS = ["init", "scan", "status", "doctor", "serve", "export", "drift", "push"]  # v1 commands so far (export: M3.10); legacy ones go in M2.7
+# M2.7: the legacy commands are gone; every command is a v1 one (`mcp` is a group, listed separately).
+V1_COMMANDS = ["init", "scan", "status", "doctor", "serve", "export", "drift", "push", "ask", "impact"]
+COMMANDS = V1_COMMANDS
+REMOVED = ["chat", "query", "federate", "view", "test-llm", "ingest-docs", "export-graph", "detect-screens",
+           "verify-drift", "ingest"]
 
 runner = CliRunner()
 
@@ -65,73 +65,15 @@ def test_scan_missing_repo_fails(tmp_path: Path) -> None:
     assert '"project_not_found"' in result.output
 
 
-def test_chat_without_scan_fails(tmp_path: Path) -> None:
-    result = _invoke("chat", "-p", "nope", "-o", str(tmp_path / "o"))
-    assert result.exit_code == 1
-    assert "discover scan" in _text(result)
+@pytest.mark.parametrize("command", REMOVED)
+def test_removed_commands_are_gone(command: str) -> None:
+    # M2.7: chat → ask, ingest → push, export-graph → export --format json, verify-drift → drift,
+    # detect-screens → scan --only screens, test-llm → doctor --llm, view → serve (design/cli-v1.md §6)
+    result = _invoke(command, "--help")
+    assert result.exit_code == 2 and "No such command" in _text(result)
 
 
-def test_ingest_rejects_unknown_target(tmp_path: Path) -> None:
-    result = _invoke("ingest", "-p", "nope", "-o", str(tmp_path / "o"), "--target", "bogus")
-    assert result.exit_code == 1
-    assert "dochub" in _text(result) and "gitea" in _text(result)
-
-
-def test_query_runs_sql(tmp_path: Path) -> None:
-    db = tmp_path / "q.db"
-    conn = sqlite3.connect(db)
-    conn.execute("CREATE TABLE t (a INTEGER)")
-    conn.execute("INSERT INTO t VALUES (42)")
-    conn.commit()
-    conn.close()
-    result = _invoke("query", "SELECT a FROM t", "--db", str(db))
-    assert result.exit_code == 0, result.output
-    assert "42" in _text(result)
-
-
-def test_impact_without_scan_fails(tmp_path: Path) -> None:
-    result = _invoke("impact", "Order", "-p", "nope", "-o", str(tmp_path / "o"))
-    assert result.exit_code == 1
-    assert "discover scan" in _text(result)
-
-
-def test_federate_rejects_missing_dirs(tmp_path: Path) -> None:
-    result = _invoke("federate", str(tmp_path / "a"), str(tmp_path / "b"), "-o", str(tmp_path / "fed"))
-    assert result.exit_code == 1
-    assert "Not a directory" in _text(result)
-
-
-def test_view_is_removed_and_points_to_serve(tmp_path: Path) -> None:
-    # M4.6 retired the viewer; old invocations get a pointer instead of a crash.
-    result = _invoke("view", "-p", "nope", "-o", str(tmp_path / "o"), "--no-open")
-    assert result.exit_code == 2
-    assert "discover serve" in _text(result)
-
-
-def test_test_llm_with_all_probes_skipped() -> None:
-    result = _invoke("test-llm", "--provider", "ollama", "--skip-gen", "--skip-embedding")
-    assert result.exit_code == 0, result.output
-
-
-def test_ingest_docs_dry_run(tmp_path: Path) -> None:
-    (tmp_path / "doc.md").write_text("# Doc\n\nBody.\n", encoding="utf-8")
-    result = _invoke("ingest-docs", str(tmp_path), "-p", "x", "--dry-run")
-    assert result.exit_code == 0, result.output
-
-
-def test_export_graph_without_scan_fails(tmp_path: Path) -> None:
-    result = _invoke("export-graph", "-p", "nope", "-o", str(tmp_path / "o"))
-    assert result.exit_code == 1
-    assert "discover scan" in _text(result)
-
-
-def test_detect_screens_on_fixture(tmp_path: Path) -> None:
-    out = tmp_path / "ds"
-    result = _invoke("detect-screens", str(SPRING_APP), "-o", str(out))
-    assert result.exit_code == 0, result.output
-    assert (out / "screen_map.yaml").exists() and (out / "menu_tree.json").exists()
-
-
-def test_verify_drift_missing_spec_dir_fails(tmp_path: Path) -> None:
-    result = _invoke("verify-drift", str(SPRING_APP), "-s", str(tmp_path / "nope"))
-    assert result.exit_code != 0
+@pytest.mark.parametrize("args", [["ask", "orders"], ["impact", "entity:Order"]])
+def test_query_commands_without_scan_fail_with_not_indexed(tmp_path: Path, args) -> None:
+    result = _invoke("--json", "-C", str(tmp_path), *args)
+    assert result.exit_code == 5 and '"not_indexed"' in result.output

@@ -180,7 +180,7 @@ def run(ctx: RunContext) -> None:
     ctx.unresolved = unresolved
 
     # HIGH-8: write this repo's interface surface (inbound endpoints +
-    # outbound HTTP targets) so `discover federate` can correlate
+    # outbound HTTP targets) so cross-repo correlation (`graph/federation.py`) can use
     # provider→consumer integration edges across repos.
     try:
         from ..graph.integration_correlator import (

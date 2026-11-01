@@ -421,7 +421,7 @@ def _run_pipeline_unlocked(
     Intermediate state (SQLite DB, repo clone, cache) lives under
     output_dir/{project_slug}/. Final markdown is written to
     docs_root/{project_slug}/{PREFIX}/{doc_id}.md. Delivery to DocHub/Gitea
-    is a separate step — see `discover ingest`.
+    is a separate step — see `discover push` (page export).
 
     Args:
         resume: Continue from last complete phase

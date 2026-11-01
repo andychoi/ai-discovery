@@ -265,7 +265,7 @@ discover scan repo -p myapp --resume
 
 ```bash
 # Check which screens changed without regenerating
-discover verify-drift ./my-app --spec-dir ./docs/screens
+discover drift --type screen
 ```
 
 **Cost saved**: 100% (no LLM calls, just file hashing)
@@ -321,7 +321,7 @@ discover scan repo -p test --profile --skip-phases=7-19
 ### Slow Phase 11 (Tier 1)?
 ```bash
 # Check chunk distribution
-discover query "SELECT COUNT(*) as cnt, \
+sqlite3 .discovery/discovery.db "SELECT COUNT(*) as cnt, \
                 AVG(token_count) as avg_tokens, \
                 MAX(token_count) as max_tokens \
                 FROM chunks;"
@@ -332,7 +332,7 @@ discover query "SELECT COUNT(*) as cnt, \
 ### Slow Phase 12 (Tier 2)?
 ```bash
 # Check domains created
-discover query "SELECT domain, COUNT(*) as entity_count \
+sqlite3 .discovery/discovery.db "SELECT domain, COUNT(*) as entity_count \
                 FROM entities GROUP BY domain \
                 ORDER BY entity_count DESC LIMIT 10;"
 ```

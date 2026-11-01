@@ -83,7 +83,7 @@
 - **Out of scope:** export internals.
 
 ### M2.7 `ask` + delete old CLI
-- **Status:** In progress (rm/M2.7-ask-legacy-removal, 2026-11-01)
+- **Status:** Done (e58afdd)
 - **Size:** S
 - **Lane:** A
 - **Depends on:** M5.1, M2.6

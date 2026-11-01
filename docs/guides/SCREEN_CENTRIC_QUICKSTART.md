@@ -23,13 +23,13 @@ Auto-detect menu structure and build screen definitions:
 
 ```bash
 # Basic: detect screens only
-discover detect-screens /path/to/repo --output ./data/screens
+discover scan --only screens
 
 # Enhanced: detect screens + map to backend
-discover detect-screens /path/to/repo --output ./data/screens --include-backend
+discover scan --only screens
 
 # Without backend mapping
-discover detect-screens /path/to/repo --no-backend
+discover scan --only screens
 ```
 
 **What this does:**
@@ -49,7 +49,7 @@ discover detect-screens /path/to/repo --no-backend
 
 ```bash
 # Repository with src/config/menu.json
-discover detect-screens ~/projects/myapp --output ./docs/screens --include-backend
+discover scan --only screens
 ```
 
 Output includes:
@@ -78,7 +78,7 @@ Check if screen specs are out of sync with source code:
 
 ```bash
 # Check for drift between specs and source
-discover verify-drift /path/to/repo --spec-dir ./docs/screens
+discover drift --type screen
 ```
 
 **What this does:**
@@ -132,13 +132,13 @@ jobs:
       - run: pip install -e .
       
       - name: Check for drift
-        run: discover verify-drift . --spec-dir ./docs/screens
+        run: discover drift --type screen
         
       - name: Report drift
         if: failure()
         run: |
           echo "::error::Documentation is out of sync with source code"
-          echo "Run 'discover detect-screens . --include-backend' to regenerate"
+          echo "Run 'discover scan --only screens' to regenerate"
 ```
 
 ## Step 3: Generate Screen Specs (Future Phase)
@@ -258,14 +258,14 @@ Detects:
 
 ```bash
 # 1. Detect screens from menu
-$ discover detect-screens ~/projects/ecommerce --include-backend
+$ discover scan --only screens
 [green]✓ Detected 47 screens[/]
   Wrote: data/screens/screen_map.yaml
   Wrote: data/screens/menu_tree.json
   Backend mapping: 42/47 screens mapped
 
 # 2. Check if specs are still valid
-$ discover verify-drift ~/projects/ecommerce --spec-dir ./docs/screens
+$ discover drift --type screen
 ✓ All specs are in sync with source code
 
 # 3. (In future) Generate/regenerate specs
@@ -326,7 +326,7 @@ Screen specs **link out** to supporting docs. No duplication—each piece of inf
 
 ### Drift detected but no changes made
 
-**Problem**: `discover verify-drift` reports drift but developers didn't change files
+**Problem**: `discover drift` reports drift but developers didn't change files
 
 **Possible causes**:
 1. File line endings changed (CRLF ↔ LF)
@@ -337,7 +337,7 @@ Screen specs **link out** to supporting docs. No duplication—each piece of inf
 **Solution**:
 ```bash
 # Regenerate hashes with current source
-discover detect-screens . --include-backend --output ./data
+discover scan --only screens
 discover generate-screen-specs data/screen_map.yaml --output ./docs/screens
 ```
 

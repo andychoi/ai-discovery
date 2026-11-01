@@ -19,7 +19,7 @@ The wiki (React SPA bundled in the wheel, works offline) shows:
 - **Backlinks** and **search** (⌘K)
 - **Notes** — add a note to any page; notes are stored in the index and survive rescans (writes are local-only unless `discover serve --allow-remote`, which prints a token)
 
-The quality widgets of the retired `discover view` dashboard (confidence histogram, weakest docs) are a follow-up for the wiki's status page.
+The quality widgets of the retired pre-v1 viewer dashboard (confidence histogram, weakest docs) are a follow-up for the wiki's status page.
 
 ---
 
@@ -48,7 +48,7 @@ data/<slug>/                           ← human-readable markdown
   discovery.yaml
 ```
 
-The JSON backbone is the source of truth — `discover impact` and `discover federate` both read it directly, and any downstream tooling should prefer it over the SQLite DB for cross-tool portability (see README.md output section).
+For tooling outside the wiki, `discover export --format json` writes the portable knowledge graph; `.discovery/discovery.db` is plain SQLite.
 
 ---
 
@@ -105,7 +105,7 @@ Walks one entity across FSM states, cross-entity links, and guard conditions —
 **Conversational Q&A over code + docs**
 
 ```bash
-discover chat -p <slug>
+discover ask "<question>"
 ```
 
 Re-indexes both code chunks and generated docs, so you can probe the pipeline's own output for hallucinations and coverage gaps. Sample probes: "what entities were detected?", "which domains have the least coverage?", "show me the weakest-confidence claims in the Orders doc".
@@ -114,7 +114,7 @@ Re-indexes both code chunks and generated docs, so you can probe the pipeline's 
 
 ```bash
 # Find low-confidence call edges to hand-verify
-discover query \
+sqlite3 .discovery/discovery.db \
   "SELECT src_file, src_name, dst_name, confidence
    FROM call_edge WHERE confidence < 0.65
    ORDER BY confidence LIMIT 30" \
@@ -123,28 +123,20 @@ discover query \
 
 The graded confidence scheme (a 4-stage cascade plus a stage-0 symbol-index tier, confidences 0.5–1.0) is designed for triage — sort ascending and hand-verify the bottom 10-20 edges. See `guides/call-graph/resolution-heuristics.md` for what each stage means.
 
-### 5. Cross-repo federation (optional)
+### 5. Cross-repo federation
 
-If you've scanned multiple services, merge them before exploring:
-
-```bash
-discover federate ./data/discovery-output/billing \
-                  ./data/discovery-output/fulfillment \
-                  -o ./data/discovery-output/federated
-discover impact Order -p federated -o ./data/discovery-output
-```
-
-`impact` works on the federated tree the same way it works on a single scan.
+`discover federate` was removed with the pre-v1 CLI (M2.7); a multi-repo workspace is an Exploring roadmap item.
+Scan each service on its own and use `discover impact` per repository.
 
 ### 6. Export a portable knowledge graph (optional)
 
 For downstream tooling that shouldn't depend on the SQLite file, export one canonical knowledge-graph JSON — nodes, call edges (with confidence + resolution stage), domains, FK relationships, entity FSMs, and a doc/screen index:
 
 ```bash
-discover export-graph -p <slug>
+discover export --format json
 # → writes data/discovery-output/<slug>/knowledge-graph-<slug>.json
 
-discover export-graph -p <slug> --out ./kg.json --scan-id 3   # specific scan / path
+discover export --format json --out ./kg.json   # specific scan / path
 ```
 
 It's a portable, diffable VIEW of the discovery DB — commit it so teammates and tools can consume scan results without the `.db`.
@@ -164,10 +156,10 @@ discover impact Order -p $SLUG -f /tmp/order-impact.md
 glow /tmp/order-impact.md
 
 # (c) Ask coverage questions over code + docs
-discover chat -p $SLUG
+discover ask "<question>"
 
 # (d) Audit low-confidence edges with ad-hoc SQL
-discover query \
+sqlite3 .discovery/discovery.db \
   "SELECT src_file, src_name, dst_name, confidence
    FROM call_edge WHERE confidence < 0.65
    ORDER BY confidence LIMIT 30" \
@@ -194,7 +186,6 @@ If an audit reveals the low-confidence edge ratio exceeds 15%, that's a signal t
 
 - `discover serve` bundles its diagram libraries (mermaid, bpmn-js, dmn-js) and works offline.
 - The wiki renders diagrams read-only — for editing/authoring BPMN/DMN you still need Camunda Modeler or bpmn.io.
-- `discover chat` re-indexes on every invocation unless `--no-index` is passed; for repeated sessions on the same scan, add `--no-index`.
 
 ---
 

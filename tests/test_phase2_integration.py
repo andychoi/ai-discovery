@@ -7,7 +7,6 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from ai_discovery.cli import detect_screens, verify_drift
 from ai_discovery.menu_detector import HybridMenuDetector, build_screen_map
 from ai_discovery.screen_mapper import ScreenMapper
 from ai_discovery.generators.screen_doc_writer import write_all_screen_specs
