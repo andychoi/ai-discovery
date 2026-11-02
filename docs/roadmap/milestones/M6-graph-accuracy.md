@@ -226,7 +226,7 @@
 - **Out of scope:** generic type inference; fluent builders returning `this` beyond one hop.
 
 ### M6.17 Flow tracer depth and per-entry flow cap
-- **Status:** Planned
+- **Status:** In progress (rm/M6.17-flow-depth, 2026-11-02)
 - **Size:** S
 - **Lane:** C
 - **Depends on:** M6.12
