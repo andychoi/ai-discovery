@@ -237,7 +237,7 @@
 - **Out of scope:** changing which edges are followable.
 
 ### M6.18 Screen → backend mapping for server-rendered screens
-- **Status:** Planned
+- **Status:** In progress (rm/M6.18-screen-mapping, 2026-11-02)
 - **Size:** M
 - **Lane:** C
 - **Depends on:** M6.11
