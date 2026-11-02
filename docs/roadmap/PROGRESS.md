@@ -929,3 +929,10 @@ Append-only. Newest entries at the bottom. One entry per session/item.
   - JSON-menu screens that list only a route still have nothing to map from.
 - No repowise code was copied or translated.
 
+## 2026-11-02 — owner hold: M7 (SAP)
+- **Decision (owner):** "hold sap, not implement now."
+- **Change:** M7.1–M7.5 set to `Blocked (owner hold 2026-11-02: SAP not implemented now)`; a hold note added
+  to `milestones/M7-sap.md`; `ROADMAP.md` marks M7 on hold. The design (`design/sap-abap-ui5.md`) is unchanged.
+  No other item depends on M7.
+- **To resume:** set the M7 items back to `Planned`.
+

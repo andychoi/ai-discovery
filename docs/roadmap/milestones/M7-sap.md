@@ -4,8 +4,11 @@
 **Exit criteria:** ABAP + UI5 bench rows exist; TCODE/dynpro and UI5 route screens appear in the wiki.
 **Refs:** `docs/roadmap/design/sap-abap-ui5.md`
 
+> **On hold (owner, 2026-11-02):** SAP work is not being implemented now. Every M7 item is `Blocked` until the
+> owner lifts the hold. The design stays as is. To resume, set the items back to `Planned`.
+
 ### M7.1 SAP spike
-- **Status:** Planned
+- **Status:** Blocked (owner hold 2026-11-02: SAP not implemented now)
 - **Size:** S
 - **Lane:** F
 - **Depends on:** M1.12
@@ -16,7 +19,7 @@
 - **Out of scope:** implementation.
 
 ### M7.2 abapGit inventory
-- **Status:** Planned
+- **Status:** Blocked (owner hold 2026-11-02: SAP not implemented now)
 - **Size:** M
 - **Lane:** F
 - **Depends on:** M7.1
@@ -27,7 +30,7 @@
 - **Out of scope:** call edges.
 
 ### M7.3 ABAP edges
-- **Status:** Planned
+- **Status:** Blocked (owner hold 2026-11-02: SAP not implemented now)
 - **Size:** M
 - **Lane:** F
 - **Depends on:** M7.2
@@ -40,7 +43,7 @@
 - **Out of scope:** —
 
 ### M7.4 TCODE + dynpro screens + SAP pages
-- **Status:** Planned
+- **Status:** Blocked (owner hold 2026-11-02: SAP not implemented now)
 - **Size:** M
 - **Lane:** F
 - **Depends on:** M7.2, M3.3
@@ -51,7 +54,7 @@
 - **Out of scope:** —
 
 ### M7.5 UI5/Fiori
-- **Status:** Planned
+- **Status:** Blocked (owner hold 2026-11-02: SAP not implemented now)
 - **Size:** M
 - **Lane:** F
 - **Depends on:** M1.12

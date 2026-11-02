@@ -22,7 +22,7 @@ No dates — status is the commitment (repowise-style). Item-level status lives 
 | M4 | [Wiki web](milestones/M4-wiki-web.md) | React SPA in wheel, `serve`, notes, annotations | In progress (M4.4 graph explorer left) |
 | M5 | [MCP + agent platform](milestones/M5-mcp-agents.md) | Knowledge layer for autonomous agents: query, impact, MCP (stdio + HTTP), skills, write-back, safety envelope, verification contract, agent eval | In progress — L3 built; M5.7.b eval run awaits owner approval; M5.8 Exploring |
 | M6 | [Graph accuracy](milestones/M6-graph-accuracy.md) | Walker, C#/Java/VB/Vue gaps, DI, SQL/procs/MyBatis, CI gates | In progress (M6.13 gates, M6.2 C# done) |
-| M7 | [SAP ABAP + UI5](milestones/M7-sap.md) | abapGit + Fiori/UI5 extraction | Planned |
+| M7 | [SAP ABAP + UI5](milestones/M7-sap.md) | abapGit + Fiori/UI5 extraction | On hold (owner, 2026-11-02) |
 | M8 | [Evidence overlays](milestones/M8-overlays.md) | Git history (+ risk), coverage, OTLP spans, rationale (`get_why`) | Planned |
 
 ## Slices
@@ -37,7 +37,7 @@ Critical path: M0.2 → M0.6 → M0.10 → M2.3 → M3.5 → M4.3 → M4.5, with
 - *3b, to L3:* M1.13 → M5.12 (safety); M5.6 → M5.15 (verification); M5.10 (write-back, after M4.6); M8.1 → M8.5 (risk, `get_why`); M5.9 (HTTP); M5.13 (ledger).
 - *L4:* M5.7 eval with bare, ai-discovery, headless-autonomous and (black-box) repowise arms.
 
-**Parallel tracks:** M6 (lane C) — parser-coverage items (M6.2, M6.3, M6.5) can start after M0.3; walker/resolution items wait for the M0.12 baseline; M7 (lane F) after M1.12; M8 (lane G) after M1.12, low priority.
+**Parallel tracks:** M6 (lane C) — parser-coverage items (M6.2, M6.3, M6.5) can start after M0.3; walker/resolution items wait for the M0.12 baseline; M7 (lane F) on hold by the owner (2026-11-02); M8 (lane G) after M1.12, low priority.
 
 ```mermaid
 graph LR
