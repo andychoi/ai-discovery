@@ -14,6 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# .NET 8 runtimes next to the 9 SDK: three eShop task bases target net8.0, and their unit tests run on it
+RUN curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && bash /tmp/dotnet-install.sh --channel 8.0 --runtime dotnet --install-dir /usr/share/dotnet \
+    && bash /tmp/dotnet-install.sh --channel 8.0 --runtime aspnetcore --install-dir /usr/share/dotnet \
+    && rm /tmp/dotnet-install.sh
+
 # uv-managed Python 3.12 + a venv outside the mounted checkout (the host .venv is macOS-only)
 COPY --from=ghcr.io/astral-sh/uv:0.8.22 /uv /usr/local/bin/uv
 RUN uv venv --python 3.12 /opt/venv

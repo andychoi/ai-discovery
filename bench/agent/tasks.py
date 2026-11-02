@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import io
+import json
+import re
 import shutil
 import subprocess
 import tarfile
-import io
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -23,9 +25,62 @@ HARNESS_FILES = (".discovery/", ".mcp.json", "CLAUDE.md", "AGENTS.md", ".claude/
 
 BUILD = {   # (build, test) per stack, run by the harness after the agent finishes — never by the agent's word
     "java": ("./mvnw -q -DskipTests compile", "./mvnw -q test"),
-    "dotnet": ("dotnet build --nologo -v q", "dotnet test --nologo -v q"),
+    # {dotnet_slnf}: the solution minus Aspire host projects (see `dotnet_filter`)
+    # NuGetAudit off: advisories published after a task's commit would fail a warnings-as-errors build it passed
+    # then. LibraryRestore off: LibMan fetches browser assets (bootstrap, …) from a CDN at build time; they are not
+    # compiled, and the fetch is not reproducible.
+    "dotnet": ("dotnet build {dotnet_slnf} --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+               "dotnet test {dotnet_slnf} --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false"),
     "node": ("node --check {changed_js}", None),
 }
+
+
+DOTNET_FILTER = ".git/bench-build.slnf"     # inside .git/: invisible to `git status`, so never an agent edit
+# projects that need an SDK workload: Aspire hosts (incl. functional tests that are hosts), MAUI / mobile targets
+_NEEDS_WORKLOAD = re.compile(
+    r"<IsAspireHost>\s*true\s*</IsAspireHost>|Sdk=\"Aspire\.AppHost\.Sdk|<UseMaui>\s*true\s*</UseMaui>"
+    r"|<TargetFrameworks?>[^<]*-(?:android|ios|maccatalyst|tizen|windows)", re.I)
+_PROJECT_REF = re.compile(r'<ProjectReference\s+Include="([^"]+\.csproj)"', re.I)
+_SLN_PROJECT = re.compile(r'^Project\("\{[^}]+\}"\)\s*=\s*"[^"]*",\s*"([^"]+\.csproj)"', re.M)
+
+
+def dotnet_filter(ws: Path) -> tuple[Optional[str], list[str]]:
+    """Write a solution filter of the workspace's solution without projects that need an SDK workload, nor those
+    referencing one; return its path (relative to *ws*) and the projects left out.
+
+    Workload projects (Aspire hosts and the functional tests that are hosts, which also start containers; MAUI
+    apps) need the workloads of their day, which the run environment does not install. The rule is the same for
+    every arm and the excluded projects are recorded per run (pre-registration §3).
+    """
+    slns = sorted(ws.glob("*.sln"))
+    if not slns or not (ws / ".git").is_dir():
+        return None, []
+    projects = [p.replace("\\", "/") for p in _SLN_PROJECT.findall(slns[0].read_text(encoding="utf-8", errors="replace"))]
+    text = {p: (ws / p).read_text(encoding="utf-8", errors="replace") if (ws / p).exists() else "" for p in projects}
+    refs = {p: {str((Path(p).parent / r.replace("\\", "/")).as_posix()) for r in _PROJECT_REF.findall(text[p])}
+            for p in projects}
+    refs = {p: {_normpath(r) for r in rs} for p, rs in refs.items()}
+    excluded = {p for p in projects if _NEEDS_WORKLOAD.search(text[p])}
+    grew = True
+    while grew:                                   # anything referencing an excluded project cannot build either
+        more = {p for p in projects if p not in excluded and refs[p] & excluded}
+        grew = bool(more)
+        excluded |= more
+    keep = [p.replace("/", "\\") for p in projects if p not in excluded]
+    (ws / DOTNET_FILTER).write_text(json.dumps({"solution": {"path": f"../{slns[0].name}", "projects": keep}},
+                                               indent=2) + "\n", encoding="utf-8")
+    return DOTNET_FILTER, sorted(excluded)
+
+
+def _normpath(p: str) -> str:
+    parts: list[str] = []
+    for seg in p.split("/"):
+        if seg == "..":
+            if parts:
+                parts.pop()
+        elif seg not in ("", "."):
+            parts.append(seg)
+    return "/".join(parts)
 
 
 @dataclass(frozen=True)
@@ -120,11 +175,22 @@ def make_workspace(spec: RepoSpec, task: Task, dest: Path) -> Path:
 
 
 def changed_files(ws: Path) -> list[str]:
-    """Files the agent added, modified or deleted (harness files excluded)."""
-    out = _git(ws, "status", "--porcelain", "--untracked-files=all")
-    files = []
-    for line in out.splitlines():
-        path = line[3:].split(" -> ")[-1].strip('"')
+    """Files the agent added, modified or deleted (harness files excluded).
+
+    NUL-separated porcelain, parsed unstripped: a modified file's line starts with a space (` M path`), and
+    stripping the output used to cut the first character off the first path (found in the M5.7.b dev runs).
+    """
+    out = subprocess.run(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"], cwd=ws,
+                         capture_output=True, text=True, check=True).stdout
+    entries = out.split("\0")
+    files, i = [], 0
+    while i < len(entries):
+        entry, i = entries[i], i + 1
+        if len(entry) < 4:
+            continue
+        status, path = entry[:2], entry[3:]
+        if "R" in status or "C" in status:
+            i += 1                    # -z: a rename/copy is followed by its source path
         if not any(path.startswith(h.rstrip("/")) for h in HARNESS_FILES):
             files.append(path)
     return sorted(set(files))

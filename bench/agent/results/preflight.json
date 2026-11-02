@@ -1,0 +1,241 @@
+{
+  "es-catalog-openapi": {
+    "build": {
+      "cmd": "dotnet build .git/bench-build.slnf --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+      "seconds": 27.6,
+      "status": "pass",
+      "tail": "\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:27.48\n"
+    },
+    "build_scope": {
+      "excluded_projects": [
+        "src/ClientApp/ClientApp.csproj",
+        "src/HybridApp/HybridApp.csproj",
+        "src/eShop.AppHost/eShop.AppHost.csproj",
+        "tests/Catalog.FunctionalTests/Catalog.FunctionalTests.csproj",
+        "tests/ClientApp.UnitTests/ClientApp.UnitTests.csproj",
+        "tests/Ordering.FunctionalTests/Ordering.FunctionalTests.csproj"
+      ],
+      "solution_filter": ".git/bench-build.slnf"
+    },
+    "test": {
+      "cmd": "dotnet test .git/bench-build.slnf --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+      "seconds": 3.4,
+      "status": "pass",
+      "tail": "Test run for /tmp/bench-agent-preflight-j_89r1xi/preflight-es-catalog-openapi/tests/Basket.UnitTests/bin/Debug/net9.0/Basket.UnitTests.dll (.NETCoreApp,Version=v9.0)\nA total of 1 test files matched the specified pattern.\n\nPassed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 99 ms - Basket.UnitTests.dll (net9.0)\nTest run for /tmp/bench-agent-preflight-j_89r1xi/preflight-es-catalog-openapi/tests/Ordering.UnitTests/bin/Debug/net9.0/Ordering.UnitTests.dll (.NETCoreApp,Version=v9.0)\nA total of 1 test files matched the specified pattern.\n\nPassed!  - Failed:     0, Passed:    29, Skipped:     0, Total:    29, Duration: 125 ms - Ordering.UnitTests.dll (net9.0)\n"
+    }
+  },
+  "es-chat-images": {
+    "build": {
+      "cmd": "dotnet build .git/bench-build.slnf --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+      "seconds": 11.9,
+      "status": "pass",
+      "tail": "r/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:           Project file item includes which caused reference \"/tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/src/IntegrationEventLogEF/bin/Debug/net8.0/IntegrationEventLogEF.dll\". [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/src/IntegrationEventLogEF/bin/Debug/net8.0/IntegrationEventLogEF.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/src/Ordering.API/bin/Debug/net8.0/Ordering.API.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/src/Ordering.Infrastructure/bin/Debug/net8.0/Ordering.Infrastructure.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n    2 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:11.75\n"
+    },
+    "build_scope": {
+      "excluded_projects": [
+        "src/ClientApp/ClientApp.csproj",
+        "src/HybridApp/HybridApp.csproj",
+        "src/eShop.AppHost/eShop.AppHost.csproj",
+        "tests/Catalog.FunctionalTests/Catalog.FunctionalTests.csproj",
+        "tests/ClientApp.UnitTests/ClientApp.UnitTests.csproj",
+        "tests/Ordering.FunctionalTests/Ordering.FunctionalTests.csproj"
+      ],
+      "solution_filter": ".git/bench-build.slnf"
+    },
+    "test": {
+      "cmd": "dotnet test .git/bench-build.slnf --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+      "seconds": 3.2,
+      "status": "pass",
+      "tail": ".targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/src/IntegrationEventLogEF/bin/Debug/net8.0/IntegrationEventLogEF.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/src/Ordering.API/bin/Debug/net8.0/Ordering.API.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/src/Ordering.Infrastructure/bin/Debug/net8.0/Ordering.Infrastructure.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\nA total of 1 test files matched the specified pattern.\nTest run for /tmp/bench-agent-preflight-j_89r1xi/preflight-es-chat-images/tests/Ordering.UnitTests/bin/Debug/net8.0/Ordering.UnitTests.dll (.NETCoreApp,Version=v8.0)\nA total of 1 test files matched the specified pattern.\n\nPassed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 65 ms - Basket.UnitTests.dll (net8.0)\n\nPassed!  - Failed:     0, Passed:    41, Skipped:     0, Total:    41, Duration: 112 ms - Ordering.UnitTests.dll (net8.0)\n"
+    }
+  },
+  "es-mask-cards": {
+    "build": {
+      "cmd": "dotnet build .git/bench-build.slnf --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+      "seconds": 57.2,
+      "status": "pass",
+      "tail": "roj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:           Project file item includes which caused reference \"/tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/src/IntegrationEventLogEF/bin/Debug/net8.0/IntegrationEventLogEF.dll\". [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/src/IntegrationEventLogEF/bin/Debug/net8.0/IntegrationEventLogEF.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/src/Ordering.API/bin/Debug/net8.0/Ordering.API.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/src/Ordering.Infrastructure/bin/Debug/net8.0/Ordering.Infrastructure.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n    2 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:57.05\n"
+    },
+    "build_scope": {
+      "excluded_projects": [
+        "src/ClientApp/ClientApp.csproj",
+        "src/HybridApp/HybridApp.csproj",
+        "src/eShop.AppHost/eShop.AppHost.csproj",
+        "tests/Catalog.FunctionalTests/Catalog.FunctionalTests.csproj",
+        "tests/ClientApp.UnitTests/ClientApp.UnitTests.csproj",
+        "tests/Ordering.FunctionalTests/Ordering.FunctionalTests.csproj"
+      ],
+      "solution_filter": ".git/bench-build.slnf"
+    },
+    "test": {
+      "cmd": "dotnet test .git/bench-build.slnf --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+      "seconds": 3.5,
+      "status": "pass",
+      "tail": "grationEventLogEF.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/src/Ordering.API/bin/Debug/net8.0/Ordering.API.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\n/usr/share/dotnet/sdk/9.0.320/Microsoft.Common.CurrentVersion.targets(2433,5): warning MSB3277:             /tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/src/Ordering.Infrastructure/bin/Debug/net8.0/Ordering.Infrastructure.dll [/tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Ordering.UnitTests/Ordering.UnitTests.csproj]\nTest run for /tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Basket.UnitTests/bin/Debug/net8.0/Basket.UnitTests.dll (.NETCoreApp,Version=v8.0)\nTest run for /tmp/bench-agent-preflight-j_89r1xi/preflight-es-mask-cards/tests/Ordering.UnitTests/bin/Debug/net8.0/Ordering.UnitTests.dll (.NETCoreApp,Version=v8.0)\nA total of 1 test files matched the specified pattern.\nA total of 1 test files matched the specified pattern.\n\nPassed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 70 ms - Basket.UnitTests.dll (net8.0)\n\nPassed!  - Failed:     0, Passed:    41, Skipped:     0, Total:    41, Duration: 168 ms - Ordering.UnitTests.dll (net8.0)\n"
+    }
+  },
+  "es-remove-card-ui": {
+    "build": {
+      "cmd": "dotnet build .git/bench-build.slnf --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+      "seconds": 6.7,
+      "status": "pass",
+      "tail": "\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:06.55\n"
+    },
+    "build_scope": {
+      "excluded_projects": [
+        "src/ClientApp/ClientApp.csproj",
+        "src/HybridApp/HybridApp.csproj",
+        "src/eShop.AppHost/eShop.AppHost.csproj",
+        "tests/Catalog.FunctionalTests/Catalog.FunctionalTests.csproj",
+        "tests/ClientApp.UnitTests/ClientApp.UnitTests.csproj",
+        "tests/Ordering.FunctionalTests/Ordering.FunctionalTests.csproj"
+      ],
+      "solution_filter": ".git/bench-build.slnf"
+    },
+    "test": {
+      "cmd": "dotnet test .git/bench-build.slnf --nologo -v q -p:NuGetAudit=false -p:LibraryRestore=false",
+      "seconds": 3.3,
+      "status": "pass",
+      "tail": "Test run for /tmp/bench-agent-preflight-j_89r1xi/preflight-es-remove-card-ui/tests/Ordering.UnitTests/bin/Debug/net8.0/Ordering.UnitTests.dll (.NETCoreApp,Version=v8.0)\nTest run for /tmp/bench-agent-preflight-j_89r1xi/preflight-es-remove-card-ui/tests/Basket.UnitTests/bin/Debug/net8.0/Basket.UnitTests.dll (.NETCoreApp,Version=v8.0)\nA total of 1 test files matched the specified pattern.\nA total of 1 test files matched the specified pattern.\n\nPassed!  - Failed:     0, Passed:    41, Skipped:     0, Total:    41, Duration: 165 ms - Ordering.UnitTests.dll (net8.0)\n\nPassed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 81 ms - Basket.UnitTests.dll (net8.0)\n"
+    }
+  },
+  "nx-comments": {
+    "build": {
+      "cmd": "node --check \"app.js\" && node --check \"models/Article.js\" && node --check \"routes/api/articles.js\"",
+      "seconds": 0.0,
+      "status": "pass",
+      "tail": ""
+    },
+    "test": {
+      "status": "not_applicable"
+    }
+  },
+  "nx-favorites": {
+    "build": {
+      "cmd": "node --check \"models/Article.js\" && node --check \"models/User.js\" && node --check \"routes/api/articles.js\"",
+      "seconds": 0.0,
+      "status": "pass",
+      "tail": ""
+    },
+    "test": {
+      "status": "not_applicable"
+    }
+  },
+  "nx-follow": {
+    "build": {
+      "cmd": "node --check \"models/User.js\" && node --check \"routes/api/profiles.js\"",
+      "seconds": 0.0,
+      "status": "pass",
+      "tail": ""
+    },
+    "test": {
+      "status": "not_applicable"
+    }
+  },
+  "nx-profiles": {
+    "build": {
+      "cmd": "node --check \"models/User.js\" && node --check \"routes/api/index.js\"",
+      "seconds": 0.0,
+      "status": "pass",
+      "tail": ""
+    },
+    "test": {
+      "status": "not_applicable"
+    }
+  },
+  "nx-tags": {
+    "build": {
+      "cmd": "node --check \"routes/api/index.js\"",
+      "seconds": 0.0,
+      "status": "pass",
+      "tail": ""
+    },
+    "test": {
+      "status": "not_applicable"
+    }
+  },
+  "pc-birthdate": {
+    "build": {
+      "cmd": "./mvnw -q -DskipTests compile",
+      "seconds": 2.4,
+      "status": "pass",
+      "tail": "Warning: JAVA_HOME environment variable is not set.\n"
+    },
+    "test": {
+      "cmd": "./mvnw -q test",
+      "seconds": 9.6,
+      "status": "pass",
+      "tail": "e,o1_0.last_name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select p1_0.id,p1_0.name from types p1_0 where p1_0.id=?\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select p1_0.id,p1_0.name from types p1_0 where p1_0.id=?\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: update pets set birth_date=?,name=?,type_id=? where id=?\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select p1_0.id,p1_0.name from types p1_0 order by p1_0.name\nOpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended\n"
+    }
+  },
+  "pc-confirmations": {
+    "build": {
+      "cmd": "./mvnw -q -DskipTests compile",
+      "seconds": 131.8,
+      "status": "pass",
+      "tail": "Warning: JAVA_HOME environment variable is not set.\n"
+    },
+    "test": {
+      "cmd": "./mvnw -q test",
+      "seconds": 30.0,
+      "status": "pass",
+      "tail": "name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select pt1_0.id,pt1_0.name from types pt1_0 where pt1_0.id=?\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select pt1_0.id,pt1_0.name from types pt1_0 where pt1_0.id=?\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: update pets set birth_date=?,name=?,type_id=? where id=?\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select pt1_0.id,pt1_0.name from types pt1_0 order by pt1_0.name\nOpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended\n"
+    }
+  },
+  "pc-edit-pet-name": {
+    "build": {
+      "cmd": "./mvnw -q -DskipTests compile",
+      "seconds": 262.8,
+      "status": "pass",
+      "tail": "Warning: JAVA_HOME environment variable is not set.\n"
+    },
+    "test": {
+      "cmd": "./mvnw -q test",
+      "seconds": 34.8,
+      "status": "pass",
+      "tail": "e,o1_0.last_name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select p1_0.id,p1_0.name from types p1_0 where p1_0.id=?\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select p1_0.id,p1_0.name from types p1_0 where p1_0.id=?\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: update pets set birth_date=?,name=?,type_id=? where id=?\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,p1_0.type_id,o1_0.telephone from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id where o1_0.id=? order by p1_0.name\nHibernate: select p1_0.id,p1_0.name from types p1_0 order by p1_0.name\nOpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended\n"
+    }
+  },
+  "pc-page-bounds": {
+    "build": {
+      "cmd": "./mvnw -q -DskipTests compile",
+      "seconds": 106.5,
+      "status": "pass",
+      "tail": ""
+    },
+    "test": {
+      "cmd": "./mvnw -q test",
+      "seconds": 17.6,
+      "status": "pass",
+      "tail": "om types pt1_0 order by pt1_0.name\nHibernate: select pt1_0.id,pt1_0.name from types pt1_0 order by pt1_0.name\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,o1_0.telephone,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,t1_0.id,t1_0.name from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id left join types t1_0 on t1_0.id=p1_0.type_id where o1_0.id=? order by p1_0.name\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: insert into pets (birth_date,name,type_id,id) values (?,?,?,default)\nHibernate: update pets set owner_id=? where id=?\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,o1_0.telephone,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,t1_0.id,t1_0.name from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id left join types t1_0 on t1_0.id=p1_0.type_id where o1_0.id=? order by p1_0.name\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: insert into pets (birth_date,name,type_id,id) values (?,?,?,default)\nHibernate: update pets set owner_id=? where id=?\n2026-11-01T23:33:03.427Z  INFO 510 --- [           main] org.testcontainers.DockerClientFactory   : Testcontainers version: 2.0.5\nOpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended\n"
+    }
+  },
+  "pc-pet-association": {
+    "build": {
+      "cmd": "./mvnw -q -DskipTests compile",
+      "seconds": 4.5,
+      "status": "pass",
+      "tail": ""
+    },
+    "test": {
+      "cmd": "./mvnw -q test",
+      "seconds": 14.1,
+      "status": "pass",
+      "tail": "m types pt1_0 order by pt1_0.name\nHibernate: select pt1_0.id,pt1_0.name from types pt1_0 order by pt1_0.name\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,o1_0.telephone,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,t1_0.id,t1_0.name from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id left join types t1_0 on t1_0.id=p1_0.type_id where o1_0.id=? order by p1_0.name\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: insert into pets (birth_date,name,type_id,id) values (?,?,?,default)\nHibernate: update pets set owner_id=? where id=?\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,o1_0.telephone,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,t1_0.id,t1_0.name from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id left join types t1_0 on t1_0.id=p1_0.type_id where o1_0.id=? order by p1_0.name\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: insert into pets (birth_date,name,type_id,id) values (?,?,?,default)\nHibernate: update pets set owner_id=? where id=?\n2026-11-01T23:33:22.232Z  INFO 1062 --- [           main] org.testcontainers.DockerClientFactory   : Testcontainers version: 2.0.5\nOpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended\n"
+    }
+  },
+  "pc-unique-pet-names": {
+    "build": {
+      "cmd": "./mvnw -q -DskipTests compile",
+      "seconds": 4.5,
+      "status": "pass",
+      "tail": ""
+    },
+    "test": {
+      "cmd": "./mvnw -q test",
+      "seconds": 13.7,
+      "status": "pass",
+      "tail": "Hibernate: insert into owners (address,city,first_name,last_name,telephone,id) values (?,?,?,?,?,default)\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,o1_0.telephone from owners o1_0 where o1_0.last_name like ? escape '\\'\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,o1_0.telephone,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,t1_0.id,t1_0.name from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id left join types t1_0 on t1_0.id=p1_0.type_id where o1_0.id=? order by p1_0.name\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id=? order by v1_0.visit_date\nHibernate: select o1_0.id,o1_0.address,o1_0.city,o1_0.first_name,o1_0.last_name,o1_0.telephone,p1_0.owner_id,p1_0.id,p1_0.birth_date,p1_0.name,t1_0.id,t1_0.name from owners o1_0 left join pets p1_0 on o1_0.id=p1_0.owner_id left join types t1_0 on t1_0.id=p1_0.type_id where o1_0.id=? order by p1_0.name\nHibernate: select v1_0.pet_id,v1_0.id,v1_0.visit_date,v1_0.description from visits v1_0 where v1_0.pet_id in (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) order by v1_0.visit_date\nHibernate: select pt1_0.id,pt1_0.name from types pt1_0 order by pt1_0.name\n2026-11-01T23:33:40.430Z  INFO 1606 --- [           main] org.testcontainers.DockerClientFactory   : Testcontainers version: 2.0.5\nOpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended\n"
+    }
+  }
+}

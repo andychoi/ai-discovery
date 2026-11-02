@@ -54,6 +54,12 @@ Exploratory arms never decide the verdict.
 
 - **Files-touched recall** = |touched ∩ gold| / |gold|; **precision** = |touched ∩ gold| / |touched| (source files only).
 - **Build / tests**: the stack's commands run by the harness after the agent stops (`bench/agent/tasks.py:BUILD`).
+  For .NET the harness builds and tests the solution through a filter that leaves out projects needing an SDK
+  workload: Aspire hosts (including the functional tests that are hosts and start containers) and MAUI or mobile
+  apps, plus the projects that reference them. The excluded projects are recorded per run (`build_scope`). It also
+  builds with `NuGetAudit=false` (advisories published after a task's commit would fail a warnings-as-errors build
+  that passed then) and `LibraryRestore=false` (LibMan fetches browser assets from a CDN; they are not compiled).
+  The same rule applies to every arm.
 - **Output tokens** (headline cost metric), total cost, turns, tool calls (transcript), ai-discovery tool calls (transcript + M5.13 ledger).
 - **Ran tests before finishing**: the transcript contains a test command.
 
@@ -74,7 +80,7 @@ The bands are mirrored in `bench/agent/score.py:BANDS`; a test keeps the two in 
 
 ## 5. Procedure and exclusions
 
-1. Environment: the disposable container `bench/agent/docker/Dockerfile` (agents run with `bypassPermissions` inside the workspace) with JDK 17+, .NET 9 SDK and Node 20. Record OS and tool versions.
+1. Environment: the disposable container `bench/agent/docker/Dockerfile` (agents run with `bypassPermissions` inside the workspace) with JDK 17+, .NET 9 SDK (+ .NET 8 runtimes) and Node 20. Record OS and tool versions. Only the model key enters the container (`bench/agent/docker/run.sh`).
 2. `python -m bench.agent validate` and `python -m bench.agent preflight` before the first run. A task whose **unmodified base** fails to build or test has that metric excluded for every arm (recorded, never silently).
 3. Runs execute in the frozen random order (`python -m bench.agent plan`), resumable; every transcript and diff is kept under `bench/agent/results/`.
 4. **Infrastructure failures** (harness error before the agent starts, provider outage) are re-run once. **Agent outcomes** — timeout, spend cap reached, no edits — count as they are.

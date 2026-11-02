@@ -163,8 +163,14 @@ def test_dev_mode_key_and_env(tmp_path, monkeypatch) -> None:
     (tmp_path / "kv").write_text("OTHER=x\nAIGW_DEV_KEY='sk-kv-456'\n")
     assert runner.read_key(key_file=tmp_path / "raw") == "sk-test-123"
     assert runner.read_key(key_file=tmp_path / "kv") == "sk-kv-456"
+    (tmp_path / "dotenv").write_text('AWS_SECRET=no\nAIGW_API_URL=http://localhost:11433/v1\nAIGW_API_KEY="sk-api-1"\n')
+    assert runner.read_key(key_file=tmp_path / "dotenv") == "sk-api-1"
+    monkeypatch.delenv("AIGW_API_KEY", raising=False)
     monkeypatch.setenv("AIGW_DEV_KEY", "sk-env-789")
-    assert runner.read_key() == "sk-env-789"
+    assert runner.read_key() == "sk-env-789"               # the older name still works
+    monkeypatch.setenv("AIGW_API_KEY", '"sk-env-api"')
+    assert runner.read_key() == "sk-env-api"               # the default name wins; docker keeps quotes, we strip them
+    monkeypatch.delenv("AIGW_API_KEY")
     monkeypatch.delenv("AIGW_DEV_KEY")
     with pytest.raises(SystemExit):
         runner.read_key()
@@ -172,3 +178,48 @@ def test_dev_mode_key_and_env(tmp_path, monkeypatch) -> None:
     assert env["ANTHROPIC_BASE_URL"] == "http://gw:11433/anthropic" and env["ANTHROPIC_AUTH_TOKEN"] == "sk-x"
     assert env["ANTHROPIC_MODEL"] == env["ANTHROPIC_SMALL_FAST_MODEL"] == "glm-coding-flash"
     assert runner.DEV.parent == runner.RESULTS and runner.DEV.name == "dev"
+
+
+def test_dotnet_filter_leaves_out_workload_projects_and_their_dependents(tmp_path) -> None:
+    """M5.7.b: Aspire hosts and MAUI apps need SDK workloads the run environment lacks; projects referencing them
+    cannot build either. The filter sits in .git/, so it is never counted as an agent edit."""
+    ws = tmp_path / "ws"
+    projects = {
+        "src/Api/Api.csproj": '<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>',
+        "src/AppHost/AppHost.csproj": "<Project><PropertyGroup><IsAspireHost>true</IsAspireHost></PropertyGroup></Project>",
+        "src/Mobile/Mobile.csproj": "<Project><PropertyGroup><TargetFrameworks>net8.0-android;net8.0-ios</TargetFrameworks></PropertyGroup></Project>",
+        "tests/Api.UnitTests/Api.UnitTests.csproj": '<Project><ItemGroup><ProjectReference Include="..\\..\\src\\Api\\Api.csproj" /></ItemGroup></Project>',
+        "tests/Mobile.UnitTests/Mobile.UnitTests.csproj": '<Project><ItemGroup><ProjectReference Include="..\\..\\src\\Mobile\\Mobile.csproj" /></ItemGroup></Project>',
+    }
+    for rel, text in projects.items():
+        (ws / rel).parent.mkdir(parents=True, exist_ok=True)
+        (ws / rel).write_text(text)
+    (ws / "App.sln").write_text("".join(
+        f'Project("{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}") = "{Path(r).stem}", "{r.replace("/", chr(92))}", "{{0}}"\nEndProject\n'
+        for r in projects))
+    subprocess.run(["git", "init", "-q"], cwd=ws, check=True)
+    slnf, skipped = T.dotnet_filter(ws)
+    assert skipped == ["src/AppHost/AppHost.csproj", "src/Mobile/Mobile.csproj", "tests/Mobile.UnitTests/Mobile.UnitTests.csproj"]
+    data = json.loads((ws / slnf).read_text())
+    assert data["solution"]["path"] == "../App.sln"
+    assert data["solution"]["projects"] == ["src\\Api\\Api.csproj", "tests\\Api.UnitTests\\Api.UnitTests.csproj"]
+    assert not any(f.startswith(".git") for f in T.changed_files(ws))     # the filter is never an agent edit
+    build, test = T.BUILD["dotnet"]
+    assert all("{dotnet_slnf}" in c and "-p:NuGetAudit=false" in c and "-p:LibraryRestore=false" in c
+               for c in (build, test))
+
+
+def test_changed_files_keeps_the_first_path_whole(tmp_path) -> None:
+    """M5.7.b regression: ` M src/...` as the first status line lost its first character (`rc/...`)."""
+    ws = tmp_path / "ws"
+    (ws / "src").mkdir(parents=True)
+    for name in ("a.java", "b.java", "old.java"):
+        (ws / "src" / name).write_text("class X {}\n")
+    for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"]):
+        subprocess.run(["git", *cmd], cwd=ws, check=True)
+    (ws / "src" / "a.java").write_text("class A {}\n")                       # modified, unstaged → " M"
+    subprocess.run(["git", "mv", "src/old.java", "src/new name.java"], cwd=ws, check=True)   # rename, space in name
+    (ws / "src" / "c.java").write_text("class C {}\n")                       # untracked
+    (ws / ".mcp.json").write_text("{}")                                      # harness file
+    assert T.changed_files(ws) == ["src/a.java", "src/c.java", "src/new name.java"]
+

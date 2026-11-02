@@ -22,7 +22,7 @@ from typing import Optional
 
 from . import arms as arms_mod
 from .metrics import file_scores, parse_claude_stream, parse_codex_stream
-from .tasks import BUILD, ROOT, RepoSpec, Task, changed_files, load, make_workspace
+from .tasks import BUILD, ROOT, RepoSpec, Task, changed_files, dotnet_filter, load, make_workspace
 
 HERE = Path(__file__).parent
 RESULTS = HERE / "results"
@@ -104,12 +104,18 @@ def _sh(cmd: str, cwd: Path, timeout: int = 1800) -> dict:
     return {"cmd": cmd, "status": status, "seconds": round(time.monotonic() - started, 1), "tail": tail}
 
 
-def _build_cmds(task: Task, ws: Path, changed: list[str]) -> tuple[Optional[str], Optional[str]]:
+def _build_cmds(task: Task, ws: Path, changed: list[str]) -> tuple[Optional[str], Optional[str], dict]:
+    """(build, test, scope): the stack's commands for this workspace, and what they leave out."""
     build, test = BUILD[task.stack]
+    scope: dict = {}
     if build and "{changed_js}" in build:
         js = [f for f in changed if f.endswith(".js") and (ws / f).exists()]
         build = " && ".join(f"node --check {json.dumps(f)}" for f in js) or None
-    return build, test
+    if any(c and "{dotnet_slnf}" in c for c in (build, test)):
+        slnf, skipped = dotnet_filter(ws)
+        scope = {"solution_filter": slnf, "excluded_projects": skipped}
+        build, test = (c.replace("{dotnet_slnf}", slnf or "") if c else c for c in (build, test))
+    return build, test, scope
 
 
 def preflight(tasks: list[Task], repos: dict[str, RepoSpec], work: Path) -> dict[str, dict]:
@@ -117,15 +123,15 @@ def preflight(tasks: list[Task], repos: dict[str, RepoSpec], work: Path) -> dict
     out = {}
     for t in tasks:
         ws = make_workspace(repos[t.repo], t, work / f"preflight-{t.id}")
-        build, test = _build_cmds(t, ws, list(t.gold_files))
+        build, test, scope = _build_cmds(t, ws, list(t.gold_files))
         out[t.id] = {"build": _sh(build, ws) if build else {"status": "not_applicable"},
-                     "test": _sh(test, ws) if test else {"status": "not_applicable"}}
+                     "test": _sh(test, ws) if test else {"status": "not_applicable"}, "build_scope": scope}
         shutil.rmtree(ws, ignore_errors=True)
     return out
 
 
 def run_one(cell: dict, task: Task, repo: RepoSpec, cfg: Config, out_dir: Path, *,
-            model: Optional[str] = None, env_extra: Optional[dict] = None) -> dict:
+            model: Optional[str] = None, env_extra: Optional[dict] = None, budget_usd: Optional[float] = None) -> dict:
     arm = arms_mod.ARMS[cell["arm"]]
     run_dir = out_dir / "work" / cell["run_id"]
     ws = make_workspace(repo, task, run_dir / "ws")
@@ -136,7 +142,7 @@ def run_one(cell: dict, task: Task, repo: RepoSpec, cfg: Config, out_dir: Path, 
     record["setup"] = arms_mod.prepare(arm, ws, run=lambda argv: subprocess.run(argv, check=True,
                                                                                   capture_output=True))
     argv, env = arms_mod.command(arm, prompt=task.prompt, ws=ws, model=record["model"],
-                                 budget_usd=cfg.budget_per_run_usd, scratch=scratch)
+                                 budget_usd=budget_usd or cfg.budget_per_run_usd, scratch=scratch)
     transcript = out_dir / "transcripts" / f"{cell['run_id']}.jsonl"
     transcript.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -153,7 +159,8 @@ def run_one(cell: dict, task: Task, repo: RepoSpec, cfg: Config, out_dir: Path, 
     changed = changed_files(ws)
     record["changed_files"] = changed
     record["files"] = file_scores(changed, task.gold_files, task.stack)
-    build, test = _build_cmds(task, ws, changed)
+    build, test, scope = _build_cmds(task, ws, changed)
+    record["build_scope"] = scope
     record["build"] = _sh(build, ws) if build else {"status": "not_applicable"}
     record["test"] = _sh(test, ws) if test else {"status": "not_applicable"}
     ledger = ws / ".discovery" / "logs" / "mcp_calls.jsonl"
@@ -207,19 +214,19 @@ def run_all(cfg: Config, *, confirm_spend: bool, out_dir: Path = RESULTS, only_t
 DEV = RESULTS / "dev"
 
 
-def read_key(*, key_file: Optional[Path] = None, key_env: str = "AIGW_DEV_KEY") -> str:
+def read_key(*, key_file: Optional[Path] = None, key_env: str = "AIGW_API_KEY") -> str:
     """The gateway key for dev runs: a file holding the key (or `NAME=value` lines), else an environment
     variable. The value is never printed or written to results."""
     if key_file is not None:
         text = Path(key_file).expanduser().read_text(encoding="utf-8").strip()
         for line in text.splitlines():
             name, sep, value = line.partition("=")
-            if sep and name.strip() in (key_env, "ANTHROPIC_AUTH_TOKEN", "AIGW_API_KEY"):
+            if sep and name.strip() in (key_env, "AIGW_API_KEY", "AIGW_DEV_KEY", "ANTHROPIC_AUTH_TOKEN"):
                 return value.strip().strip("\"'")
         if "=" not in text and "\n" not in text:
             return text
         raise SystemExit(f"{key_file}: no {key_env}=… line")
-    value = os.environ.get(key_env, "")
+    value = (os.environ.get(key_env) or os.environ.get("AIGW_DEV_KEY") or "").strip().strip("\"'")
     if not value:
         raise SystemExit(f"no gateway key: set {key_env} or pass --key-file")
     return value
@@ -233,7 +240,8 @@ def dev_env(base_url: str, key: str, model: str) -> dict[str, str]:
 
 
 def run_dev(cfg: Config, *, model: str, base_url: str, key: str, out_dir: Path = DEV,
-            only_tasks: Optional[set] = None, only_arms: Optional[set] = None, limit: Optional[int] = 1) -> int:
+            only_tasks: Optional[set] = None, only_arms: Optional[set] = None, limit: Optional[int] = 1,
+            budget_usd: Optional[float] = None) -> int:
     """Harness development runs against a gateway model. Same workspaces, arms and scoring as the eval, but the
     pre-registration need not be frozen, results go to ``results/dev/`` and never count toward the eval."""
     repos, tasks = load()
@@ -246,8 +254,8 @@ def run_dev(cfg: Config, *, model: str, base_url: str, key: str, out_dir: Path =
     done = 0
     for cell in cells[: limit if limit is not None else len(cells)]:
         task = by_id[cell["task"]]
-        record = run_one(cell, task, repos[task.repo], cfg, out_dir, model=model, env_extra=env)
-        record["dev"] = {"base_url": base_url, "model": model}
+        record = run_one(cell, task, repos[task.repo], cfg, out_dir, model=model, env_extra=env, budget_usd=budget_usd)
+        record["dev"] = {"base_url": base_url, "model": model, "budget_usd": budget_usd or cfg.budget_per_run_usd}
         (runs / f"{cell['run_id']}.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
         done += 1
         agent = record.get("agent") or {}

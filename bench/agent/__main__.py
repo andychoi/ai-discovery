@@ -4,11 +4,11 @@
   validate                   check tasks against git history (parents, gold files, no file names in prompts)
   fetch                      clone repos that have no full-history checkout yet (network)
   plan [--exploratory]       run matrix in the pre-registered order + spend ceiling; spends nothing
-  preflight                  build/test each task's unmodified base (toolchains), no model calls
+  preflight [--task ID ...]                  build/test each task's unmodified base (toolchains), no model calls
   run --confirm-spend [--task ID ...] [--arm NAME ...] [--limit N] [--exploratory]
                              run the eval — refuses unless the pre-registration is Frozen and committed
   report [--write]           score results against the pre-registered bands (works with zero runs)
-  dev-run --model M --base-url URL [--key-file F | --key-env NAME] [--task ID ...] [--arm NAME ...] [--limit N]
+  dev-run [--model M (AIGW_API_MODEL)] --base-url URL [--key-file F | --key-env NAME (AIGW_API_KEY)] [--task ID ...] [--arm NAME ...] [--limit N]
                              harness development against a gateway model; results/dev/, never part of the eval
 """
 
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -67,13 +68,17 @@ def cmd_plan(args) -> int:
     return 0
 
 
-def cmd_preflight(_args) -> int:
+def cmd_preflight(args) -> int:
     repos, tasks = tasks_mod.load()
+    only = set(getattr(args, "task", None) or [])
+    tasks = [t for t in tasks if not only or t.id in only]
     work = Path(tempfile.mkdtemp(prefix="bench-agent-preflight-"))
     result = runner.preflight(tasks, repos, work)
     out = runner.RESULTS / "preflight.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    merged = json.loads(out.read_text()) if only and out.exists() else {}
+    merged.update(result)   # --task re-checks those tasks and keeps the others' last result
+    out.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n")
     for tid, r in result.items():
         print(f"{tid:22} build {r['build']['status']:14} test {r['test']['status']}")
     return 0
@@ -89,11 +94,13 @@ def cmd_run(args) -> int:
 
 
 def cmd_dev_run(args) -> int:
+    if not args.model:
+        raise SystemExit("dev-run needs --model or AIGW_API_MODEL")
     cfg = runner.load_prereg()
     key = runner.read_key(key_file=Path(args.key_file) if args.key_file else None, key_env=args.key_env)
     done = runner.run_dev(cfg, model=args.model, base_url=args.base_url, key=key,
                           only_tasks=set(args.task or []) or None, only_arms=set(args.arm or []) or None,
-                          limit=args.limit)
+                          limit=args.limit, budget_usd=args.budget_usd)
     print(f"{done} dev run(s) completed → {runner.DEV}")
     return 0
 
@@ -119,17 +126,22 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m bench.agent", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name, fn in (("tasks", cmd_tasks), ("validate", cmd_validate), ("fetch", cmd_fetch),
-                     ("preflight", cmd_preflight)):
+    for name, fn in (("tasks", cmd_tasks), ("validate", cmd_validate), ("fetch", cmd_fetch)):
         sub.add_parser(name).set_defaults(fn=fn)
+    p = sub.add_parser("preflight")
+    p.add_argument("--task", action="append")
+    p.set_defaults(fn=cmd_preflight)
     p = sub.add_parser("dev-run")
-    p.add_argument("--model", required=True)
+    p.add_argument("--model", default=os.environ.get("AIGW_API_MODEL") or None,
+                   help="gateway model (default: AIGW_API_MODEL)")
     p.add_argument("--base-url", required=True, help="Anthropic-protocol base URL, e.g. http://localhost:11433/anthropic")
     p.add_argument("--key-file")
-    p.add_argument("--key-env", default="AIGW_DEV_KEY")
+    p.add_argument("--key-env", default="AIGW_API_KEY")
     p.add_argument("--task", action="append")
     p.add_argument("--arm", action="append")
     p.add_argument("--limit", type=int, default=1)
+    p.add_argument("--budget-usd", type=float, help="per-run cap for dev runs only (Claude Code prices a gateway "
+                                                   "model as if it were Claude); the eval always uses the pre-registered cap")
     p.set_defaults(fn=cmd_dev_run)
     p = sub.add_parser("plan")
     p.add_argument("--exploratory", action="store_true")
