@@ -373,3 +373,40 @@ def test_fan_out_is_not_recorded_as_a_gateway():
 
     assert {e.edge_type for e in scenario.edges} == {"CALL"}
     assert not hasattr(scenario, "alternate_paths")
+
+
+def test_slices_trace_eight_calls_deep_by_default():
+    """M6.17 / design §8: the default depth is 8 (was 5)."""
+    from ai_discovery.graph.origins import FLOW_MAX_DEPTH
+
+    assert FLOW_MAX_DEPTH == 8
+    nodes = [_node(f"n{i}") for i in range(11)]
+    nodes[0].node_type = "endpoint"
+    edges = [_qn_edge(f"n{i}", f"n{i + 1}", "self_scope") for i in range(10)]
+    sc = ExecutionSliceBuilder(nodes, edges).build_scenario(nodes[0])
+    assert [n.id for n in sc.nodes] == [f"orders.n{i}" for i in range(9)]       # depths 0..8
+    assert sc.stop_reasons == {"orders.n8": "depth_cap"}
+
+
+def test_flow_cap_stops_expanding_after_fifty_flows():
+    """M6.17 / design §8: at most 50 flows (entry-to-stop paths) are traced to their end; the frontier left
+    after that is recorded with `flow_cap`, never passed off as a leaf, and is not expanded."""
+    from ai_discovery.graph.origins import FLOW_MAX_FLOWS, STOP_REASONS
+
+    assert FLOW_MAX_FLOWS == 50
+    leaves = [_node(f"leaf{i:02}") for i in range(50)]
+    branches = [_node(f"branch{i}") for i in range(3)]
+    deeper = [_node(f"deep{i}") for i in range(3)]
+    entry = _node("entry", "endpoint")
+    edges = [_qn_edge("entry", n.name, "self_scope") for n in leaves + branches]
+    edges += [_qn_edge(f"branch{i}", f"deep{i}", "self_scope") for i in range(3)]
+    sc = ExecutionSliceBuilder([entry, *leaves, *branches, *deeper], edges).build_scenario(entry)
+    reasons = sc.stop_reasons
+    assert sum(1 for r in reasons.values() if r == "leaf_no_callees") == 50
+    assert {k: v for k, v in reasons.items() if v == "flow_cap"} == {f"orders.branch{i}": "flow_cap" for i in range(3)}
+    assert not any(n.id.startswith("orders.deep") for n in sc.nodes)
+    assert set(reasons.values()) <= STOP_REASONS
+
+    wide = ExecutionSliceBuilder([entry, *leaves, *branches, *deeper], edges).build_scenario(entry, max_flows=100)
+    assert "flow_cap" not in wide.stop_reasons.values()
+    assert {f"orders.deep{i}" for i in range(3)} <= {n.id for n in wide.nodes}

@@ -144,7 +144,13 @@ FLOW_EDGE_KINDS = frozenset({"calls", "dispatches_to", "framework_binds", "calls
 
 # One stop reason per slice leaf (design/graph-accuracy.md §8).
 STOP_REASONS = frozenset({"leaf_no_callees", "depth_cap", "cycle", "unresolved_call", "dynamic_dispatch",
-                          "external_boundary", "db_boundary"})
+                          "external_boundary", "db_boundary", "flow_cap"})
+
+# Slice bounds (design §8, M6.17): calls deep, and at most FLOW_MAX_FLOWS flows per entry point. A flow is one
+# entry-to-stop path of the slice's BFS tree; once that many have stopped, the remaining frontier is recorded
+# with stop reason `flow_cap` and not expanded.
+FLOW_MAX_DEPTH = 8
+FLOW_MAX_FLOWS = 50
 
 
 def followable(edge, *, min_confidence: float = FLOW_MIN_CONFIDENCE,

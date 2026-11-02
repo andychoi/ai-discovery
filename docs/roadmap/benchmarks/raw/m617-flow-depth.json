@@ -1,0 +1,194 @@
+{
+ "microblog": {
+  "entries": 40,
+  "before d5": {
+   "nodes_total": 89,
+   "nodes_median": 2.0,
+   "nodes_max": 5,
+   "flows_max": 3,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 40008,
+   "stops": {
+    "unresolved_call": 18,
+    "leaf_no_callees": 21,
+    "external_boundary": 14,
+    "db_boundary": 3
+   }
+  },
+  "d8 uncapped": {
+   "nodes_total": 89,
+   "nodes_median": 2.0,
+   "nodes_max": 5,
+   "flows_max": 3,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 40008,
+   "stops": {
+    "unresolved_call": 18,
+    "leaf_no_callees": 21,
+    "external_boundary": 14,
+    "db_boundary": 3
+   }
+  },
+  "after d8+cap50": {
+   "nodes_total": 89,
+   "nodes_median": 2.0,
+   "nodes_max": 5,
+   "flows_max": 3,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 40008,
+   "stops": {
+    "unresolved_call": 18,
+    "leaf_no_callees": 21,
+    "external_boundary": 14,
+    "db_boundary": 3
+   }
+  }
+ },
+ "node": {
+  "entries": 21,
+  "before d5": {
+   "nodes_total": 92,
+   "nodes_median": 4,
+   "nodes_max": 12,
+   "flows_max": 5,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 32674,
+   "stops": {
+    "external_boundary": 20,
+    "leaf_no_callees": 13,
+    "cycle": 4,
+    "unresolved_call": 5
+   }
+  },
+  "d8 uncapped": {
+   "nodes_total": 92,
+   "nodes_median": 4,
+   "nodes_max": 12,
+   "flows_max": 5,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 32674,
+   "stops": {
+    "external_boundary": 20,
+    "leaf_no_callees": 13,
+    "cycle": 4,
+    "unresolved_call": 5
+   }
+  },
+  "after d8+cap50": {
+   "nodes_total": 92,
+   "nodes_median": 4,
+   "nodes_max": 12,
+   "flows_max": 5,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 32674,
+   "stops": {
+    "external_boundary": 20,
+    "leaf_no_callees": 13,
+    "cycle": 4,
+    "unresolved_call": 5
+   }
+  }
+ },
+ "petclinic": {
+  "entries": 18,
+  "before d5": {
+   "nodes_total": 64,
+   "nodes_median": 2.0,
+   "nodes_max": 13,
+   "flows_max": 10,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 29090,
+   "stops": {
+    "unresolved_call": 3,
+    "leaf_no_callees": 40,
+    "cycle": 2
+   }
+  },
+  "d8 uncapped": {
+   "nodes_total": 64,
+   "nodes_median": 2.0,
+   "nodes_max": 13,
+   "flows_max": 10,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 29090,
+   "stops": {
+    "unresolved_call": 3,
+    "leaf_no_callees": 40,
+    "cycle": 2
+   }
+  },
+  "after d8+cap50": {
+   "nodes_total": 64,
+   "nodes_median": 2.0,
+   "nodes_max": 13,
+   "flows_max": 10,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 29090,
+   "stops": {
+    "unresolved_call": 3,
+    "leaf_no_callees": 40,
+    "cycle": 2
+   }
+  }
+ },
+ "eshop": {
+  "entries": 94,
+  "before d5": {
+   "nodes_total": 161,
+   "nodes_median": 1.0,
+   "nodes_max": 6,
+   "flows_max": 4,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 100839,
+   "stops": {
+    "unresolved_call": 74,
+    "cycle": 1,
+    "leaf_no_callees": 27,
+    "db_boundary": 9,
+    "external_boundary": 2
+   }
+  },
+  "d8 uncapped": {
+   "nodes_total": 161,
+   "nodes_median": 1.0,
+   "nodes_max": 6,
+   "flows_max": 4,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 100839,
+   "stops": {
+    "unresolved_call": 74,
+    "cycle": 1,
+    "leaf_no_callees": 27,
+    "db_boundary": 9,
+    "external_boundary": 2
+   }
+  },
+  "after d8+cap50": {
+   "nodes_total": 161,
+   "nodes_median": 1.0,
+   "nodes_max": 6,
+   "flows_max": 4,
+   "scenarios_depth_capped": 0,
+   "scenarios_flow_capped": 0,
+   "tier2_input_tokens": 100839,
+   "stops": {
+    "unresolved_call": 74,
+    "cycle": 1,
+    "leaf_no_callees": 27,
+    "db_boundary": 9,
+    "external_boundary": 2
+   }
+  }
+ }
+}

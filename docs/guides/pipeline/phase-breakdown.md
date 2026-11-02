@@ -122,7 +122,7 @@ Entry points are the callables `graph/entry_points.py` scores ≥ 0.5 from evide
 annotations, base-type contracts, registrations, markup bindings, `main`; plus in-degree 0, anchored names,
 visibility and fan-out) — never from name substrings (M6.12; see `docs/architecture/decisions.md`).
 
-Bounded BFS traversal (depth ≤ 5) from each entry point:
+Bounded BFS traversal from each entry point (≤ 8 calls deep, ≤ 50 flows per entry point; the frontier past the flow cap stops with `flow_cap`):
 - Primary path: top-15 nodes by confidence, in BFS order
 - Where the trace stops, with a reason (no alternate paths: fan-out is not branching, ADR-0007)
 - Confidence scoring: multi-signal (depth, state transition, data boundary, etc.)

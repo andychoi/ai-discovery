@@ -270,10 +270,14 @@ survive as `receiver_typed` and `framework`; Stage 0 survives as `scip`.
 
 ---
 
-## Execution Slice Depth Limit: BFS ≤ 5 Levels
+## Execution Slice Bounds: depth ≤ 8, ≤ 50 flows per entry point
 
 ### Decision
-Bounded breadth-first search with depth ≤ 5 for building execution scenarios.
+Bounded breadth-first search for building execution scenarios: at most 8 calls deep (`origins.FLOW_MAX_DEPTH`,
+was 5 until M6.17), and at most 50 flows per entry point (`origins.FLOW_MAX_FLOWS`). A **flow** is one
+entry-to-stop path of the BFS tree. Once 50 have stopped, the frontier left is recorded with stop reason
+`flow_cap` ("more paths follow; not traced") and not expanded. A frontier node with nothing to call keeps its own
+reason, because its path is complete.
 
 ### Why
 - **Unbounded traversal is expensive**: Without a limit, we traverse the entire reachable call graph, which grows exponentially.
@@ -289,14 +293,20 @@ primary_path = top 15 nodes by confidence in BFS order
 > conditional branch, conditions guessed from callee names) was removed. A call graph cannot tell sequence
 > from choice. Only parsed guards on state transitions carry conditions.
 
-Depth ≤ 5 means: (Entry) → (Hop 1) → (Hop 2) → ... → (Hop 5) = max 6 levels.
+Depth ≤ 8 means: (Entry) → (Hop 1) → … → (Hop 8) = at most 9 levels. The node score's depth term
+(`5 − depth`) is floored at 0, so hops 5–8 add no depth points.
+
+**Measured (M6.17, `docs/roadmap/benchmarks/2026-11-02-flow-depth.md`):** on the four pinned bench repos no slice
+reached depth 5 and the widest had 10 flows, so raising the bounds changed nothing there (Tier-2 input
+unchanged). Traces end at real boundaries or at unresolved calls (eShop 65% `unresolved_call`), not at the caps.
+Resolution, not depth, limits flow traces on real code.
 
 ### Trade-offs
 - **Pro**: Fast; manageable scenario size; mirrors how humans think about processes
 - **Con**: Might miss long-running workflows (e.g., async batch processing with delayed steps)
 
 **If you have a 10-hop process**, you might need to:
-1. Increase depth limit to 7–8 (slower, larger scenarios)
+1. Raise `FLOW_MAX_DEPTH` further (slower, larger scenarios)
 2. Break into multiple scenarios (entry points at intermediate steps)
 3. Mark long-hop edges as async/delayed
 

@@ -25,11 +25,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 
+from ...graph.origins import FLOW_MAX_DEPTH, FLOW_MAX_FLOWS
 from ..model import Citation, Link, Page, Section, make_page_id
 from ..registry import BuildContext, page_builder
 from .code import Node, Snapshot, _footer, _md_table, _module_of, _symbol_page_ids
 
-VERSION = "2"
+VERSION = "3"
 DEFAULT_MAX_FLOW_PAGES = 300
 TABLE_KINDS = ("reads_table", "writes_table")
 JOB_KINDS = ("scheduled", "background")
@@ -44,6 +45,7 @@ STOP_MEANING = {
     "dynamic_dispatch": "dispatches dynamically (DI, reflection or too many candidates)",
     "external_boundary": "leaves the system (external API or queue)",
     "db_boundary": "reaches the database",
+    "flow_cap": "flow limit reached (more paths follow; not traced)",
 }
 _SCHEDULE = re.compile(r"@?Scheduled\s*\(([^)]*)\)|\b(cron|fixedRate|fixedDelay|every)\s*[=:]\s*([^,)\n]+)")
 
@@ -372,7 +374,8 @@ def build_flows(ctx: BuildContext):
                        + "\n\nEach row is a literal state assignment reached by this trace. Whether it runs on a "
                          "given request depends on branches the trace does not evaluate.")] if changes else []),
             Section("Provenance", "Traced from the stored call graph: only resolved edges are followed "
-                    "(no name-only guesses), up to depth 5. " + _footer(ctx).body_md),
+                    f"(no name-only guesses), up to {FLOW_MAX_DEPTH} calls deep and {FLOW_MAX_FLOWS} paths per "
+                    "entry point. " + _footer(ctx).body_md),
         ]
         links = g.symbol_link(qn, "implements")
         links += [lk for s in reached if s != qn for lk in g.symbol_link(s, "calls")]

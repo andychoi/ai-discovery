@@ -142,7 +142,7 @@ ai-discovery is already ahead of repowise on WebForms, JSP and SPA routers (`web
 
 **Before M6.12.** Entry points came from node type plus *substring* name hints (`cmd`, `handler`, …), which over-triggered. The flow BFS enqueued unresolved and fanned-out edges and recorded no stop reason (fixed by M1.12.b).
 
-**As built (M6.12).** `graph/entry_points.py` scores every callable from evidence; strong = 0.8, weak = in-degree 0 (0.2), anchored name (0.2), public (0.1), fan-out (0.1); threshold 0.5. Each `EntryPoint` carries its `kind` (sets the scenario trigger type) and `evidence`. Weights, exclusions and measured precision/recall are in `docs/architecture/decisions.md` ("Entry-Point Scoring") and `benchmarks/2026-11-01-entry-points.md`. The depth-8 / 50-flow tracer below is M6.17.
+**As built (M6.12).** `graph/entry_points.py` scores every callable from evidence; strong = 0.8, weak = in-degree 0 (0.2), anchored name (0.2), public (0.1), fan-out (0.1); threshold 0.5. Each `EntryPoint` carries its `kind` (sets the scenario trigger type) and `evidence`. Weights, exclusions and measured precision/recall are in `docs/architecture/decisions.md` ("Entry-Point Scoring") and `benchmarks/2026-11-01-entry-points.md`. The depth-8 / 50-flow tracer below is M6.17 (as built: `origins.FLOW_MAX_DEPTH`, `FLOW_MAX_FLOWS`).
 
 **Entry-point score** (evidence-based, threshold tuned on the bench):
 - framework/route/markup registration: strong; any one is sufficient;
@@ -155,7 +155,7 @@ Test, fixture and demo paths are excluded.
 **Flow tracing:**
 - Follow only edges whose origin passes the threshold (`global_unique` is excluded by default).
 - Maximum depth 8, maximum 50 flows per entry point.
-- Each flow records one **stop reason**: `leaf_no_callees` (never called "leaf", because it may be unresolved), `depth_cap`, `cycle`, `unresolved_call`, `dynamic_dispatch`, `external_boundary`, or `db_boundary`.
+- Each flow records one **stop reason**: `leaf_no_callees` (never called "leaf", because it may be unresolved), `depth_cap`, `cycle`, `unresolved_call`, `dynamic_dispatch`, `external_boundary`, `db_boundary`, or `flow_cap` (the frontier left once 50 flows have stopped; not expanded).
 - Unresolved stops are visible in flow pages and in the MCP "unknowns" list.
 
 ## 9. Measurement (M6.13)

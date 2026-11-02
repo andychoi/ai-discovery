@@ -1191,12 +1191,15 @@ class ExecutionSliceBuilder:
         self.entry_kinds = {ep.node.qualified_name: ep.kind for ep in entry_points}
         return [self.build_scenario(ep.node) for ep in entry_points]
 
-    def build_scenario(self, entry: CodeNode, max_depth: int = 5) -> Scenario:
+    def build_scenario(self, entry: CodeNode, max_depth: int = O.FLOW_MAX_DEPTH,
+                       max_flows: int = O.FLOW_MAX_FLOWS) -> Scenario:
         """Perform bounded BFS to extract a scenario-specific slice.
 
         Returns Scenario with:
         - nodes: all discovered nodes in BFS order
         - primary_path: top-confidence nodes capped at 15, in execution order
+        - stop_reasons: where each flow (entry-to-stop path) ends; at most *max_flows* flows are traced to
+          their end, the frontier left after that stops with `flow_cap` (design §8)
 
         Fan-out is not branching: a caller with several callees may call them one after another, either-or
         or both, and the call graph cannot tell which. No gateway or branch condition is recorded (ADR-0007).
@@ -1238,6 +1241,10 @@ class ExecutionSliceBuilder:
                 continue
 
             callees = self.edges_by_caller.get(node_name, [])
+            if len(scenario.stop_reasons) >= max_flows:     # flow cap: record the frontier, expand nothing more
+                scenario.stop_reasons.setdefault(
+                    node_name, "flow_cap" if callees else self._leaf_stop(node_name, exec_node))
+                continue
             if depth >= max_depth:
                 if callees:
                     scenario.stop_reasons.setdefault(node_name, "depth_cap")

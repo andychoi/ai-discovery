@@ -875,3 +875,31 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Verify:** `pytest -q` on the branch → 1787 passed, 2 skipped (+1 test since); `bench/agent/docker/run.sh check`
   ok. No repowise code was copied or translated.
 
+## 2026-11-02 — M6.17 — Flow tracer depth and per-entry flow cap
+- **Branch/commit:** rm/M6.17-flow-depth @ 1036af3
+- **Changes:**
+  - `graph/origins.py`: `FLOW_MAX_DEPTH = 8`, `FLOW_MAX_FLOWS = 50`, and stop reason `flow_cap`.
+  - `graph/call_graph.py`: `build_scenario(max_depth, max_flows)`. Once 50 flows have stopped, the frontier is
+    recorded with `flow_cap` and not expanded.
+  - `pages/builders/flows.py`: `flow_cap` meaning and provenance from the constants (version 3).
+  - `tests/test_execution_slice_builder.py` (+2).
+  - `bench/flow_depth.py` (new); results page `benchmarks/2026-11-02-flow-depth.md` with
+    `raw/m617-flow-depth.json`.
+  - Docs: `decisions.md`, `design/graph-accuracy.md` §8, `guides/pipeline/phase-breakdown.md`.
+- **Definition:** a flow is one entry-to-stop path of the slice's BFS tree. A frontier node with nothing to call
+  keeps its own stop reason, because its path is complete.
+- **Measured:** on microblog, node-express, petclinic and eShop at their pins, no slice reached depth 5 and the
+  most flows from one entry point was 10. Nodes, flows and estimated Tier-2 input are identical before and after
+  (0% change). Stops are unresolved calls (eShop 65%, microblog 32%), real boundaries, or leaves (petclinic 88%,
+  mostly Spring Data repository interfaces).
+- **Reading:** resolution, not depth, limits flow traces on real code. The new bounds protect deeper layered
+  code and pathological fan-out.
+- **Verify:** `pytest -q tests -k "slice or scenario"`; full `pytest -q` → 1787 passed, 2 skipped (goldens
+  unchanged); `bench gate`, `--sealed` and `--external` ok; `roadmap_lint` ok.
+- **Follow-ups:**
+  - Spring Data repository interface methods as `db_boundary` (lane C, with M6.15).
+  - MediatR `Send` → handler dispatch (eShop's unresolved stops).
+  - Calibrate the estimate's per-scenario tokens against prose runs (it is conservative: 4,500 vs about
+    1,000–1,600 measured).
+- No repowise code was copied or translated.
+
