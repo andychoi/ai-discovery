@@ -848,3 +848,30 @@ Append-only. Newest entries at the bottom. One entry per session/item.
 - **Follow-ups:** none for BPMN. A process model returns only through M8.6 (observed events). No repowise code
   was copied or translated.
 
+## 2026-11-02 — M5.7.b — harness readied (no spend)
+- **Branch:** rm/M5.7b-agent-eval @ ad89c05 (rebased on main, pushed; item stays In progress)
+- **Changes:**
+  - `bench/agent/docker/run.sh`: only the model-key lines of `.env` reach the container (agents run with
+    bypassPermissions there); the gateway URL comes from `AIGW_API_URL`.
+  - `dev-run`: `--model` defaults to `AIGW_API_MODEL`, and `--budget-usd` (dev only) is added.
+  - .NET build/test go through a solution filter without workload projects (Aspire hosts, MAUI), with
+    `NuGetAudit=false` and `LibraryRestore=false`; the image gains the .NET 8 runtimes.
+  - `changed_files` now parses NUL-separated porcelain. The first path used to lose a character, which scored a
+    correct edit as an extra file.
+  - `preflight --task`; tests (+2).
+  - The pre-registration (Draft) documents the .NET rule.
+- **Measured:** preflight 15/15 task bases build and test (eShop was 0/4). Dev runs on the gateway
+  (`glm-coding-flash`, `pc-unique-pet-names`):
+  - **bare:** 29 turns and 0 edits, then stopped at the $2.50 cap.
+  - **discover:** 45 turns; called `get_overview` and `get_impact` (both in the ledger); edited the 3 gold
+    schema files and `PetController` (recall 1.0 once the path bug is fixed); ran tests. The build failed on
+    the project's `spring-javaformat` check, an agent outcome.
+  - Claude Code priced the gateway model as Claude, so these costs do not predict the real eval's.
+- **Found:** the gateway key gets 403 for `claude-sonnet-5-5`, so the scored eval needs `ANTHROPIC_API_KEY`
+  (present in `.env`).
+- **Owner decision (2026-11-02):** not yet. The pre-registration stays Draft, with no spend.
+- **Risk to decide before freezing:** real runs may often hit the $2.50 per-run cap. The options offered were a
+  first batch of 9 cells (about $22) to measure the cap-hit rate, or a raised per-run cap.
+- **Verify:** `pytest -q` on the branch → 1787 passed, 2 skipped (+1 test since); `bench/agent/docker/run.sh check`
+  ok. No repowise code was copied or translated.
+
