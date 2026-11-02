@@ -376,6 +376,36 @@ code and no edges). The scenario's trigger type comes from the evidence kind (ht
 
 ---
 
+## Server-Rendered Screen Mapping (M6.18)
+
+### Decision
+A WebForms or JSP screen (one per page, from the folder-hierarchy detectors) is mapped to its backend from the
+page itself, in `screen_mapper.py`. The screen stage runs before parsing, so the mapping reads source files.
+
+| Screen | Evidence | Recorded as | Confidence |
+|---|---|---|---|
+| WebForms `.aspx` | `Inherits="Ns.Class"` and a sibling `.aspx.cs`/`.vb` that declares the class | `code_behind` component; methods = markup `On*="Handler"` + `Page_*` lifecycle methods the code-behind defines (AutoEventWireup) | 0.95 |
+| WebForms `.aspx` | `Inherits` only (no code-behind file found) | same, handlers only | 0.80 |
+| JSP | a Spring MVC handler returns its view name (`return "x/y"`, `new ModelAndView("x/y")`, `setViewName`) | `controller` component with those handler methods | 0.90 |
+| JSP | a `<form>` / `<form:form>` posts to a handler's route with a matching HTTP method | the form as an API call (method + path), and the handler method on the controller component | 0.85 |
+
+The view name comes from `spring.mvc.view.prefix` when configured, else the path after `WEB-INF/views|jsp|pages/`
+(or `WEB-INF/`), without the extension. `redirect:` and `forward:` returns are not views. `${…}` context-path
+prefixes are stripped from form actions; a form with no `method` is `GET` (HTML default).
+
+### Why
+- These pages make no front-end API calls, so the SPA path (component → `fetch('/api/…')` → controller) maps
+  nothing. Before M6.18, every WebForms and JSP screen had an empty backend.
+- Every row is a literal in source: a directive, a wired handler, a returned view name, a form route. Each
+  component lists the **methods** it maps, so a screen never claims every method of a controller. The wiki's
+  screen → flow links and impact's "screen uses node" match a component's class **and** method.
+
+### Limits
+- Thymeleaf and other template engines, Struts actions, and view names built at runtime are not mapped.
+- `.ascx` user controls are components, not screens. They are not mapped to the pages that host them.
+
+---
+
 ## Page Prose Layer (M3.7.a)
 
 ### Decision

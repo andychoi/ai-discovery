@@ -130,8 +130,8 @@ All five formats are **functional** (detection order = priority; first match win
 - **JSON/YAML files** (`menu.json`, `navigation.yaml`, etc.) — only leaf menu entries become screens.
 - **TypeScript/JS constants** (`export const MENU = [...]`) — tree-sitter parsing via `route_parser.py`.
 - **Framework routing** (Vue Router, React Router incl. JSX `<Routes>`, Angular routes) — `route_parser.py` adapters; routes with a component (and no redirect/catch-all) become screens.
-- **WebForms** (`.aspx` pages; folder hierarchy = menu) — fallback when no JS menu/router exists.
-- **JSP** (`.jsp`/`.jspx` pages; folder hierarchy = menu) — fallback for Spring/Java server-rendered apps.
+- **WebForms** (`.aspx` pages; folder hierarchy = menu) — fallback when no JS menu/router exists. Each page maps to its code-behind class (`Inherits`) and the handlers its markup wires (M6.18).
+- **JSP** (`.jsp`/`.jspx` pages; folder hierarchy = menu) — fallback for Spring/Java server-rendered apps. Each page maps to the Spring MVC handlers that render it (view name) and that its forms post to (M6.18).
 
 > When NO format matches, the run says so explicitly — `detect_and_build_screens`
 > logs "No menu system detected — tried: … screen generation skipped" and the

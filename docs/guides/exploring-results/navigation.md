@@ -63,8 +63,9 @@ Open the worst ones first in `discover serve`.
 ### 2. Read the wiki top-down
 
 Start at the overview, then a domain, then follow **Drill down** in the right rail: screen → flow → entity →
-table. A screen with no flows means the screen-to-backend mapping found nothing, which is a mapping gap
-(M6.18), not proof that the screen is static. An entity transition with "no traced flow reaches it" means the
+table. A screen with no flows means the screen-to-backend mapping found nothing. That is a mapping gap, not proof that
+the screen is static. WebForms and JSP pages map from their code-behind, view names and form posts (M6.18); a
+menu entry that lists only a route (no component) has nothing to map from. An entity transition with "no traced flow reaches it" means the
 trigger is not on any traced flow: it is dead code, reached through an unresolved call, or past the depth cap.
 
 ### 3. Diagrams

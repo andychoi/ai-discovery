@@ -903,3 +903,29 @@ Append-only. Newest entries at the bottom. One entry per session/item.
     1,000–1,600 measured).
 - No repowise code was copied or translated.
 
+## 2026-11-02 — M6.18 — Screen → backend mapping for server-rendered screens
+- **Branch/commit:** rm/M6.18-screen-mapping @ f899079
+- **Changes:**
+  - `screen_mapper.py`: `_map_server_rendered` → `_map_webforms`, `_map_jsp`; `parse_mvc_handlers`,
+    `jsp_view_names`, `_view_prefixes`; and form posts already mapped to handler methods are not re-resolved to
+    a whole controller.
+  - `jsp_extractor.py`: `forms` with method, `<form:form>`, `${…}` prefix stripped.
+  - `tests/test_screen_mapping_m618.py` (6).
+  - Docs: `decisions.md`, CLAUDE.md, `guides/exploring-results/navigation.md`.
+- **Evidence and confidence:**
+  - WebForms: `Inherits` + a sibling code-behind declaring the class at 0.95; the directive only at 0.80.
+    Methods = markup handlers + `Page_*` lifecycle methods defined in the code-behind.
+  - JSP: a handler returning the view name at 0.90; a form route + HTTP method at 0.85.
+  - Each component lists its methods, so a screen never claims a whole controller.
+- **Acceptance amended:** the `java-spring-jsp` and `dotnet-webforms` goldens get their screens from JSON menus
+  (route lists, no component), so the WebForms/JSP detectors never run there and the goldens are unchanged.
+  The check is end to end on two scanned fixture apps: the JSP screen → `CustomerController.list`/`search` flows,
+  and the WebForms screen → the `btnRefresh_Click` flow (`routes_to`).
+- **Verify:** `pytest -q tests -k screen_mapp` → 6 passed; full `pytest -q` → 1793 passed, 2 skipped; `bench gate`
+  and `--sealed` ok; `roadmap_lint` ok.
+- **Follow-ups:**
+  - Thymeleaf views (spring-petclinic) are not mapped: templates under `templates/`, with `th:action`.
+  - Struts actions, and `.ascx` controls to their host pages.
+  - JSON-menu screens that list only a route still have nothing to map from.
+- No repowise code was copied or translated.
+

@@ -599,8 +599,14 @@ class ScreenMapper:
             mapping.fe_api_calls = self._extract_api_calls(mapping.fe_component)
             mapping.source_files.append(mapping.fe_component)
 
+        # 2b. Server-rendered pages (M6.18): WebForms code-behind, JSP → Spring MVC handlers. Their form posts
+        # are already mapped to handler methods here, so step 3 does not re-resolve them to a whole controller.
+        form_calls = self._map_server_rendered(screen, mapping)
+
         # 3. Resolve to backend (placeholder for now)
         for api_call in mapping.fe_api_calls:
+            if id(api_call) in form_calls:
+                continue
             controllers = self._resolve_to_controller(api_call)
             mapping.be_controllers.extend(controllers)
             mapping.source_files.extend([c.file_path for c in controllers])
@@ -641,6 +647,105 @@ class ScreenMapper:
         mapping.source_hashes = self._compute_source_hashes(mapping.source_files)
 
         return mapping
+
+    def _map_server_rendered(self, screen: Screen, mapping: ScreenMapping) -> set[int]:
+        """Backend of a WebForms or JSP screen, from the page itself (M6.18). Returns ids of the form-post
+        ApiCalls added, which are already resolved to handler methods."""
+        framework = (screen.metadata or {}).get("framework")
+        page_file = mapping.fe_component or (screen.metadata or {}).get("component_source")
+        if not page_file or framework not in ("webforms", "jsp"):
+            return set()
+        if framework == "webforms":
+            self._map_webforms(page_file, mapping)
+            return set()
+        return self._map_jsp(page_file, mapping)
+
+    def _map_webforms(self, page_file: str, mapping: ScreenMapping) -> None:
+        """The page's code-behind class (`Inherits`), with the handlers its markup wires and, under
+        AutoEventWireup, the Page_* lifecycle methods its code-behind defines."""
+        from .webforms_extractor import extract_webforms_page
+
+        aspx = self.repo_path / page_file
+        page = extract_webforms_page(aspx)
+        if page is None or not page.code_behind_class:
+            return
+        methods = {e["handler"] for e in page.events if e.get("handler")}
+        code_behind = next((p for p in (aspx.with_name(aspx.name + ".cs"), aspx.with_name(aspx.name + ".vb"))
+                            if p.is_file()), None)
+        confidence, file_path = 0.8, page_file           # the directive names the class; its file is not found
+        if code_behind is not None:
+            text = code_behind.read_text(encoding="utf-8", errors="replace")
+            short = page.code_behind_class.rsplit(".", 1)[-1]
+            if re.search(rf"\bclass\s+{re.escape(short)}\b", text, re.I):
+                confidence = 0.95                         # the file next to the page declares the class
+            if page.auto_event_wireup:
+                methods |= {m for m in _LIFECYCLE if re.search(rf"\b(?:void|Sub)\s+{m}\s*\(", text)}
+            file_path = str(code_behind.relative_to(self.repo_path))
+            mapping.source_files.append(file_path)
+        mapping.be_controllers.append(BackendComponent(
+            component_type="code_behind", class_name=page.code_behind_class, file_path=file_path,
+            methods=sorted(methods), confidence=confidence))
+
+    def _map_jsp(self, page_file: str, mapping: ScreenMapping) -> set[int]:
+        """Spring MVC handlers that render this JSP (a view-name literal: `return "customer/list"`,
+        `new ModelAndView(…)`, `setViewName(…)`) and the handlers its forms post to (route + HTTP method)."""
+        from .jsp_extractor import extract_jsp_page
+
+        handlers = self._mvc_handlers()
+        views = jsp_view_names(page_file, self._view_prefixes())
+        hits: dict[str, dict] = {}
+
+        def add(h: MvcHandler, confidence: float, how: str) -> None:
+            entry = hits.setdefault(h.class_name, {"file": h.file_path, "line": h.line, "methods": set(),
+                                                   "confidence": 0.0, "how": set()})
+            entry["methods"].add(h.method)
+            entry["confidence"] = max(entry["confidence"], confidence)
+            entry["how"].add(how)
+
+        for h in handlers:
+            if h.views & views:
+                add(h, 0.9, "view")
+        added: set[int] = set()
+        page = extract_jsp_page(self.repo_path / page_file)
+        for form in (page.forms if page else []):
+            call = ApiCall(method=form["method"], path=form["action"], source_file=page_file, confidence=0.85)
+            mapping.fe_api_calls.append(call)
+            added.add(id(call))
+            for h in handlers:
+                if (not h.http or form["method"] in h.http) and any(self._path_matches(form["action"], p)
+                                                                    for p in h.paths):
+                    add(h, 0.85, "form")
+        for cls, e in sorted(hits.items()):
+            mapping.be_controllers.append(BackendComponent(
+                component_type="controller", class_name=cls, file_path=e["file"], line_number=e["line"],
+                methods=sorted(e["methods"]), confidence=e["confidence"]))
+            mapping.source_files.append(e["file"])
+        return added
+
+    def _mvc_handlers(self) -> list["MvcHandler"]:
+        if getattr(self, "_mvc_cache", None) is None:
+            from .repo.walker import excluded_path
+
+            found: list[MvcHandler] = []
+            for path in sorted(self.repo_path.rglob("*.java")):
+                if excluded_path(path, self.repo_path) or "/src/test/" in path.as_posix():
+                    continue
+                try:
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                found += parse_mvc_handlers(text, str(path.relative_to(self.repo_path)))
+            self._mvc_cache = found
+        return self._mvc_cache
+
+    def _view_prefixes(self) -> list[str]:
+        """`spring.mvc.view.prefix` from application.properties / .yml, when the app configures one."""
+        out = []
+        for cfg in sorted(self.repo_path.glob("**/src/main/resources/application*.*")):
+            text = cfg.read_text(encoding="utf-8", errors="replace") if cfg.is_file() else ""
+            out += re.findall(r"spring\.mvc\.view\.prefix\s*[=:]\s*([^\s#]+)", text)
+            out += re.findall(r"^\s*prefix\s*:\s*([^\s#]+)", text, re.M) if cfg.suffix in (".yml", ".yaml") else []
+        return out
 
     def map_screens(self, screens: list[Screen]) -> list[ScreenMapping]:
         """Map multiple screens."""
@@ -1230,6 +1335,104 @@ class ScreenMapper:
                     print(f"Warning: Failed to hash {file_path}: {e}")
 
         return hashes
+
+
+
+# ── server-rendered screens: WebForms code-behind, JSP → Spring MVC (M6.18) ──────────────────────────────
+
+_LIFECYCLE = ("Page_PreInit", "Page_Init", "Page_Load", "Page_PreRender", "Page_Unload")
+_VIEW_ROOTS = ("WEB-INF/views/", "WEB-INF/jsp/", "WEB-INF/pages/", "WEB-INF/")
+_MAPPING_HTTP = {"GetMapping": "GET", "PostMapping": "POST", "PutMapping": "PUT", "DeleteMapping": "DELETE",
+                 "PatchMapping": "PATCH", "RequestMapping": None}
+_ANNOT_RE = re.compile(r"@(\w+)\s*(\((?:[^()]|\([^()]*\))*\))?")
+_METHOD_DECL_RE = re.compile(
+    r"(?P<annots>(?:\s*@\w+\s*(?:\((?:[^()]|\([^()]*\))*\))?)*)\s*"
+    r"(?:public|protected|private)\s+(?:static\s+|final\s+|synchronized\s+)*[\w<>\[\], ?.]+?\s+(?P<name>\w+)\s*\(",
+    re.M)
+_CLASS_DECL_RE = re.compile(r"(?P<annots>(?:\s*@\w+\s*(?:\((?:[^()]|\([^()]*\))*\))?)*)\s*(?:public\s+)?"
+                            r"(?:abstract\s+|final\s+)*class\s+(?P<name>\w+)")
+_VIEW_LITERAL_RE = re.compile(r'(?:\breturn\s+|new\s+ModelAndView\s*\(\s*|\.setViewName\s*\(\s*)"([^"]+)"')
+_STRING_RE = re.compile(r'"([^"]*)"')
+
+
+@dataclass
+class MvcHandler:
+    """One Spring MVC handler method: its routes, HTTP methods (empty = any) and the view names it returns."""
+
+    class_name: str           # qualified
+    file_path: str            # repo-relative
+    method: str
+    line: int
+    http: frozenset
+    paths: tuple
+    views: frozenset
+
+
+def _annotation_paths(args: str) -> list[str]:
+    """Route strings of a mapping annotation's arguments: `value`/`path` if named, else the leading positional
+    string(s) — never `produces`, `params`, … ."""
+    if not args:
+        return [""]
+    inner = args.strip()[1:-1]
+    named = re.search(r"\b(?:value|path)\s*=\s*(\{[^}]*\}|\"[^\"]*\")", inner)
+    if named:
+        return _STRING_RE.findall(named.group(1)) or [""]
+    positional = re.split(r"\b\w+\s*=", inner, maxsplit=1)[0]
+    return _STRING_RE.findall(positional) or [""]
+
+
+def _annotation_http(name: str, args: str) -> frozenset:
+    fixed = _MAPPING_HTTP.get(name)
+    if fixed:
+        return frozenset({fixed})
+    m = re.search(r"\bmethod\s*=\s*(\{[^}]*\}|[\w.]+)", args or "")
+    return frozenset(re.findall(r"\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b", m.group(1))) if m else frozenset()
+
+
+def parse_mvc_handlers(text: str, rel_path: str) -> list[MvcHandler]:
+    """Spring MVC handlers of one Java source file (regex; class-level @RequestMapping prefixes included)."""
+    if "@Controller" not in text and "@RestController" not in text:
+        return []
+    pkg = re.search(r"^\s*package\s+([\w.]+)\s*;", text, re.M)
+    cls = _CLASS_DECL_RE.search(text)
+    if cls is None:
+        return []
+    qualified = f"{pkg.group(1)}.{cls.group('name')}" if pkg else cls.group("name")
+    prefixes = [""]
+    for a in _ANNOT_RE.finditer(cls.group("annots") or ""):
+        if a.group(1) == "RequestMapping":
+            prefixes = _annotation_paths(a.group(2) or "")
+    decls = [m for m in _METHOD_DECL_RE.finditer(text, cls.end())]
+    out = []
+    for i, m in enumerate(decls):
+        body = text[m.end(): decls[i + 1].start() if i + 1 < len(decls) else len(text)]
+        http: set = set()
+        paths: list[str] = []
+        mapped = False
+        for a in _ANNOT_RE.finditer(m.group("annots") or ""):
+            if a.group(1) in _MAPPING_HTTP:
+                mapped = True
+                http |= _annotation_http(a.group(1), a.group(2) or "")
+                paths += [(p + s) for p in prefixes for s in _annotation_paths(a.group(2) or "")]
+        views = {v for v in _VIEW_LITERAL_RE.findall(body) if not v.startswith(("redirect:", "forward:"))}
+        if mapped or views:
+            out.append(MvcHandler(qualified, rel_path, m.group("name"), text.count("\n", 0, m.start("name")) + 1,
+                                  frozenset(http), tuple(paths) if mapped else (), frozenset(views)))
+    return out
+
+
+def jsp_view_names(rel_jsp: str, prefixes: list[str]) -> set[str]:
+    """View names a Spring view resolver would resolve to this JSP: the configured prefix if any, else the
+    conventional WEB-INF roots; without the file extension and the leading slash."""
+    rel = rel_jsp.replace("\\", "/")
+    stem = rel.rsplit(".", 1)[0]
+    names = set()
+    for root in [p.strip("/") + "/" for p in prefixes if p.strip("/")] + list(_VIEW_ROOTS):
+        i = stem.find(root)
+        if i >= 0:
+            names.add(stem[i + len(root):])
+            break
+    return {n.lstrip("/") for n in names if n}
 
 
 def map_all_screens(screens: list[Screen], repo_path: Path) -> list[ScreenMapping]:
